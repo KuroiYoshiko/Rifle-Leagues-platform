@@ -93,7 +93,10 @@ export default async function DashboardPage() {
       </div>
 
       <section className="grid gap-4 xl:grid-cols-[1.3fr_.7fr]">
-        <Card className="relative overflow-hidden border-0 bg-navigation p-6 text-white sm:p-8">
+        <Card
+          background="navigation"
+          className="relative overflow-hidden border-0 p-6 text-white sm:p-8"
+        >
           <div className="target-mark absolute -right-36 -top-36 aspect-square w-[31rem] opacity-20" />
           <div className="relative">
             <Badge tone="brand">
@@ -143,7 +146,7 @@ export default async function DashboardPage() {
 
             <Link
               href="/profile"
-              className="mt-7 inline-flex min-h-11 items-center justify-center rounded-xl bg-white px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
+              className="mt-7 inline-flex min-h-11 items-center justify-center rounded-xl bg-brand px-5 text-sm font-semibold text-hero-background shadow-sm shadow-black/10 transition hover:bg-brand-subtle hover:text-brand-deep focus-visible:ring-4 focus-visible:ring-white/40"
             >
               {profileIsComplete ? "Review profile" : "Complete profile"}
               <span className="ml-2" aria-hidden="true">→</span>

@@ -3,12 +3,19 @@ import type { ReactNode } from "react";
 export function Card({
   children,
   className = "",
+  background = "surface",
 }: {
   children: ReactNode;
   className?: string;
+  background?: "surface" | "navigation";
 }) {
+  const backgroundClass =
+    background === "navigation" ? "bg-navigation" : "bg-surface";
+
   return (
-    <section className={`rounded-2xl border border-border bg-surface shadow-xs ${className}`}>
+    <section
+      className={`rounded-2xl border border-border ${backgroundClass} shadow-xs ${className}`}
+    >
       {children}
     </section>
   );
