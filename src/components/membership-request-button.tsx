@@ -32,14 +32,14 @@ export function MembershipRequestButton({
   const label = statusUnavailable
     ? "Status unavailable"
     : submitting
-      ? membershipStatus === "rejected"
+      ? membershipStatus === "rejected" || membershipStatus === "left"
         ? "Sending again…"
         : "Sending request…"
       : membershipStatus === "active"
         ? "Membership active"
         : membershipStatus === "pending"
           ? "Request pending"
-          : membershipStatus === "rejected"
+          : membershipStatus === "rejected" || membershipStatus === "left"
             ? "Request again"
             : "Request to join";
 
@@ -48,6 +48,11 @@ export function MembershipRequestButton({
       {membershipStatus === "rejected" && showDeclinedLabel ? (
         <p className="mb-2 text-xs font-semibold text-danger">
           Membership request declined
+        </p>
+      ) : null}
+      {membershipStatus === "left" ? (
+        <p className="mb-2 text-xs font-semibold text-muted-foreground">
+          You previously left this club
         </p>
       ) : null}
       <form action={formAction}>
@@ -64,7 +69,9 @@ export function MembershipRequestButton({
                   ? "cursor-default bg-warning-subtle text-warning"
                   : membershipStatus === "rejected"
                     ? "border border-danger/25 bg-surface text-danger hover:bg-danger-subtle disabled:cursor-wait disabled:opacity-70"
-                    : "bg-primary text-primary-foreground hover:bg-brand-deep disabled:cursor-wait disabled:opacity-70"
+                    : membershipStatus === "left"
+                      ? "border border-border bg-surface text-brand-deep hover:bg-brand-subtle disabled:cursor-wait disabled:opacity-70"
+                      : "bg-primary text-primary-foreground hover:bg-brand-deep disabled:cursor-wait disabled:opacity-70"
           }`}
         >
           {label}

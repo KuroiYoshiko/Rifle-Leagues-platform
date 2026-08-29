@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { LeaveClubButton } from "@/components/leave-club-button";
 import { MembershipRequestButton } from "@/components/membership-request-button";
 import { Badge, Card, ProgressBar, SectionHeader } from "@/components/ui";
 import {
@@ -85,6 +86,8 @@ export default async function DashboardPage() {
         )
       `)
       .eq("user_id", claims.sub)
+      // Historical "left" rows remain available on discovery for rejoining, but
+      // they should not determine the dashboard's current membership state.
       .in("status", ["active", "pending", "rejected"])
       .order("created_at", { ascending: false }),
   ]);
@@ -356,28 +359,34 @@ export default async function DashboardPage() {
             className="relative overflow-hidden border-0 p-6 text-white sm:p-8"
           >
             <div className="target-mark absolute -right-36 -top-36 aspect-square w-[31rem] opacity-15" />
-            <div className="relative flex items-start gap-4">
-              <span
-                className="grid size-11 shrink-0 place-items-center rounded-xl bg-success-subtle text-sm font-bold text-success"
-                aria-hidden="true"
-              >
-                C
-              </span>
-              <div>
-                <Badge tone="positive">Membership active</Badge>
-                <h2 className="mt-3 text-xl font-semibold text-white">
-                  {membershipState.membership.club.name}
-                </h2>
-                {getClubLocation(membershipState.membership.club) ? (
-                  <p className="mt-1 text-sm text-white/60">
-                    {getClubLocation(membershipState.membership.club)}
+            <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
+              <div className="flex items-start gap-4">
+                <span
+                  className="grid size-11 shrink-0 place-items-center rounded-xl bg-success-subtle text-sm font-bold text-success"
+                  aria-hidden="true"
+                >
+                  C
+                </span>
+                <div>
+                  <Badge tone="positive">Membership active</Badge>
+                  <h2 className="mt-3 text-xl font-semibold text-white">
+                    {membershipState.membership.club.name}
+                  </h2>
+                  {getClubLocation(membershipState.membership.club) ? (
+                    <p className="mt-1 text-sm text-white/60">
+                      {getClubLocation(membershipState.membership.club)}
+                    </p>
+                  ) : null}
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-white/62">
+                    Your club membership is active. Your dashboard is ready for real
+                    competition features when they are introduced.
                   </p>
-                ) : null}
-                <p className="mt-3 max-w-2xl text-sm leading-6 text-white/62">
-                  Your club membership is active. Your dashboard is ready for real
-                  competition features when they are introduced.
-                </p>
+                </div>
               </div>
+              <LeaveClubButton
+                membershipId={membershipState.membership.id}
+                clubName={membershipState.membership.club.name}
+              />
             </div>
           </Card>
         ) : (

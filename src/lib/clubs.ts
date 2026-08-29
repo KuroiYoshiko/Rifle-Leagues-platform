@@ -1,5 +1,10 @@
 export const CLUB_STATUSES = ["active", "inactive"] as const;
-export const MEMBERSHIP_STATUSES = ["pending", "active", "rejected"] as const;
+export const MEMBERSHIP_STATUSES = [
+  "pending",
+  "active",
+  "rejected",
+  "left",
+] as const;
 
 export type ClubStatus = (typeof CLUB_STATUSES)[number];
 export type MembershipStatus = (typeof MEMBERSHIP_STATUSES)[number];
@@ -37,6 +42,8 @@ export function getClubLocation(
 export function getDashboardMembershipState(
   memberships: ClubMembership[] | null | undefined,
 ): DashboardMembershipState {
+  // The schema supports multiple clubs per user. Until a club switcher exists,
+  // the dashboard presents the first row in the highest-priority current state.
   const activeMembership = memberships?.find(
     (membership) => membership.status === "active" && membership.club,
   );
