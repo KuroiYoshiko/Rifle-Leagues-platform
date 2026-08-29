@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
+import type { SidebarOrganisation } from "@/lib/organisations";
 
 type NavigationItem = {
   label: string;
@@ -22,6 +23,7 @@ const sections: { label?: string; items: NavigationItem[] }[] = [
     items: [
       { label: "Overview", href: "/dashboard", mark: "O" },
       { label: "Profile", href: "/profile", mark: "P" },
+      { label: "Organisations", href: "/organisations", mark: "L" },
     ],
   },
   {
@@ -91,12 +93,47 @@ const pageDetails: Record<string, { eyebrow: string; title: string }> = {
   "/profile": { eyebrow: "Account", title: "Your profile" },
   "/clubs": { eyebrow: "Membership", title: "Find a club" },
   "/club": { eyebrow: "Northbridge Rifle Club", title: "Club administration" },
+  "/organisations": {
+    eyebrow: "League organisations",
+    title: "Find an organisation",
+  },
 };
+
+const organisationPageTitles: Record<string, string> = {
+  leagues: "Leagues",
+  results: "Results",
+  information: "Information",
+  contact: "Contact",
+};
+
+function getPageDetails(
+  pathname: string,
+  organisations: SidebarOrganisation[],
+) {
+  const routeParts = pathname.split("/").filter(Boolean);
+
+  if (routeParts[0] === "organisations" && routeParts[1]) {
+    const organisation = organisations.find(
+      (item) => item.slug === routeParts[1],
+    );
+
+    return {
+      eyebrow: organisation?.name ?? "League organisation",
+      title: organisationPageTitles[routeParts[2]] ?? "Overview",
+    };
+  }
+
+  return pageDetails[pathname] ?? pageDetails["/dashboard"];
+}
 
 function isNavigationItemActive(pathname: string, href: string) {
   if (href.includes("#")) return false;
 
   const itemPath = href.split("#")[0];
+  if (itemPath === "/organisations") {
+    return pathname === itemPath;
+  }
+
   return (
     pathname === itemPath ||
     (itemPath !== "/dashboard" && pathname.startsWith(`${itemPath}/`))
@@ -117,80 +154,196 @@ function Brand() {
 
 function Navigation({
   pathname,
+  organisations,
   onNavigate,
 }: {
   pathname: string;
+  organisations: SidebarOrganisation[];
   onNavigate?: () => void;
 }) {
-  return (
-    <nav className="mt-9 flex-1 overflow-y-auto px-3 pb-5" aria-label="Application navigation">
-      {sections.map((section, sectionIndex) => (
-        <div
-          key={section.label ?? sectionIndex}
-          className={sectionIndex === 0 ? "" : "mt-7"}
-        >
-          {section.label ? (
-            <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.17em] text-white/35">
-              {section.label}
-            </p>
-          ) : null}
-          <div className="space-y-1">
-            {section.items.map((item) => {
-              const isActive =
-                !item.disabledReason &&
-                isNavigationItemActive(pathname, item.href);
+  const activeOrganisationSlug = organisations.find((organisation) => {
+    const basePath = `/organisations/${organisation.slug}`;
+    return pathname === basePath || pathname.startsWith(`${basePath}/`);
+  })?.slug;
+  const [expandedOrganisationSlug, setExpandedOrganisationSlug] = useState<
+    string | null
+  >(activeOrganisationSlug ?? organisations[0]?.slug ?? null);
 
-              if (item.disabledReason) {
+  return (
+    <nav
+      className="application-navigation sidebar-scrollbar mt-9 flex-1 overflow-y-auto px-3 pb-5"
+      aria-label="Application navigation"
+    >
+      {sections.map((section, sectionIndex) => (
+        <div key={section.label ?? sectionIndex}>
+          {sectionIndex === 1 ? (
+            <div className="mt-7">
+              <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.17em] text-white/35">
+                My organisations
+              </p>
+              {organisations.length > 0 ? (
+                <div className="space-y-1.5">
+                  {organisations.map((organisation) => {
+                    const basePath = `/organisations/${organisation.slug}`;
+                    const isExpanded =
+                      expandedOrganisationSlug === organisation.slug;
+                    const isContextActive =
+                      pathname === basePath || pathname.startsWith(`${basePath}/`);
+                    const organisationItems = [
+                      { label: "Overview", href: basePath },
+                      { label: "Leagues", href: `${basePath}/leagues` },
+                      { label: "Results", href: `${basePath}/results` },
+                      { label: "Information", href: `${basePath}/information` },
+                      { label: "Contact", href: `${basePath}/contact` },
+                    ];
+
+                    return (
+                      <div key={organisation.id}>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedOrganisationSlug((current) =>
+                              current === organisation.slug
+                                ? null
+                                : organisation.slug,
+                            )
+                          }
+                          aria-expanded={isExpanded}
+                          aria-controls={`organisation-${organisation.id}-navigation`}
+                          className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm transition ${
+                            isContextActive
+                              ? "bg-white/[.09] text-white"
+                              : "text-white/66 hover:bg-white/[.07] hover:text-white"
+                          }`}
+                        >
+                          <span
+                            className="grid size-6 shrink-0 place-items-center rounded-md border border-white/12 text-[9px] font-semibold text-white/50"
+                            aria-hidden="true"
+                          >
+                            O
+                          </span>
+                          <span className="min-w-0 flex-1 truncate font-medium">
+                            {organisation.name}
+                          </span>
+                          <span
+                            className={`text-xs text-white/40 transition-transform ${
+                              isExpanded ? "rotate-90" : ""
+                            }`}
+                            aria-hidden="true"
+                          >
+                            ›
+                          </span>
+                        </button>
+                        {isExpanded ? (
+                          <div
+                            id={`organisation-${organisation.id}-navigation`}
+                            className="ml-6 mt-1 space-y-0.5 border-l border-white/10 pl-3"
+                          >
+                            {organisationItems.map((item) => {
+                              const isActive = pathname === item.href;
+
+                              return (
+                                <Link
+                                  key={item.label}
+                                  href={item.href}
+                                  onClick={onNavigate}
+                                  aria-current={isActive ? "page" : undefined}
+                                  className={`flex min-h-9 items-center rounded-lg px-3 text-xs font-medium transition ${
+                                    isActive
+                                      ? "bg-white text-[var(--brand-deep)]"
+                                      : "text-white/52 hover:bg-white/[.07] hover:text-white"
+                                  }`}
+                                >
+                                  {item.label}
+                                </Link>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="px-3 text-xs leading-5 text-white/40">
+                  No organisations added yet.
+                </p>
+              )}
+              <Link
+                href="/organisations"
+                onClick={onNavigate}
+                className="mt-2 flex min-h-9 items-center rounded-lg px-3 text-xs font-semibold text-brand transition hover:bg-white/[.07] hover:text-white"
+              >
+                {organisations.length > 0 ? "Browse organisations" : "Find an organisation"}
+                <span className="ml-auto" aria-hidden="true">→</span>
+              </Link>
+            </div>
+          ) : null}
+
+          <div className={sectionIndex === 0 ? "" : "mt-7"}>
+            {section.label ? (
+              <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.17em] text-white/35">
+                {section.label}
+              </p>
+            ) : null}
+            <div className="space-y-1">
+              {section.items.map((item) => {
+                const isActive =
+                  !item.disabledReason &&
+                  isNavigationItemActive(pathname, item.href);
+
+                if (item.disabledReason) {
+                  return (
+                    <span
+                      key={item.label}
+                      aria-disabled="true"
+                      title={item.disabledReason}
+                      className="group flex min-h-10 cursor-not-allowed items-center gap-3 rounded-xl px-3 text-sm text-white/32"
+                    >
+                      <span
+                        className="grid size-6 place-items-center rounded-md border border-white/[.08] text-[9px] font-semibold text-white/28"
+                        aria-hidden="true"
+                      >
+                        {item.mark}
+                      </span>
+                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                      <span className="text-[9px] font-medium text-white/25" aria-hidden="true">
+                        Locked
+                      </span>
+                      <span className="sr-only">{item.disabledReason}</span>
+                    </span>
+                  );
+                }
+
                 return (
-                  <span
+                  <Link
                     key={item.label}
-                    aria-disabled="true"
-                    title={item.disabledReason}
-                    className="group flex min-h-10 cursor-not-allowed items-center gap-3 rounded-xl px-3 text-sm text-white/32"
+                    href={item.href}
+                    onClick={onNavigate}
+                    aria-current={isActive ? "page" : undefined}
+                    className={`group flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm transition ${
+                      isActive
+                        ? "bg-white text-[var(--brand-deep)] shadow-sm hover:bg-white hover:text-[var(--brand-deep)] focus-visible:bg-white focus-visible:text-[var(--brand-deep)]"
+                        : "text-white/62 hover:bg-white/[.07] hover:text-white focus-visible:bg-white/[.1] focus-visible:text-white"
+                    }`}
                   >
                     <span
-                      className="grid size-6 place-items-center rounded-md border border-white/[.08] text-[9px] font-semibold text-white/28"
+                      className={`grid size-6 place-items-center rounded-md border text-[9px] font-semibold ${
+                        isActive
+                          ? "border-border bg-brand-subtle text-[var(--brand-strong)] group-hover:border-brand/30 group-focus-visible:border-brand/40"
+                          : "border-white/12 text-white/45 group-hover:border-white/20 group-focus-visible:border-white/25"
+                      }`}
                       aria-hidden="true"
                     >
                       {item.mark}
                     </span>
-                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                    <span className="text-[9px] font-medium text-white/25" aria-hidden="true">
-                      Locked
+                    <span className={isActive ? "text-[var(--brand-deep)]" : undefined}>
+                      {item.label}
                     </span>
-                    <span className="sr-only">{item.disabledReason}</span>
-                  </span>
+                  </Link>
                 );
-              }
-
-              return (
-                <Link
-                  key={item.label}
-                  href={item.href}
-                  onClick={onNavigate}
-                  aria-current={isActive ? "page" : undefined}
-                  className={`group flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm transition ${
-                    isActive
-                      ? "bg-white text-[var(--brand-deep)] shadow-sm hover:bg-white hover:text-[var(--brand-deep)] focus-visible:bg-white focus-visible:text-[var(--brand-deep)]"
-                      : "text-white/62 hover:bg-white/[.07] hover:text-white focus-visible:bg-white/[.1] focus-visible:text-white"
-                  }`}
-                >
-                  <span
-                    className={`grid size-6 place-items-center rounded-md border text-[9px] font-semibold ${
-                      isActive
-                        ? "border-border bg-brand-subtle text-[var(--brand-strong)] group-hover:border-brand/30 group-focus-visible:border-brand/40"
-                        : "border-white/12 text-white/45 group-hover:border-white/20 group-focus-visible:border-white/25"
-                    }`}
-                    aria-hidden="true"
-                  >
-                    {item.mark}
-                  </span>
-                  <span className={isActive ? "text-[var(--brand-deep)]" : undefined}>
-                    {item.label}
-                  </span>
-                </Link>
-              );
-            })}
+              })}
+            </div>
           </div>
         </div>
       ))}
@@ -201,18 +354,27 @@ function Navigation({
 function SidebarContent({
   pathname,
   user,
+  organisations,
   onNavigate,
 }: {
   pathname: string;
   user: AuthenticatedUser;
+  organisations: SidebarOrganisation[];
   onNavigate?: () => void;
 }) {
+  const navigationContext = pathname.match(/^\/organisations\/([^/]+)/)?.[1] ?? "base";
+
   return (
     <>
       <div className="px-5 pt-6">
         <Brand />
       </div>
-      <Navigation pathname={pathname} onNavigate={onNavigate} />
+      <Navigation
+        key={navigationContext}
+        pathname={pathname}
+        organisations={organisations}
+        onNavigate={onNavigate}
+      />
       <div className="m-3 border-t border-white/10 pt-4">
         <div className="flex items-center gap-3 rounded-xl px-3 py-2.5">
           <span className="grid size-9 place-items-center rounded-full bg-brand-subtle text-xs font-bold text-brand-deep">
@@ -243,18 +405,24 @@ function SidebarContent({
 export function AppShell({
   children,
   user,
+  organisations,
 }: {
   children: ReactNode;
   user: AuthenticatedUser;
+  organisations: SidebarOrganisation[];
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
-  const details = pageDetails[pathname] ?? pageDetails["/dashboard"];
+  const details = getPageDetails(pathname, organisations);
 
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-[264px_1fr]">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[264px] flex-col bg-navigation text-white lg:flex">
-        <SidebarContent pathname={pathname} user={user} />
+        <SidebarContent
+          pathname={pathname}
+          user={user}
+          organisations={organisations}
+        />
       </aside>
 
       {menuOpen ? (
@@ -277,6 +445,7 @@ export function AppShell({
             <SidebarContent
               pathname={pathname}
               user={user}
+              organisations={organisations}
               onNavigate={() => setMenuOpen(false)}
             />
           </aside>
