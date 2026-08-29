@@ -139,6 +139,7 @@ grant select (
 revoke all privileges on table public.club_memberships from anon, authenticated;
 grant select on table public.club_memberships to authenticated;
 grant insert (club_id, user_id) on table public.club_memberships to authenticated;
+grant update (status) on table public.club_memberships to authenticated;
 
 revoke all privileges on sequence public.club_memberships_id_seq from anon, authenticated;
 grant usage on sequence public.club_memberships_id_seq to authenticated;
@@ -162,6 +163,29 @@ create policy "Users can request their own pending club membership"
 on public.club_memberships
 for insert
 to authenticated
+with check (
+  (select auth.uid()) = user_id
+  and status = 'pending'
+  and exists (
+    select 1
+    from public.clubs
+    where clubs.id = club_memberships.club_id
+      and clubs.status = 'active'
+  )
+);
+
+-- Authenticated users may retry a declined request by changing only the status
+-- column. USING checks the old row; WITH CHECK validates the resulting row.
+-- The column-level grant above prevents club_id, user_id, or timestamp changes.
+drop policy if exists "Users can retry their own rejected club membership" on public.club_memberships;
+create policy "Users can retry their own rejected club membership"
+on public.club_memberships
+for update
+to authenticated
+using (
+  (select auth.uid()) = user_id
+  and status = 'rejected'
+)
 with check (
   (select auth.uid()) = user_id
   and status = 'pending'

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { MembershipRequestButton } from "@/components/membership-request-button";
 import { Card } from "@/components/ui";
 import {
   getClubLocation,
@@ -8,7 +9,6 @@ import {
   type MembershipStatus,
 } from "@/lib/clubs";
 import { createClient } from "@/lib/supabase/server";
-import { MembershipRequestButton } from "./membership-request-button";
 
 export const metadata: Metadata = {
   title: "Find a club",

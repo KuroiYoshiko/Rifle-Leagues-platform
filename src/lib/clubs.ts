@@ -25,6 +25,7 @@ export type ClubMembership = {
 export type DashboardMembershipState =
   | { kind: "none" }
   | { kind: "pending"; membership: ClubMembership & { club: Club } }
+  | { kind: "rejected"; membership: ClubMembership & { club: Club } }
   | { kind: "active"; membership: ClubMembership & { club: Club } };
 
 export function getClubLocation(
@@ -55,6 +56,17 @@ export function getDashboardMembershipState(
     return {
       kind: "pending",
       membership: pendingMembership as ClubMembership & { club: Club },
+    };
+  }
+
+  const rejectedMembership = memberships?.find(
+    (membership) => membership.status === "rejected" && membership.club,
+  );
+
+  if (rejectedMembership?.club) {
+    return {
+      kind: "rejected",
+      membership: rejectedMembership as ClubMembership & { club: Club },
     };
   }
 
