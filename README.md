@@ -16,6 +16,21 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+## Supabase database setup
+
+The application profile feature requires the SQL in
+[`database/user-profiles.sql`](database/user-profiles.sql). Run the entire file
+once in the Supabase Dashboard SQL Editor before testing `/dashboard` or
+`/profile`.
+
+The script is safe to rerun. It creates the private `public.profiles` table,
+backfills existing Auth users from their first/last-name metadata, installs the
+new-user and `updated_at` triggers, grants authenticated Data API access, and
+enables owner-only Row Level Security policies.
+
+No service-role key is used by the application and no additional environment
+variables are required.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
