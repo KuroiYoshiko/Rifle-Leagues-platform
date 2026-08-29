@@ -32,27 +32,27 @@ export default function ShooterDashboard() {
     <div>
       <div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
         <div>
-          <div className="flex items-center gap-2 text-xs font-medium text-[#6f7c74]">
-            <span className="size-1.5 rounded-full bg-[#58a36b]" />
+          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+            <span className="size-1.5 rounded-full bg-success" />
             2026 outdoor season
           </div>
-          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.045em] text-[#17231d] sm:text-4xl">
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">
             Good afternoon, Maya.
           </h1>
-          <p className="mt-2 text-sm leading-6 text-[#748078]">
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
             Your strongest round of the season moved you into the top three.
           </p>
         </div>
         <button
           type="button"
-          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-[#174f36] px-5 text-sm font-semibold text-white transition hover:bg-[#103c29] md:self-auto"
+          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep md:self-auto"
         >
           Enter a score <span className="ml-2 text-base" aria-hidden="true">＋</span>
         </button>
       </div>
 
       <section className="grid gap-4 xl:grid-cols-[1.45fr_.55fr]">
-        <Card className="relative overflow-hidden border-0 bg-[#174f36] p-6 text-white sm:p-8">
+        <Card className="relative overflow-hidden border-0 bg-navigation p-6 text-white sm:p-8">
           <div className="target-mark absolute -right-28 -top-32 aspect-square w-[31rem] opacity-20" />
           <div className="relative flex h-full flex-col justify-between gap-12">
             <div className="flex flex-wrap items-start justify-between gap-5">
@@ -80,7 +80,7 @@ export default function ShooterDashboard() {
               <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-white/52">
                 <span>Leading score <strong className="text-white">786.8</strong></span>
                 <span>Your total <strong className="text-white">781.4</strong></span>
-                <span>Gap <strong className="text-[#e5ff72]">5.4 pts</strong></span>
+                <span>Gap <strong className="text-brand">5.4 pts</strong></span>
               </div>
             </div>
           </div>
@@ -88,18 +88,18 @@ export default function ShooterDashboard() {
 
         <Card className="flex flex-col justify-between p-6 sm:p-7">
           <div>
-            <p className="text-xs font-medium text-[#748078]">Next score deadline</p>
+            <p className="text-xs font-medium text-muted-foreground">Next score deadline</p>
             <div className="mt-5 flex items-end justify-between gap-5">
               <div>
-                <p className="text-5xl font-semibold tracking-[-0.055em] text-[#17231d]">12</p>
-                <p className="mt-1 text-sm font-medium text-[#657169]">days remaining</p>
+                <p className="text-5xl font-semibold tracking-[-0.055em] text-foreground">12</p>
+                <p className="mt-1 text-sm font-medium text-neutral-strong">days remaining</p>
               </div>
-              <span className="rounded-xl bg-[#f1f4ef] px-3 py-2 font-mono text-xs font-semibold text-[#174f36]">14 SEP</span>
+              <span className="rounded-xl bg-brand-subtle px-3 py-2 font-mono text-xs font-semibold text-brand-deep">14 SEP</span>
             </div>
           </div>
-          <div className="mt-8 border-t border-[#e3e8e3] pt-5">
+          <div className="mt-8 border-t border-border pt-5">
             <p className="text-sm font-semibold">Premier Division · Round 9</p>
-            <p className="mt-1.5 text-xs leading-5 text-[#7a857f]">Your score must be witnessed before submission.</p>
+            <p className="mt-1.5 text-xs leading-5 text-muted-foreground">Your score must be witnessed before submission.</p>
           </div>
         </Card>
       </section>
@@ -108,7 +108,7 @@ export default function ShooterDashboard() {
         <StatCard
           label="Average score"
           value="97.2"
-          supporting={<><span className="font-semibold text-[#287747]">↑ 0.8</span> from last season</>}
+          supporting={<><span className="font-semibold text-success">↑ 0.8</span> from last season</>}
         />
         <StatCard
           label="Personal best"
@@ -127,13 +127,13 @@ export default function ShooterDashboard() {
           <SectionHeader
             title="Recent rounds"
             description="Your latest submitted and verified scores"
-            action={<Link href="/dashboard#results" className="text-xs font-semibold text-[#174f36]">View all →</Link>}
+            action={<Link href="/dashboard#results" className="text-xs font-semibold text-brand-strong">View all →</Link>}
           />
           <Card className="overflow-hidden">
             <div className="hidden overflow-x-auto md:block">
               <table className="w-full border-collapse text-left">
                 <thead>
-                  <tr className="border-b border-[#e4e8e4] bg-[#fafbf9] text-[10px] font-semibold uppercase tracking-[0.13em] text-[#8a948e]">
+                  <tr className="border-b border-border bg-surface-muted/55 text-[10px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
                     <th className="px-5 py-3.5">Round</th>
                     <th className="px-5 py-3.5">Venue</th>
                     <th className="px-5 py-3.5">Score</th>
@@ -141,35 +141,35 @@ export default function ShooterDashboard() {
                     <th className="px-5 py-3.5 text-right">Form</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-[#edf0ed]">
+                <tbody className="divide-y divide-border">
                   {recentRounds.map((round) => (
-                    <tr key={round.round} className="text-sm transition hover:bg-[#fafbf9]">
+                    <tr key={round.round} className="text-sm transition hover:bg-surface-muted/55">
                       <td className="px-5 py-4">
-                        <span className="block font-semibold text-[#26332c]">{round.round}</span>
-                        <span className="mt-1 block text-xs text-[#89928d]">{round.date}</span>
+                        <span className="block font-semibold text-foreground">{round.round}</span>
+                        <span className="mt-1 block text-xs text-muted-foreground">{round.date}</span>
                       </td>
-                      <td className="px-5 py-4 text-[#68746d]">{round.venue}</td>
+                      <td className="px-5 py-4 text-muted-foreground">{round.venue}</td>
                       <td className="px-5 py-4 font-mono font-semibold tabular-nums">{round.score}</td>
                       <td className="px-5 py-4"><Badge tone={round.result === "1st" ? "brand" : "neutral"}>{round.result}</Badge></td>
-                      <td className={`px-5 py-4 text-right text-xs font-semibold ${round.change.startsWith("+") ? "text-[#287747]" : "text-[#a05d26]"}`}>{round.change}</td>
+                      <td className={`px-5 py-4 text-right text-xs font-semibold ${round.change.startsWith("+") ? "text-success" : "text-warning"}`}>{round.change}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-            <div className="divide-y divide-[#e8ece8] md:hidden">
+            <div className="divide-y divide-border md:hidden">
               {recentRounds.map((round) => (
                 <article key={round.round} className="p-4">
                   <div className="flex items-start justify-between gap-4">
                     <div>
                       <p className="text-sm font-semibold">{round.round} · {round.venue}</p>
-                      <p className="mt-1 text-xs text-[#88928c]">{round.date}</p>
+                      <p className="mt-1 text-xs text-muted-foreground">{round.date}</p>
                     </div>
                     <Badge tone={round.result === "1st" ? "brand" : "neutral"}>{round.result}</Badge>
                   </div>
-                  <div className="mt-4 flex items-end justify-between rounded-xl bg-[#f4f6f2] px-4 py-3">
-                    <div><span className="block text-[10px] uppercase tracking-wider text-[#8a948e]">Score</span><strong className="mt-1 block font-mono text-lg">{round.score}</strong></div>
-                    <span className={`text-xs font-semibold ${round.change.startsWith("+") ? "text-[#287747]" : "text-[#a05d26]"}`}>{round.change}</span>
+                  <div className="mt-4 flex items-end justify-between rounded-xl bg-surface-muted px-4 py-3">
+                    <div><span className="block text-[10px] uppercase tracking-wider text-muted-foreground">Score</span><strong className="mt-1 block font-mono text-lg">{round.score}</strong></div>
+                    <span className={`text-xs font-semibold ${round.change.startsWith("+") ? "text-success" : "text-warning"}`}>{round.change}</span>
                   </div>
                 </article>
               ))}
@@ -180,15 +180,15 @@ export default function ShooterDashboard() {
         <section id="competitions">
           <SectionHeader title="Upcoming deadlines" description="The next dates on your calendar" />
           <Card className="p-3">
-            <div className="divide-y divide-[#e7ebe7]">
+            <div className="divide-y divide-border">
               {deadlines.map((deadline) => (
                 <article key={deadline.title} className="flex gap-4 px-2 py-4 first:pt-2 last:pb-2">
-                  <div className={`grid size-12 shrink-0 place-items-center rounded-xl text-center ${deadline.tone === "brand" ? "bg-[#e5ff72] text-[#173e2c]" : "bg-[#f0f3ef] text-[#5f6e65]"}`}>
+                  <div className={`grid size-12 shrink-0 place-items-center rounded-xl text-center ${deadline.tone === "brand" ? "bg-brand-subtle text-brand-deep" : "bg-surface-muted text-neutral-strong"}`}>
                     <span><strong className="block text-base leading-4">{deadline.day}</strong><span className="text-[9px] font-bold tracking-wider">{deadline.month}</span></span>
                   </div>
                   <div className="min-w-0 pt-0.5">
                     <p className="text-sm font-semibold leading-5">{deadline.title}</p>
-                    <p className="mt-1 text-xs leading-5 text-[#7a857f]">{deadline.detail}</p>
+                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{deadline.detail}</p>
                   </div>
                 </article>
               ))}
@@ -205,9 +205,9 @@ export default function ShooterDashboard() {
               const height = 42 + (score - 94) * 11;
               return (
                 <div key={score} className="flex h-full flex-1 flex-col justify-end gap-2">
-                  <span className="text-center font-mono text-[10px] text-[#748078]">{score}</span>
-                  <div className={`mx-auto w-full max-w-16 rounded-t-lg ${index === formScores.length - 1 ? "bg-[#174f36]" : "bg-[#dce6dc]"}`} style={{ height: `${height}%` }} />
-                  <span className="text-center text-[10px] text-[#9aa39e]">R{index + 3}</span>
+                  <span className="text-center font-mono text-[10px] text-muted-foreground">{score}</span>
+                  <div className={`mx-auto w-full max-w-16 rounded-t-lg ${index === formScores.length - 1 ? "bg-primary" : "bg-brand-subtle"}`} style={{ height: `${height}%` }} />
+                  <span className="text-center text-[10px] text-muted-foreground">R{index + 3}</span>
                 </div>
               );
             })}
