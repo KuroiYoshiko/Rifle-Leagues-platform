@@ -10,6 +10,11 @@ export type MembershipRequestState = {
   message?: string;
 };
 
+export type LeaveClubState = {
+  status?: "success" | "error";
+  message?: string;
+};
+
 function existingMembershipMessage(status: MembershipStatus) {
   if (status === "active") {
     return "You are already an active member of this club.";
@@ -19,10 +24,14 @@ function existingMembershipMessage(status: MembershipStatus) {
     return "Your membership request is already waiting for club approval.";
   }
 
+  if (status === "left") {
+    return "You previously left this club. You can request to join again.";
+  }
+
   return "Your previous membership request was declined.";
 }
 
-async function retryRejectedMembership(
+async function retryClosedMembership(
   supabase: Awaited<ReturnType<typeof createClient>>,
   clubId: number,
   userId: string,
@@ -32,7 +41,7 @@ async function retryRejectedMembership(
     .update({ status: "pending" })
     .eq("club_id", clubId)
     .eq("user_id", userId)
-    .eq("status", "rejected")
+    .in("status", ["rejected", "left"])
     .select("status")
     .maybeSingle();
 
@@ -110,8 +119,8 @@ export async function requestClubMembership(
 
   const existingStatus = existingMembership?.status as MembershipStatus | undefined;
 
-  if (existingStatus === "rejected") {
-    return retryRejectedMembership(supabase, clubId, userId);
+  if (existingStatus === "rejected" || existingStatus === "left") {
+    return retryClosedMembership(supabase, clubId, userId);
   }
 
   if (existingStatus) {
@@ -139,8 +148,8 @@ export async function requestClubMembership(
       | MembershipStatus
       | undefined;
 
-    if (concurrentStatus === "rejected") {
-      return retryRejectedMembership(supabase, clubId, userId);
+    if (concurrentStatus === "rejected" || concurrentStatus === "left") {
+      return retryClosedMembership(supabase, clubId, userId);
     }
 
     if (concurrentStatus) {
@@ -166,5 +175,60 @@ export async function requestClubMembership(
     status: "success",
     membershipStatus: "pending",
     message: "Membership request sent. It is now waiting for club approval.",
+  };
+}
+
+export async function leaveClubMembership(
+  _previousState: LeaveClubState,
+  formData: FormData,
+): Promise<LeaveClubState> {
+  const rawMembershipId = String(formData.get("membership_id") ?? "").trim();
+  const membershipId = Number(rawMembershipId);
+
+  if (
+    !/^\d+$/.test(rawMembershipId) ||
+    !Number.isSafeInteger(membershipId) ||
+    membershipId < 1
+  ) {
+    return {
+      status: "error",
+      message: "That membership could not be identified. Refresh the page and try again.",
+    };
+  }
+
+  const supabase = await createClient();
+  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+  const userId = claimsData?.claims?.sub;
+
+  if (claimsError || !userId) {
+    return {
+      status: "error",
+      message: "Your session could not be verified. Sign in again and retry.",
+    };
+  }
+
+  const { data, error } = await supabase
+    .from("club_memberships")
+    .update({ status: "left" })
+    .eq("id", membershipId)
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .select("id, status")
+    .maybeSingle();
+
+  if (error || data?.status !== "left") {
+    return {
+      status: "error",
+      message:
+        "We could not leave this club. The membership may have changed; refresh the page and try again.",
+    };
+  }
+
+  revalidatePath("/clubs");
+  revalidatePath("/dashboard");
+
+  return {
+    status: "success",
+    message: "You have left the club. You can request to join again later.",
   };
 }

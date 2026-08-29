@@ -67,13 +67,22 @@ create table if not exists public.club_memberships (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint club_memberships_status_value check (
-    status in ('pending', 'active', 'rejected')
+    status in ('pending', 'active', 'rejected', 'left')
   ),
   constraint club_memberships_club_user_unique unique (club_id, user_id)
 );
 
+-- Existing installations need their original status check replaced. Keeping
+-- this in the main transaction makes the full schema file safe to rerun.
+alter table public.club_memberships
+  drop constraint if exists club_memberships_status_value;
+alter table public.club_memberships
+  add constraint club_memberships_status_value check (
+    status in ('pending', 'active', 'rejected', 'left')
+  );
+
 comment on table public.club_memberships is
-  'A user profile association with one club and its current membership request state.';
+  'One user profile association with one club and its current membership state; users may have rows for multiple clubs.';
 
 -- Supports active-club browsing and indexed full-text discovery without loading
 -- the full clubs table into the application.
@@ -106,6 +115,41 @@ $$;
 
 revoke execute on function private.set_updated_at() from public, anon, authenticated;
 
+-- RLS can independently validate old and new rows, but it cannot safely pair
+-- multiple allowed source and destination statuses into an exact transition
+-- matrix. This security-invoker trigger closes that gap for Data API users.
+create or replace function private.enforce_authenticated_membership_transition()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if current_user = 'authenticated' then
+    if new.club_id is distinct from old.club_id
+      or new.user_id is distinct from old.user_id then
+      raise exception 'Club membership identity cannot be changed.'
+        using errcode = '42501';
+    end if;
+
+    if not (
+      (old.status = 'active' and new.status = 'left')
+      or (
+        old.status in ('rejected', 'left')
+        and new.status = 'pending'
+      )
+    ) then
+      raise exception 'Club membership status transition is not allowed.'
+        using errcode = '42501';
+    end if;
+  end if;
+
+  return new;
+end;
+$$;
+
+revoke execute on function private.enforce_authenticated_membership_transition()
+  from public, anon, authenticated;
+
 drop trigger if exists set_clubs_updated_at on public.clubs;
 create trigger set_clubs_updated_at
   before update on public.clubs
@@ -115,6 +159,13 @@ drop trigger if exists set_club_memberships_updated_at on public.club_membership
 create trigger set_club_memberships_updated_at
   before update on public.club_memberships
   for each row execute function private.set_updated_at();
+
+drop trigger if exists enforce_authenticated_membership_transition
+  on public.club_memberships;
+create trigger enforce_authenticated_membership_transition
+  before update on public.club_memberships
+  for each row
+  execute function private.enforce_authenticated_membership_transition();
 
 alter table public.clubs enable row level security;
 alter table public.club_memberships enable row level security;
@@ -174,26 +225,32 @@ with check (
   )
 );
 
--- Authenticated users may retry a declined request by changing only the status
--- column. USING checks the old row; WITH CHECK validates the resulting row.
--- The column-level grant above prevents club_id, user_id, or timestamp changes.
+-- Authenticated users can act only on their own lifecycle rows. The transition
+-- trigger above pairs each source state with its permitted destination state.
+-- The column-level grant prevents club_id, user_id, or timestamp changes.
 drop policy if exists "Users can retry their own rejected club membership" on public.club_memberships;
-create policy "Users can retry their own rejected club membership"
+drop policy if exists "Users can manage their own club membership lifecycle" on public.club_memberships;
+create policy "Users can manage their own club membership lifecycle"
 on public.club_memberships
 for update
 to authenticated
 using (
   (select auth.uid()) = user_id
-  and status = 'rejected'
+  and status in ('active', 'rejected', 'left')
 )
 with check (
   (select auth.uid()) = user_id
-  and status = 'pending'
-  and exists (
-    select 1
-    from public.clubs
-    where clubs.id = club_memberships.club_id
-      and clubs.status = 'active'
+  and (
+    status = 'left'
+    or (
+      status = 'pending'
+      and exists (
+        select 1
+        from public.clubs
+        where clubs.id = club_memberships.club_id
+          and clubs.status = 'active'
+      )
+    )
   )
 );
 
