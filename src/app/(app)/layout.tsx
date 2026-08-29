@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import type { SidebarClub } from "@/lib/clubs";
 import type { SidebarOrganisation } from "@/lib/organisations";
 import type { Profile } from "@/lib/profiles";
 import { createClient } from "@/lib/supabase/server";
@@ -24,23 +25,36 @@ export default async function ApplicationLayout({
     redirect("/login");
   }
 
-  const [profileResult, organisationsResult] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("first_name, last_name")
-      .eq("id", claims.sub)
-      .maybeSingle(),
-    supabase
-      .from("user_organisations")
-      .select(`
+  const [profileResult, organisationsResult, clubMembershipsResult] =
+    await Promise.all([
+      supabase
+        .from("profiles")
+        .select("first_name, last_name")
+        .eq("id", claims.sub)
+        .maybeSingle(),
+      supabase
+        .from("user_organisations")
+        .select(`
         organisation:organisations!inner (
           id,
           name,
           slug
         )
       `)
-      .eq("user_id", claims.sub),
-  ]);
+        .eq("user_id", claims.sub),
+      supabase
+        .from("club_memberships")
+        .select(`
+        club:clubs!inner (
+          id,
+          name,
+          slug
+        )
+      `)
+        .eq("user_id", claims.sub)
+        .eq("status", "active")
+        .eq("club.status", "active"),
+    ]);
   const profileData = profileResult.data;
   const profile = profileData as Pick<
     Profile,
@@ -54,6 +68,13 @@ export default async function ApplicationLayout({
     .filter((organisation): organisation is SidebarOrganisation =>
       Boolean(organisation),
     )
+    .sort((left, right) => left.name.localeCompare(right.name));
+  const clubMembershipRows = (clubMembershipsResult.data ?? []) as unknown as Array<{
+    club: SidebarClub | null;
+  }>;
+  const clubs = clubMembershipRows
+    .map((row) => row.club)
+    .filter((club): club is SidebarClub => Boolean(club))
     .sort((left, right) => left.name.localeCompare(right.name));
   const firstName =
     profile?.first_name?.trim() ||
@@ -75,6 +96,7 @@ export default async function ApplicationLayout({
     <AppShell
       user={{ displayName, email, initials }}
       organisations={organisations}
+      clubs={clubs}
     >
       {children}
     </AppShell>

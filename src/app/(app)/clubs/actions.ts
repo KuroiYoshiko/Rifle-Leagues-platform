@@ -31,6 +31,10 @@ function existingMembershipMessage(status: MembershipStatus) {
   return "Your previous membership request was declined.";
 }
 
+function revalidateClubMembershipRoutes() {
+  revalidatePath("/", "layout");
+}
+
 async function retryClosedMembership(
   supabase: Awaited<ReturnType<typeof createClient>>,
   clubId: number,
@@ -53,8 +57,7 @@ async function retryClosedMembership(
     };
   }
 
-  revalidatePath("/clubs");
-  revalidatePath("/dashboard");
+  revalidateClubMembershipRoutes();
 
   return {
     status: "success",
@@ -168,8 +171,7 @@ export async function requestClubMembership(
     };
   }
 
-  revalidatePath("/clubs");
-  revalidatePath("/dashboard");
+  revalidateClubMembershipRoutes();
 
   return {
     status: "success",
@@ -224,8 +226,7 @@ export async function leaveClubMembership(
     };
   }
 
-  revalidatePath("/clubs");
-  revalidatePath("/dashboard");
+  revalidateClubMembershipRoutes();
 
   return {
     status: "success",
