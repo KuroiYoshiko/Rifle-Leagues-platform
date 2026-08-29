@@ -10,6 +10,12 @@ type NavigationItem = {
   mark: string;
 };
 
+type AuthenticatedUser = {
+  displayName: string;
+  email: string;
+  initials: string;
+};
+
 const sections: { label?: string; items: NavigationItem[] }[] = [
   {
     items: [{ label: "Overview", href: "/dashboard", mark: "O" }],
@@ -112,9 +118,11 @@ function Navigation({
 
 function SidebarContent({
   pathname,
+  user,
   onNavigate,
 }: {
   pathname: string;
+  user: AuthenticatedUser;
   onNavigate?: () => void;
 }) {
   return (
@@ -126,24 +134,37 @@ function SidebarContent({
       <div className="m-3 border-t border-white/10 pt-4">
         <div className="flex items-center gap-3 rounded-xl px-3 py-2.5">
           <span className="grid size-9 place-items-center rounded-full bg-brand-subtle text-xs font-bold text-brand-deep">
-            MB
+            {user.initials}
           </span>
           <span className="min-w-0 flex-1">
             <span className="block truncate text-sm font-medium text-white">
-              Maya Bennett
+              {user.displayName}
             </span>
             <span className="block truncate text-xs text-white/42">
-              Northbridge RC
+              {user.email}
             </span>
           </span>
-          <span className="text-white/40" aria-hidden="true">•••</span>
+          <form action="/auth/signout" method="post">
+            <button
+              type="submit"
+              className="rounded-lg px-2 py-1.5 text-xs font-semibold text-white/55 transition hover:bg-white/10 hover:text-white"
+            >
+              Logout
+            </button>
+          </form>
         </div>
       </div>
     </>
   );
 }
 
-export function AppShell({ children }: { children: ReactNode }) {
+export function AppShell({
+  children,
+  user,
+}: {
+  children: ReactNode;
+  user: AuthenticatedUser;
+}) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
   const details = pageDetails[pathname] ?? pageDetails["/dashboard"];
@@ -151,7 +172,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-[264px_1fr]">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[264px] flex-col bg-navigation text-white lg:flex">
-        <SidebarContent pathname={pathname} />
+        <SidebarContent pathname={pathname} user={user} />
       </aside>
 
       {menuOpen ? (
@@ -171,7 +192,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             >
               ×
             </button>
-            <SidebarContent pathname={pathname} onNavigate={() => setMenuOpen(false)} />
+            <SidebarContent
+              pathname={pathname}
+              user={user}
+              onNavigate={() => setMenuOpen(false)}
+            />
           </aside>
         </div>
       ) : null}
@@ -216,7 +241,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                 Public site
               </Link>
               <span className="grid size-10 place-items-center rounded-full bg-primary text-[11px] font-bold text-primary-foreground sm:hidden">
-                MB
+                {user.initials}
               </span>
             </div>
           </div>

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { createClient } from "@/lib/supabase/server";
 
 const features = [
   {
@@ -32,7 +33,11 @@ function TextWordmark({ compact = false }: { compact?: boolean }) {
   );
 }
 
-export default function Home() {
+export default async function Home() {
+  const supabase = await createClient();
+  const { data } = await supabase.auth.getClaims();
+  const isAuthenticated = Boolean(data?.claims?.sub);
+
   return (
     <main className="min-h-screen overflow-hidden bg-background">
       <section className="relative bg-hero-background text-white">
@@ -46,9 +51,27 @@ export default function Home() {
             <a href="#for-clubs" className="transition hover:text-white">For clubs</a>
             <a href="#competition" className="transition hover:text-white">Competition</a>
           </div>
-          <Link href="/dashboard" className="rounded-full border border-white/20 bg-white/[.07] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/14 sm:px-5">
-            Open dashboard
-          </Link>
+          {isAuthenticated ? (
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Link href="/dashboard" className="rounded-full border border-white/20 bg-white/[.07] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/14 sm:px-5">
+                Dashboard
+              </Link>
+              <form action="/auth/signout" method="post">
+                <button type="submit" className="px-2 py-2.5 text-sm font-medium text-white/70 transition hover:text-white sm:px-3">
+                  Logout
+                </button>
+              </form>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 sm:gap-3">
+              <Link href="/login" className="px-2 py-2.5 text-sm font-medium text-white/75 transition hover:text-white sm:px-3">
+                Login
+              </Link>
+              <Link href="/register" className="rounded-full border border-white/20 bg-white/[.07] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/14 sm:px-5">
+                Create account
+              </Link>
+            </div>
+          )}
         </nav>
 
         <div className="relative z-10 mx-auto grid max-w-[1440px] gap-12 px-5 pb-20 pt-14 sm:px-8 sm:pb-24 sm:pt-20 lg:grid-cols-[1.12fr_.88fr] lg:items-center lg:gap-16 lg:px-12 lg:pb-28 lg:pt-24">
