@@ -1,10 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { MembershipRequestButton } from "@/components/membership-request-button";
 import { Badge, Card, ProgressBar, SectionHeader } from "@/components/ui";
 import {
+  getClubLocation,
+  getDashboardMembershipState,
+  type ClubMembership,
+} from "@/lib/clubs";
+import {
   calculateProfileCompleteness,
-  getDashboardOnboardingState,
   type Profile,
 } from "@/lib/profiles";
 import { createClient } from "@/lib/supabase/server";
@@ -22,6 +27,31 @@ function metadataValue(metadata: unknown, key: string) {
   return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
+function CompactProfileStatus({
+  complete,
+  percentage,
+}: {
+  complete: boolean;
+  percentage: number;
+}) {
+  return (
+    <div className="rounded-xl bg-surface-muted px-4 py-3 sm:min-w-44">
+      <p className="text-[11px] font-medium text-muted-foreground">Profile</p>
+      <p className="mt-1 text-sm font-semibold text-foreground">
+        {complete ? "Complete" : `${percentage}% complete`}
+      </p>
+      {!complete ? (
+        <Link
+          href="/profile"
+          className="mt-2 inline-flex text-xs font-semibold text-brand-strong hover:text-brand-deep hover:underline"
+        >
+          Complete profile →
+        </Link>
+      ) : null}
+    </div>
+  );
+}
+
 export default async function DashboardPage() {
   const supabase = await createClient();
   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
@@ -31,11 +61,34 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select(profileColumns)
-    .eq("id", claims.sub)
-    .maybeSingle();
+  const [profileResult, membershipsResult] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select(profileColumns)
+      .eq("id", claims.sub)
+      .maybeSingle(),
+    supabase
+      .from("club_memberships")
+      .select(`
+        id,
+        club_id,
+        status,
+        created_at,
+        club:clubs (
+          id,
+          name,
+          slug,
+          town,
+          county,
+          postcode,
+          website
+        )
+      `)
+      .eq("user_id", claims.sub)
+      .in("status", ["active", "pending", "rejected"])
+      .order("created_at", { ascending: false }),
+  ]);
+  const { data, error } = profileResult;
 
   if (error || !data) {
     return (
@@ -66,15 +119,29 @@ export default async function DashboardPage() {
 
   const profile = data as Profile;
   const completeness = calculateProfileCompleteness(profile);
-  const onboardingState = getDashboardOnboardingState(profile);
+  const membershipState = getDashboardMembershipState(
+    membershipsResult.data as unknown as ClubMembership[] | null,
+  );
   const metadataFirstName = metadataValue(claims.user_metadata, "first_name");
   const firstName = profile.first_name?.trim() || metadataFirstName || "there";
-  const profileIsComplete = onboardingState === "profile-complete-no-club";
+  const profileIsComplete = completeness.isComplete;
+  const showProfileOnboarding =
+    !profileIsComplete && membershipState.kind === "none";
+  const welcomeCopy =
+    membershipState.kind === "active"
+      ? "Your club membership is active. Competition features will appear here when they are ready."
+      : membershipState.kind === "pending"
+        ? "Your club membership request is waiting for approval."
+        : membershipState.kind === "rejected"
+          ? "Your club membership request needs your attention."
+          : profileIsComplete
+            ? "Your profile is ready. Connecting with your club is the next step."
+            : "Complete your profile and connect with your club when you are ready.";
 
   const steps = [
     { label: "Account created", complete: true },
     { label: "Complete your profile", complete: profileIsComplete },
-    { label: "Join a club", complete: false },
+    { label: "Find your club", complete: false },
   ];
 
   return (
@@ -88,47 +155,44 @@ export default async function DashboardPage() {
           Welcome, {firstName}
         </h1>
         <p className="mt-2 text-sm leading-6 text-muted-foreground">
-          Your dashboard will grow with you as you join a club and start competing.
+          {welcomeCopy}
         </p>
       </div>
 
-      <section className="grid gap-4 xl:grid-cols-[1.3fr_.7fr]">
-        <Card
-          background="navigation"
-          className="relative overflow-hidden border-0 p-6 text-white sm:p-8"
-        >
-          <div className="target-mark absolute -right-36 -top-36 aspect-square w-[31rem] opacity-20" />
-          <div className="relative">
-            <Badge tone="brand">
-              {profileIsComplete ? "Profile complete" : "Getting started"}
-            </Badge>
-            <h2 className="mt-5 text-2xl font-semibold tracking-[-0.04em] sm:text-3xl">
-              Get ready to compete
-            </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/58">
-              {profileIsComplete
-                ? "Your profile is ready. Club discovery and membership will be added in the next feature."
-                : "Complete your personal details now. Club discovery and competition entry will follow in later features."}
-            </p>
+      {showProfileOnboarding ? (
+        <section className="grid gap-4 xl:grid-cols-[1.3fr_.7fr]">
+          <Card
+            background="navigation"
+            className="relative overflow-hidden border-0 p-6 text-white sm:p-8"
+          >
+            <div className="target-mark absolute -right-36 -top-36 aspect-square w-[31rem] opacity-20" />
+            <div className="relative">
+              <Badge tone="brand">Getting started</Badge>
+              <h2 className="mt-5 text-2xl font-semibold tracking-[-0.04em] sm:text-3xl">
+                Complete your profile
+              </h2>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-white/58">
+                Add your remaining details to finish your profile. Club discovery
+                remains available separately while you complete it.
+              </p>
 
-            <div className="mt-8 rounded-2xl border border-white/12 bg-white/[.07] p-5 backdrop-blur-sm">
-              <div className="flex flex-wrap items-end justify-between gap-3">
-                <div>
-                  <p className="text-xs font-medium text-white/55">Profile</p>
-                  <p className="mt-1 text-xl font-semibold">
-                    {completeness.percentage}% complete
-                  </p>
+              <div className="mt-8 rounded-2xl border border-white/12 bg-white/[.07] p-5 backdrop-blur-sm">
+                <div className="flex flex-wrap items-end justify-between gap-3">
+                  <div>
+                    <p className="text-xs font-medium text-white/55">Profile</p>
+                    <p className="mt-1 text-xl font-semibold">
+                      {completeness.percentage}% complete
+                    </p>
+                  </div>
+                  <span className="font-mono text-xs text-white/52">
+                    {completeness.completedFields} of {completeness.totalFields} fields
+                  </span>
                 </div>
-                <span className="font-mono text-xs text-white/52">
-                  {completeness.completedFields} of {completeness.totalFields} fields
-                </span>
+                <div className="mt-4">
+                  <ProgressBar value={completeness.percentage} light />
+                </div>
               </div>
-              <div className="mt-4">
-                <ProgressBar value={completeness.percentage} light />
-              </div>
-            </div>
 
-            {!profileIsComplete ? (
               <div className="mt-5">
                 <p className="text-xs font-semibold text-white/70">Missing</p>
                 <ul className="mt-2 flex flex-wrap gap-2" aria-label="Missing profile fields">
@@ -142,96 +206,257 @@ export default async function DashboardPage() {
                   ))}
                 </ul>
               </div>
-            ) : null}
 
-            <Link
-              href="/profile"
-              className="mt-7 inline-flex min-h-11 items-center justify-center rounded-xl bg-brand px-5 text-sm font-semibold text-hero-background shadow-sm shadow-black/10 transition hover:bg-brand-subtle hover:text-brand-deep focus-visible:ring-4 focus-visible:ring-white/40"
-            >
-              {profileIsComplete ? "Review profile" : "Complete profile"}
-              <span className="ml-2" aria-hidden="true">→</span>
-            </Link>
-          </div>
-        </Card>
+              <Link
+                href="/profile"
+                className="mt-7 inline-flex min-h-11 items-center justify-center rounded-xl bg-brand px-5 text-sm font-semibold text-hero-background shadow-sm shadow-black/10 transition hover:bg-brand-subtle hover:text-brand-deep focus-visible:ring-4 focus-visible:ring-white/40"
+              >
+                Complete profile
+                <span className="ml-2" aria-hidden="true">→</span>
+              </Link>
+            </div>
+          </Card>
 
-        <Card className="p-6 sm:p-7">
-          <p className="text-xs font-medium text-muted-foreground">Your progress</p>
-          <ol className="mt-5 space-y-5">
-            {steps.map((step) => (
-              <li key={step.label} className="flex items-center gap-3">
-                <span
-                  className={`grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold ${
-                    step.complete
-                      ? "bg-success-subtle text-success"
-                      : "border border-border bg-background text-muted-foreground"
-                  }`}
-                  aria-hidden="true"
-                >
-                  {step.complete ? "✓" : "·"}
-                </span>
-                <span
-                  className={`text-sm ${
-                    step.complete
-                      ? "font-semibold text-foreground"
-                      : "text-muted-foreground"
-                  }`}
-                >
-                  {step.label}
-                  <span className="sr-only">
-                    {step.complete ? " complete" : " not complete"}
+          <Card className="p-6 sm:p-7">
+            <p className="text-xs font-medium text-muted-foreground">Your progress</p>
+            <ol className="mt-5 space-y-5">
+              {steps.map((step) => (
+                <li key={step.label} className="flex items-center gap-3">
+                  <span
+                    className={`grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold ${
+                      step.complete
+                        ? "bg-success-subtle text-success"
+                        : "border border-border bg-background text-muted-foreground"
+                    }`}
+                    aria-hidden="true"
+                  >
+                    {step.complete ? "✓" : "·"}
                   </span>
-                </span>
-              </li>
-            ))}
-          </ol>
-          <div className="mt-7 rounded-xl bg-surface-muted p-4">
-            <p className="text-xs font-semibold text-foreground">Competition data</p>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              Leagues, rounds, scores and statistics will appear here only after
-              real entries exist.
-            </p>
-          </div>
-        </Card>
-      </section>
+                  <span
+                    className={`text-sm ${
+                      step.complete
+                        ? "font-semibold text-foreground"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {step.label}
+                    <span className="sr-only">
+                      {step.complete ? " complete" : " not complete"}
+                    </span>
+                  </span>
+                </li>
+              ))}
+            </ol>
+            <div className="mt-7 rounded-xl bg-surface-muted p-4">
+              <p className="text-xs font-semibold text-foreground">Club discovery</p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                Finding your club is available now and does not require a complete
+                profile.
+              </p>
+            </div>
+          </Card>
+        </section>
+      ) : null}
 
-      <section id="your-club" className="mt-10">
+      <section
+        id="your-club"
+        className={showProfileOnboarding ? "mt-10" : undefined}
+      >
         <SectionHeader
           title="Your club"
-          description="Club membership will connect you to competitions and results"
+          description="Your current RifleLeagues club membership state"
         />
-        <Card className="p-6 sm:p-8">
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex items-start gap-4">
+        {membershipsResult.error ? (
+          <Card className="border-danger/20 p-6 sm:p-8">
+            <div role="alert">
+              <h2 className="font-semibold text-foreground">Club membership unavailable</h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Membership data could not be loaded. Run the supplied clubs and
+                memberships SQL in Supabase, then refresh this page.
+              </p>
+            </div>
+          </Card>
+        ) : membershipState.kind === "pending" ? (
+          <Card className="p-6 sm:p-8">
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-4">
+                <span
+                  className="grid size-11 shrink-0 place-items-center rounded-xl bg-warning-subtle text-sm font-bold text-warning"
+                  aria-hidden="true"
+                >
+                  P
+                </span>
+                <div>
+                  <Badge tone="warning">Membership pending</Badge>
+                  <h2 className="mt-3 font-semibold text-foreground">
+                    {membershipState.membership.club.name}
+                  </h2>
+                  {getClubLocation(membershipState.membership.club) ? (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {getClubLocation(membershipState.membership.club)}
+                    </p>
+                  ) : null}
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+                    Your request is waiting for club approval.
+                  </p>
+                </div>
+              </div>
+              <CompactProfileStatus
+                complete={profileIsComplete}
+                percentage={completeness.percentage}
+              />
+            </div>
+          </Card>
+        ) : membershipState.kind === "rejected" ? (
+          <Card className="border-danger/20 p-6 sm:p-8">
+            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+              <div className="flex items-start gap-4">
+                <span
+                  className="grid size-11 shrink-0 place-items-center rounded-xl bg-danger-subtle text-sm font-bold text-danger"
+                  aria-hidden="true"
+                >
+                  R
+                </span>
+                <div>
+                  <span className="inline-flex rounded-full bg-danger-subtle px-2.5 py-1 text-[11px] font-semibold text-danger">
+                    Membership request declined
+                  </span>
+                  <h2 className="mt-3 font-semibold text-foreground">
+                    {membershipState.membership.club.name}
+                  </h2>
+                  {getClubLocation(membershipState.membership.club) ? (
+                    <p className="mt-1 text-sm text-muted-foreground">
+                      {getClubLocation(membershipState.membership.club)}
+                    </p>
+                  ) : null}
+                  <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+                    This request was not approved. You can send the same membership
+                    request again when you are ready.
+                  </p>
+                </div>
+              </div>
+              <MembershipRequestButton
+                clubId={membershipState.membership.club_id}
+                currentStatus="rejected"
+                showDeclinedLabel={false}
+              />
+            </div>
+            {!profileIsComplete ? (
+              <div className="mt-6 border-t border-border pt-5">
+                <CompactProfileStatus
+                  complete={false}
+                  percentage={completeness.percentage}
+                />
+              </div>
+            ) : null}
+          </Card>
+        ) : membershipState.kind === "active" ? (
+          <Card
+            background="navigation"
+            className="relative overflow-hidden border-0 p-6 text-white sm:p-8"
+          >
+            <div className="target-mark absolute -right-36 -top-36 aspect-square w-[31rem] opacity-15" />
+            <div className="relative flex items-start gap-4">
               <span
-                className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-subtle text-sm font-bold text-brand-deep"
+                className="grid size-11 shrink-0 place-items-center rounded-xl bg-success-subtle text-sm font-bold text-success"
                 aria-hidden="true"
               >
                 C
               </span>
               <div>
-                <h2 className="font-semibold text-foreground">No club connected</h2>
-                <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  You are not currently associated with a club. Club discovery and
-                  membership requests are intentionally not part of this feature.
+                <Badge tone="positive">Membership active</Badge>
+                <h2 className="mt-3 text-xl font-semibold text-white">
+                  {membershipState.membership.club.name}
+                </h2>
+                {getClubLocation(membershipState.membership.club) ? (
+                  <p className="mt-1 text-sm text-white/60">
+                    {getClubLocation(membershipState.membership.club)}
+                  </p>
+                ) : null}
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-white/62">
+                  Your club membership is active. Your dashboard is ready for real
+                  competition features when they are introduced.
                 </p>
               </div>
             </div>
-            <div className="shrink-0">
-              <button
-                type="button"
-                disabled
-                aria-describedby="find-club-help"
-                className="inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center rounded-xl border border-border bg-surface-muted px-5 text-sm font-semibold text-muted-foreground opacity-75 sm:w-auto"
+          </Card>
+        ) : (
+          <Card
+            background={profileIsComplete ? "navigation" : "surface"}
+            className={`p-6 sm:p-8 ${profileIsComplete ? "border-0 text-white" : ""}`}
+          >
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-4">
+                <span
+                  className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-subtle text-sm font-bold text-brand-deep"
+                  aria-hidden="true"
+                >
+                  C
+                </span>
+                <div>
+                  {profileIsComplete ? (
+                    <Badge tone="positive">Profile complete</Badge>
+                  ) : null}
+                  <h2
+                    className={`font-semibold ${
+                      profileIsComplete ? "mt-3 text-xl text-white" : "text-foreground"
+                    }`}
+                  >
+                    {profileIsComplete ? "Find your club" : "No club connected"}
+                  </h2>
+                  <p
+                    className={`mt-1.5 max-w-2xl text-sm leading-6 ${
+                      profileIsComplete ? "text-white/62" : "text-muted-foreground"
+                    }`}
+                  >
+                    {profileIsComplete
+                      ? "Your profile is ready. Search for your club and send a membership request."
+                      : "You are not currently associated with a club. You can search now without waiting for profile completion."}
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/clubs"
+                className={`inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl px-5 text-sm font-semibold transition ${
+                  profileIsComplete
+                    ? "bg-brand text-hero-background hover:bg-brand-subtle hover:text-brand-deep"
+                    : "bg-primary text-primary-foreground hover:bg-brand-deep"
+                }`}
               >
                 Find a club
-              </button>
-              <p id="find-club-help" className="mt-2 text-center text-[11px] text-muted-foreground">
-                Coming in the next feature
-              </p>
+              </Link>
             </div>
-          </div>
-        </Card>
+          </Card>
+        )}
       </section>
+
+      {membershipState.kind === "active" && !membershipsResult.error ? (
+        <section id="competitions" className="mt-10">
+          <SectionHeader
+            title="Competitions"
+            description="Competition activity connected to your club membership"
+          />
+          <Card className="p-6 sm:p-8">
+            <div className="flex items-start gap-4">
+              <span
+                className="grid size-11 shrink-0 place-items-center rounded-xl bg-surface-muted text-sm font-bold text-neutral-strong"
+                aria-hidden="true"
+              >
+                C
+              </span>
+              <div>
+                <h2 className="font-semibold text-foreground">
+                  No competition functionality yet
+                </h2>
+                <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  Entries, rounds, scores, standings and statistics will appear only
+                  after those features are implemented and real data exists.
+                </p>
+              </div>
+            </div>
+          </Card>
+        </section>
+      ) : null}
 
       <section id="settings" className="mt-10">
         <SectionHeader title="Account" description="Manage the details linked to your account" />
