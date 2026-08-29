@@ -54,7 +54,9 @@ export async function register(
   const fieldErrors: RegisterState["fieldErrors"] = {};
 
   if (!firstName) fieldErrors.firstName = "Enter your first name.";
+  else if (firstName.length > 100) fieldErrors.firstName = "Use 100 characters or fewer.";
   if (!lastName) fieldErrors.lastName = "Enter your last name.";
+  else if (lastName.length > 100) fieldErrors.lastName = "Use 100 characters or fewer.";
   if (!email) {
     fieldErrors.email = "Enter your email address.";
   } else if (!emailPattern.test(email)) {

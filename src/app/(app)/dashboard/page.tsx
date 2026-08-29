@@ -1,217 +1,250 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import { Badge, Card, ProgressBar, SectionHeader } from "@/components/ui";
 import {
-  Badge,
-  Card,
-  ProgressBar,
-  SectionHeader,
-  StatCard,
-} from "@/components/ui";
+  calculateProfileCompleteness,
+  getDashboardOnboardingState,
+  type Profile,
+} from "@/lib/profiles";
+import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
-  title: "Shooter dashboard",
+  title: "Dashboard",
 };
 
-const recentRounds = [
-  { round: "Round 8", date: "26 Aug 2026", venue: "Northbridge", score: "98.4", result: "1st", change: "+1.2" },
-  { round: "Round 7", date: "12 Aug 2026", venue: "Ashford", score: "96.8", result: "3rd", change: "+0.3" },
-  { round: "Round 6", date: "29 Jul 2026", venue: "Riverside", score: "97.2", result: "2nd", change: "+0.7" },
-  { round: "Round 5", date: "15 Jul 2026", venue: "Northbridge", score: "95.9", result: "4th", change: "−0.5" },
-];
+const profileColumns =
+  "id, first_name, last_name, title, address, town, county, postcode, phone_number, created_at, updated_at";
 
-const deadlines = [
-  { day: "14", month: "SEP", title: "Premier Division · Round 9", detail: "Score submission closes at 20:00", tone: "brand" as const },
-  { day: "28", month: "SEP", title: "County 50m Postal · Round 4", detail: "Card must be witnessed and entered", tone: "neutral" as const },
-  { day: "05", month: "OCT", title: "Autumn Open entries", detail: "Individual entries close", tone: "neutral" as const },
-];
+function metadataValue(metadata: unknown, key: string) {
+  if (!metadata || typeof metadata !== "object") return undefined;
+  const value = (metadata as Record<string, unknown>)[key];
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
 
-const formScores = [94.8, 95.6, 95.9, 97.2, 96.8, 98.4];
+export default async function DashboardPage() {
+  const supabase = await createClient();
+  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+  const claims = claimsData?.claims;
 
-export default function ShooterDashboard() {
+  if (claimsError || !claims?.sub) {
+    redirect("/login");
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select(profileColumns)
+    .eq("id", claims.sub)
+    .maybeSingle();
+
+  if (error || !data) {
+    return (
+      <div className="mx-auto max-w-3xl">
+        <h1 className="text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">
+          Welcome to RifleLeagues
+        </h1>
+        <Card className="mt-7 border-danger/20 p-6 sm:p-8">
+          <div role="alert" className="flex items-start gap-4">
+            <span
+              className="grid size-10 shrink-0 place-items-center rounded-full bg-danger-subtle font-semibold text-danger"
+              aria-hidden="true"
+            >
+              !
+            </span>
+            <div>
+              <h2 className="font-semibold text-foreground">Profile setup required</h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Your account is signed in, but its application profile could not be
+                loaded. Run the supplied profile database SQL, then refresh this page.
+              </p>
+            </div>
+          </div>
+        </Card>
+      </div>
+    );
+  }
+
+  const profile = data as Profile;
+  const completeness = calculateProfileCompleteness(profile);
+  const onboardingState = getDashboardOnboardingState(profile);
+  const metadataFirstName = metadataValue(claims.user_metadata, "first_name");
+  const firstName = profile.first_name?.trim() || metadataFirstName || "there";
+  const profileIsComplete = onboardingState === "profile-complete-no-club";
+
+  const steps = [
+    { label: "Account created", complete: true },
+    { label: "Complete your profile", complete: profileIsComplete },
+    { label: "Join a club", complete: false },
+  ];
+
   return (
     <div>
-      <div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-end">
-        <div>
-          <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
-            <span className="size-1.5 rounded-full bg-success" />
-            2026 outdoor season
-          </div>
-          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">
-            Good afternoon, Maya.
-          </h1>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Your strongest round of the season moved you into the top three.
-          </p>
+      <div className="mb-8">
+        <div className="flex items-center gap-2 text-xs font-medium text-muted-foreground">
+          <span className="size-1.5 rounded-full bg-success" />
+          Account ready
         </div>
-        <button
-          type="button"
-          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep md:self-auto"
-        >
-          Enter a score <span className="ml-2 text-base" aria-hidden="true">＋</span>
-        </button>
+        <h1 className="mt-3 text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">
+          Welcome, {firstName}
+        </h1>
+        <p className="mt-2 text-sm leading-6 text-muted-foreground">
+          Your dashboard will grow with you as you join a club and start competing.
+        </p>
       </div>
 
-      <section className="grid gap-4 xl:grid-cols-[1.45fr_.55fr]">
+      <section className="grid gap-4 xl:grid-cols-[1.3fr_.7fr]">
         <Card className="relative overflow-hidden border-0 bg-navigation p-6 text-white sm:p-8">
-          <div className="target-mark absolute -right-28 -top-32 aspect-square w-[31rem] opacity-20" />
-          <div className="relative flex h-full flex-col justify-between gap-12">
-            <div className="flex flex-wrap items-start justify-between gap-5">
-              <div>
-                <div className="flex flex-wrap items-center gap-2">
-                  <Badge tone="brand">Current league</Badge>
-                  <span className="text-xs text-white/52">10m Air Rifle</span>
+          <div className="target-mark absolute -right-36 -top-36 aspect-square w-[31rem] opacity-20" />
+          <div className="relative">
+            <Badge tone="brand">
+              {profileIsComplete ? "Profile complete" : "Getting started"}
+            </Badge>
+            <h2 className="mt-5 text-2xl font-semibold tracking-[-0.04em] sm:text-3xl">
+              Get ready to compete
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-white/58">
+              {profileIsComplete
+                ? "Your profile is ready. Club discovery and membership will be added in the next feature."
+                : "Complete your personal details now. Club discovery and competition entry will follow in later features."}
+            </p>
+
+            <div className="mt-8 rounded-2xl border border-white/12 bg-white/[.07] p-5 backdrop-blur-sm">
+              <div className="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p className="text-xs font-medium text-white/55">Profile</p>
+                  <p className="mt-1 text-xl font-semibold">
+                    {completeness.percentage}% complete
+                  </p>
                 </div>
-                <h2 className="mt-5 max-w-xl text-2xl font-semibold tracking-[-0.04em] sm:text-3xl">
-                  National Winter Postal League
-                </h2>
-                <p className="mt-2 text-sm text-white/55">Premier Division · Individual</p>
+                <span className="font-mono text-xs text-white/52">
+                  {completeness.completedFields} of {completeness.totalFields} fields
+                </span>
               </div>
-              <div className="rounded-2xl border border-white/12 bg-white/[.08] px-5 py-4 text-right backdrop-blur-sm">
-                <p className="text-[10px] font-semibold uppercase tracking-[0.15em] text-white/45">Current position</p>
-                <p className="mt-1.5 text-3xl font-semibold tracking-[-0.04em]">3<span className="text-base text-white/55">rd</span></p>
+              <div className="mt-4">
+                <ProgressBar value={completeness.percentage} light />
               </div>
             </div>
-            <div>
-              <div className="mb-3 flex items-center justify-between text-xs">
-                <span className="text-white/55">Season progress</span>
-                <span className="font-semibold text-white">8 of 12 rounds</span>
-              </div>
-              <ProgressBar value={67} light />
-              <div className="mt-4 flex flex-wrap gap-x-6 gap-y-2 text-xs text-white/52">
-                <span>Leading score <strong className="text-white">786.8</strong></span>
-                <span>Your total <strong className="text-white">781.4</strong></span>
-                <span>Gap <strong className="text-brand">5.4 pts</strong></span>
-              </div>
-            </div>
-          </div>
-        </Card>
 
-        <Card className="flex flex-col justify-between p-6 sm:p-7">
-          <div>
-            <p className="text-xs font-medium text-muted-foreground">Next score deadline</p>
-            <div className="mt-5 flex items-end justify-between gap-5">
-              <div>
-                <p className="text-5xl font-semibold tracking-[-0.055em] text-foreground">12</p>
-                <p className="mt-1 text-sm font-medium text-neutral-strong">days remaining</p>
-              </div>
-              <span className="rounded-xl bg-brand-subtle px-3 py-2 font-mono text-xs font-semibold text-brand-deep">14 SEP</span>
-            </div>
-          </div>
-          <div className="mt-8 border-t border-border pt-5">
-            <p className="text-sm font-semibold">Premier Division · Round 9</p>
-            <p className="mt-1.5 text-xs leading-5 text-muted-foreground">Your score must be witnessed before submission.</p>
-          </div>
-        </Card>
-      </section>
-
-      <section id="statistics" className="mt-4 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatCard
-          label="Average score"
-          value="97.2"
-          supporting={<><span className="font-semibold text-success">↑ 0.8</span> from last season</>}
-        />
-        <StatCard
-          label="Personal best"
-          value="98.4"
-          supporting={<>Set in Round 8 · Northbridge</>}
-        />
-        <StatCard
-          label="Season improvement"
-          value="+2.6%"
-          supporting={<>Your form is trending upward</>}
-        />
-      </section>
-
-      <div className="mt-10 grid gap-8 xl:grid-cols-[1.45fr_.75fr] xl:gap-6">
-        <section id="results" className="min-w-0">
-          <SectionHeader
-            title="Recent rounds"
-            description="Your latest submitted and verified scores"
-            action={<Link href="/dashboard#results" className="text-xs font-semibold text-brand-strong">View all →</Link>}
-          />
-          <Card className="overflow-hidden">
-            <div className="hidden overflow-x-auto md:block">
-              <table className="w-full border-collapse text-left">
-                <thead>
-                  <tr className="border-b border-border bg-surface-muted/55 text-[10px] font-semibold uppercase tracking-[0.13em] text-muted-foreground">
-                    <th className="px-5 py-3.5">Round</th>
-                    <th className="px-5 py-3.5">Venue</th>
-                    <th className="px-5 py-3.5">Score</th>
-                    <th className="px-5 py-3.5">Result</th>
-                    <th className="px-5 py-3.5 text-right">Form</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-border">
-                  {recentRounds.map((round) => (
-                    <tr key={round.round} className="text-sm transition hover:bg-surface-muted/55">
-                      <td className="px-5 py-4">
-                        <span className="block font-semibold text-foreground">{round.round}</span>
-                        <span className="mt-1 block text-xs text-muted-foreground">{round.date}</span>
-                      </td>
-                      <td className="px-5 py-4 text-muted-foreground">{round.venue}</td>
-                      <td className="px-5 py-4 font-mono font-semibold tabular-nums">{round.score}</td>
-                      <td className="px-5 py-4"><Badge tone={round.result === "1st" ? "brand" : "neutral"}>{round.result}</Badge></td>
-                      <td className={`px-5 py-4 text-right text-xs font-semibold ${round.change.startsWith("+") ? "text-success" : "text-warning"}`}>{round.change}</td>
-                    </tr>
+            {!profileIsComplete ? (
+              <div className="mt-5">
+                <p className="text-xs font-semibold text-white/70">Missing</p>
+                <ul className="mt-2 flex flex-wrap gap-2" aria-label="Missing profile fields">
+                  {completeness.missingFields.map((field) => (
+                    <li
+                      key={field}
+                      className="rounded-full border border-white/12 bg-white/[.06] px-3 py-1.5 text-xs text-white/62"
+                    >
+                      {field}
+                    </li>
                   ))}
-                </tbody>
-              </table>
-            </div>
-            <div className="divide-y divide-border md:hidden">
-              {recentRounds.map((round) => (
-                <article key={round.round} className="p-4">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <p className="text-sm font-semibold">{round.round} · {round.venue}</p>
-                      <p className="mt-1 text-xs text-muted-foreground">{round.date}</p>
-                    </div>
-                    <Badge tone={round.result === "1st" ? "brand" : "neutral"}>{round.result}</Badge>
-                  </div>
-                  <div className="mt-4 flex items-end justify-between rounded-xl bg-surface-muted px-4 py-3">
-                    <div><span className="block text-[10px] uppercase tracking-wider text-muted-foreground">Score</span><strong className="mt-1 block font-mono text-lg">{round.score}</strong></div>
-                    <span className={`text-xs font-semibold ${round.change.startsWith("+") ? "text-success" : "text-warning"}`}>{round.change}</span>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </Card>
-        </section>
+                </ul>
+              </div>
+            ) : null}
 
-        <section id="competitions">
-          <SectionHeader title="Upcoming deadlines" description="The next dates on your calendar" />
-          <Card className="p-3">
-            <div className="divide-y divide-border">
-              {deadlines.map((deadline) => (
-                <article key={deadline.title} className="flex gap-4 px-2 py-4 first:pt-2 last:pb-2">
-                  <div className={`grid size-12 shrink-0 place-items-center rounded-xl text-center ${deadline.tone === "brand" ? "bg-brand-subtle text-brand-deep" : "bg-surface-muted text-neutral-strong"}`}>
-                    <span><strong className="block text-base leading-4">{deadline.day}</strong><span className="text-[9px] font-bold tracking-wider">{deadline.month}</span></span>
-                  </div>
-                  <div className="min-w-0 pt-0.5">
-                    <p className="text-sm font-semibold leading-5">{deadline.title}</p>
-                    <p className="mt-1 text-xs leading-5 text-muted-foreground">{deadline.detail}</p>
-                  </div>
-                </article>
-              ))}
-            </div>
-          </Card>
-        </section>
-      </div>
-
-      <section className="mt-10">
-        <SectionHeader title="Six-round form" description="Score consistency across your most recent rounds" />
-        <Card className="p-5 sm:p-7">
-          <div className="flex h-44 items-end gap-3 sm:gap-5">
-            {formScores.map((score, index) => {
-              const height = 42 + (score - 94) * 11;
-              return (
-                <div key={score} className="flex h-full flex-1 flex-col justify-end gap-2">
-                  <span className="text-center font-mono text-[10px] text-muted-foreground">{score}</span>
-                  <div className={`mx-auto w-full max-w-16 rounded-t-lg ${index === formScores.length - 1 ? "bg-primary" : "bg-brand-subtle"}`} style={{ height: `${height}%` }} />
-                  <span className="text-center text-[10px] text-muted-foreground">R{index + 3}</span>
-                </div>
-              );
-            })}
+            <Link
+              href="/profile"
+              className="mt-7 inline-flex min-h-11 items-center justify-center rounded-xl bg-white px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
+            >
+              {profileIsComplete ? "Review profile" : "Complete profile"}
+              <span className="ml-2" aria-hidden="true">→</span>
+            </Link>
           </div>
+        </Card>
+
+        <Card className="p-6 sm:p-7">
+          <p className="text-xs font-medium text-muted-foreground">Your progress</p>
+          <ol className="mt-5 space-y-5">
+            {steps.map((step) => (
+              <li key={step.label} className="flex items-center gap-3">
+                <span
+                  className={`grid size-8 shrink-0 place-items-center rounded-full text-xs font-bold ${
+                    step.complete
+                      ? "bg-success-subtle text-success"
+                      : "border border-border bg-background text-muted-foreground"
+                  }`}
+                  aria-hidden="true"
+                >
+                  {step.complete ? "✓" : "·"}
+                </span>
+                <span
+                  className={`text-sm ${
+                    step.complete
+                      ? "font-semibold text-foreground"
+                      : "text-muted-foreground"
+                  }`}
+                >
+                  {step.label}
+                  <span className="sr-only">
+                    {step.complete ? " complete" : " not complete"}
+                  </span>
+                </span>
+              </li>
+            ))}
+          </ol>
+          <div className="mt-7 rounded-xl bg-surface-muted p-4">
+            <p className="text-xs font-semibold text-foreground">Competition data</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              Leagues, rounds, scores and statistics will appear here only after
+              real entries exist.
+            </p>
+          </div>
+        </Card>
+      </section>
+
+      <section id="your-club" className="mt-10">
+        <SectionHeader
+          title="Your club"
+          description="Club membership will connect you to competitions and results"
+        />
+        <Card className="p-6 sm:p-8">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-4">
+              <span
+                className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-subtle text-sm font-bold text-brand-deep"
+                aria-hidden="true"
+              >
+                C
+              </span>
+              <div>
+                <h2 className="font-semibold text-foreground">No club connected</h2>
+                <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  You are not currently associated with a club. Club discovery and
+                  membership requests are intentionally not part of this feature.
+                </p>
+              </div>
+            </div>
+            <div className="shrink-0">
+              <button
+                type="button"
+                disabled
+                aria-describedby="find-club-help"
+                className="inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center rounded-xl border border-border bg-surface-muted px-5 text-sm font-semibold text-muted-foreground opacity-75 sm:w-auto"
+              >
+                Find a club
+              </button>
+              <p id="find-club-help" className="mt-2 text-center text-[11px] text-muted-foreground">
+                Coming in the next feature
+              </p>
+            </div>
+          </div>
+        </Card>
+      </section>
+
+      <section id="settings" className="mt-10">
+        <SectionHeader title="Account" description="Manage the details linked to your account" />
+        <Card className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-7">
+          <div>
+            <h2 className="font-semibold text-foreground">Profile and settings</h2>
+            <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
+              Update your personal, postal and contact information from your profile.
+            </p>
+          </div>
+          <Link
+            href="/profile"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
+          >
+            Open profile
+          </Link>
         </Card>
       </section>
     </div>

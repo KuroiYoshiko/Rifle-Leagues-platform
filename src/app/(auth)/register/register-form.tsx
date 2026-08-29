@@ -67,6 +67,7 @@ export function RegisterForm() {
             name="firstName"
             autoComplete="given-name"
             required
+            maxLength={100}
             defaultValue={state.values?.firstName}
             aria-invalid={Boolean(state.fieldErrors?.firstName)}
             aria-describedby={state.fieldErrors?.firstName ? "first-name-error" : undefined}
@@ -84,6 +85,7 @@ export function RegisterForm() {
             name="lastName"
             autoComplete="family-name"
             required
+            maxLength={100}
             defaultValue={state.values?.lastName}
             aria-invalid={Boolean(state.fieldErrors?.lastName)}
             aria-describedby={state.fieldErrors?.lastName ? "last-name-error" : undefined}

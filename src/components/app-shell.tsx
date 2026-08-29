@@ -8,6 +8,7 @@ type NavigationItem = {
   label: string;
   href: string;
   mark: string;
+  disabledReason?: string;
 };
 
 type AuthenticatedUser = {
@@ -18,28 +19,66 @@ type AuthenticatedUser = {
 
 const sections: { label?: string; items: NavigationItem[] }[] = [
   {
-    items: [{ label: "Overview", href: "/dashboard", mark: "O" }],
+    items: [
+      { label: "Overview", href: "/dashboard", mark: "O" },
+      { label: "Profile", href: "/profile", mark: "P" },
+    ],
   },
   {
     label: "My shooting",
     items: [
-      { label: "Competitions", href: "/dashboard#competitions", mark: "C" },
-      { label: "Results", href: "/dashboard#results", mark: "R" },
-      { label: "Statistics", href: "/dashboard#statistics", mark: "S" },
+      {
+        label: "Competitions",
+        href: "/dashboard#competitions",
+        mark: "C",
+        disabledReason: "Join a club to access competitions",
+      },
+      {
+        label: "Results",
+        href: "/dashboard#results",
+        mark: "R",
+        disabledReason: "Competition results are not available yet",
+      },
+      {
+        label: "Statistics",
+        href: "/dashboard#statistics",
+        mark: "S",
+        disabledReason: "Competition statistics are not available yet",
+      },
     ],
   },
   {
     label: "My club",
     items: [
-      { label: "Members", href: "/club#members", mark: "M" },
-      { label: "Entries", href: "/club#entries", mark: "E" },
-      { label: "Scores", href: "/club#scores", mark: "S" },
+      {
+        label: "Members",
+        href: "/club#members",
+        mark: "M",
+        disabledReason: "Join a club to access members",
+      },
+      {
+        label: "Entries",
+        href: "/club#entries",
+        mark: "E",
+        disabledReason: "Join a club to access entries",
+      },
+      {
+        label: "Scores",
+        href: "/club#scores",
+        mark: "S",
+        disabledReason: "Join a club to access scores",
+      },
     ],
   },
   {
     label: "Management",
     items: [
-      { label: "League administration", href: "/club", mark: "L" },
+      {
+        label: "League administration",
+        href: "/club",
+        mark: "L",
+        disabledReason: "Club administration is not available yet",
+      },
     ],
   },
   {
@@ -49,6 +88,7 @@ const sections: { label?: string; items: NavigationItem[] }[] = [
 
 const pageDetails: Record<string, { eyebrow: string; title: string }> = {
   "/dashboard": { eyebrow: "Shooter profile", title: "My dashboard" },
+  "/profile": { eyebrow: "Account", title: "Your profile" },
   "/club": { eyebrow: "Northbridge Rifle Club", title: "Club administration" },
 };
 
@@ -87,10 +127,33 @@ function Navigation({
             {section.items.map((item) => {
               const itemPath = item.href.split("#")[0];
               const isActive =
+                !item.disabledReason &&
                 pathname === itemPath &&
                 ((pathname === "/dashboard" && item.label === "Overview") ||
-                  (pathname === "/club" &&
-                    item.label === "League administration"));
+                  pathname === "/profile");
+
+              if (item.disabledReason) {
+                return (
+                  <span
+                    key={item.label}
+                    aria-disabled="true"
+                    title={item.disabledReason}
+                    className="group flex min-h-10 cursor-not-allowed items-center gap-3 rounded-xl px-3 text-sm text-white/32"
+                  >
+                    <span
+                      className="grid size-6 place-items-center rounded-md border border-white/[.08] text-[9px] font-semibold text-white/28"
+                      aria-hidden="true"
+                    >
+                      {item.mark}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate">{item.label}</span>
+                    <span className="text-[9px] font-medium text-white/25" aria-hidden="true">
+                      Locked
+                    </span>
+                    <span className="sr-only">{item.disabledReason}</span>
+                  </span>
+                );
+              }
 
               return (
                 <Link

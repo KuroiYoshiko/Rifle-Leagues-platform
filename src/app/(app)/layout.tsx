@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import type { Profile } from "@/lib/profiles";
 import { createClient } from "@/lib/supabase/server";
 
 function metadataValue(metadata: unknown, key: string) {
@@ -22,8 +23,21 @@ export default async function ApplicationLayout({
     redirect("/login");
   }
 
-  const firstName = metadataValue(claims.user_metadata, "first_name");
-  const lastName = metadataValue(claims.user_metadata, "last_name");
+  const { data: profileData } = await supabase
+    .from("profiles")
+    .select("first_name, last_name")
+    .eq("id", claims.sub)
+    .maybeSingle();
+  const profile = profileData as Pick<
+    Profile,
+    "first_name" | "last_name"
+  > | null;
+  const firstName =
+    profile?.first_name?.trim() ||
+    metadataValue(claims.user_metadata, "first_name");
+  const lastName =
+    profile?.last_name?.trim() ||
+    metadataValue(claims.user_metadata, "last_name");
   const email = typeof claims.email === "string" ? claims.email : "";
   const displayName =
     [firstName, lastName].filter(Boolean).join(" ") || email || "RifleLeagues user";
