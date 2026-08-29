@@ -1,26 +1,81 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --brand: #17a3b8;
+  --brand-strong: #0f6f7e;
+  --brand-deep: #0b5965;
+  --brand-subtle: #e2f5f7;
+  --primary: #0f6f7e;
+  --primary-foreground: #ffffff;
+  --background: #f4f8f9;
+  --surface: #ffffff;
+  --surface-muted: #edf4f5;
+  --foreground: #13272c;
+  --muted-foreground: #66777b;
+  --border: #dbe5e7;
+  --hero-background: #0b252b;
+  --navigation: #0d3138;
+  --neutral-strong: #52666a;
+  --success: #287a52;
+  --success-subtle: #e8f6ee;
+  --warning: #9a5a0b;
+  --warning-subtle: #fff4df;
+  --danger: #b04444;
+  --danger-subtle: #fbeaea;
 }
 
 @theme inline {
+  --color-brand: var(--brand);
+  --color-brand-strong: var(--brand-strong);
+  --color-brand-deep: var(--brand-deep);
+  --color-brand-subtle: var(--brand-subtle);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
   --color-foreground: var(--foreground);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-hero-background: var(--hero-background);
+  --color-navigation: var(--navigation);
+  --color-neutral-strong: var(--neutral-strong);
+  --color-success: var(--success);
+  --color-success-subtle: var(--success-subtle);
+  --color-warning: var(--warning);
+  --color-warning-subtle: var(--warning-subtle);
+  --color-danger: var(--danger);
+  --color-danger-subtle: var(--danger-subtle);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
-}
-
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
 body {
+  min-height: 100vh;
+  margin: 0;
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
+}
+button, a { -webkit-tap-highlight-color: transparent; }
+button, summary { font: inherit; }
+a { color: inherit; text-decoration: none; }
+::selection { background: var(--brand-subtle); color: var(--brand-deep); }
+:focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--brand) 35%, transparent);
+  outline-offset: 3px;
+}
+
+.target-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 44px 44px;
+}
+
+.target-mark {
+  background:
+    radial-gradient(circle at center, var(--brand) 0 7%, transparent 7.5% 18%, color-mix(in srgb, var(--brand) 92%, transparent) 18.5% 20%, transparent 20.5% 33%, rgba(255, 255, 255, 0.72) 33.5% 35%, transparent 35.5% 49%, rgba(255, 255, 255, 0.3) 49.5% 51%, transparent 51.5% 66%, rgba(255, 255, 255, 0.14) 66.5% 68%, transparent 68.5%);
 }
