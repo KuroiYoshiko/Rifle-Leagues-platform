@@ -170,7 +170,10 @@ function Navigation({
   >(activeOrganisationSlug ?? organisations[0]?.slug ?? null);
 
   return (
-    <nav className="mt-9 flex-1 overflow-y-auto px-3 pb-5" aria-label="Application navigation">
+    <nav
+      className="application-navigation sidebar-scrollbar mt-9 flex-1 overflow-y-auto px-3 pb-5"
+      aria-label="Application navigation"
+    >
       {sections.map((section, sectionIndex) => (
         <div key={section.label ?? sectionIndex}>
           {sectionIndex === 1 ? (

@@ -55,7 +55,7 @@ export function OrganisationPageFrame({
       </div>
 
       <nav
-        className="mt-8 overflow-x-auto rounded-2xl border border-border bg-surface p-2 shadow-xs"
+        className="organisation-section-navigation mt-8 overflow-x-auto rounded-2xl border border-border bg-surface p-2 shadow-xs"
         aria-label={`${organisation.name} sections`}
       >
         <div className="flex min-w-max gap-1">
@@ -69,7 +69,7 @@ export function OrganisationPageFrame({
                 aria-current={isActive ? "page" : undefined}
                 className={`inline-flex min-h-10 items-center rounded-xl px-4 text-sm font-semibold transition ${
                   isActive
-                    ? "bg-primary text-primary-foreground"
+                    ? "bg-brand-subtle text-brand-deep"
                     : "text-neutral-strong hover:bg-brand-subtle hover:text-brand-deep"
                 }`}
               >

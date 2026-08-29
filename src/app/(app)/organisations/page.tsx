@@ -119,16 +119,6 @@ export default async function OrganisationsPage({
         </form>
       </Card>
 
-      <Card className="mt-5 border-brand/20 bg-brand-subtle/40 p-5 sm:p-6">
-        <h2 className="text-sm font-semibold text-foreground">
-          A dashboard shortcut, not membership
-        </h2>
-        <p className="mt-1.5 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Adding an organisation does not make you a member or official and does
-          not grant league-entry or management permission.
-        </p>
-      </Card>
-
       {organisationsResult.error ? (
         <Card className="mt-6 border-danger/20 p-6">
           <div role="alert">
