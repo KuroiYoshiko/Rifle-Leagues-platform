@@ -3,8 +3,12 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Badge, Card, ProgressBar, SectionHeader } from "@/components/ui";
 import {
+  getClubLocation,
+  getDashboardMembershipState,
+  type ClubMembership,
+} from "@/lib/clubs";
+import {
   calculateProfileCompleteness,
-  getDashboardOnboardingState,
   type Profile,
 } from "@/lib/profiles";
 import { createClient } from "@/lib/supabase/server";
@@ -31,11 +35,34 @@ export default async function DashboardPage() {
     redirect("/login");
   }
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select(profileColumns)
-    .eq("id", claims.sub)
-    .maybeSingle();
+  const [profileResult, membershipsResult] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select(profileColumns)
+      .eq("id", claims.sub)
+      .maybeSingle(),
+    supabase
+      .from("club_memberships")
+      .select(`
+        id,
+        club_id,
+        status,
+        created_at,
+        club:clubs (
+          id,
+          name,
+          slug,
+          town,
+          county,
+          postcode,
+          website
+        )
+      `)
+      .eq("user_id", claims.sub)
+      .in("status", ["active", "pending"])
+      .order("created_at", { ascending: false }),
+  ]);
+  const { data, error } = profileResult;
 
   if (error || !data) {
     return (
@@ -66,15 +93,34 @@ export default async function DashboardPage() {
 
   const profile = data as Profile;
   const completeness = calculateProfileCompleteness(profile);
-  const onboardingState = getDashboardOnboardingState(profile);
+  const membershipState = getDashboardMembershipState(
+    membershipsResult.data as unknown as ClubMembership[] | null,
+  );
   const metadataFirstName = metadataValue(claims.user_metadata, "first_name");
   const firstName = profile.first_name?.trim() || metadataFirstName || "there";
-  const profileIsComplete = onboardingState === "profile-complete-no-club";
+  const profileIsComplete = completeness.isComplete;
+  const membershipRequested = membershipState.kind !== "none";
+  const heroBadge =
+    membershipState.kind === "active"
+      ? "Club connected"
+      : membershipState.kind === "pending"
+        ? "Request pending"
+        : profileIsComplete
+          ? "Profile complete"
+          : "Getting started";
+  const heroCopy =
+    membershipState.kind === "active"
+      ? "Your club membership is active. Competition features will appear here when they are implemented."
+      : membershipState.kind === "pending"
+        ? "Your club request is waiting for approval. You can keep your profile up to date while you wait."
+        : profileIsComplete
+          ? "Your profile is ready. Find your club and send a membership request when you are ready."
+          : "Complete your personal details and find your club. These are separate steps, so either can be done first.";
 
   const steps = [
     { label: "Account created", complete: true },
     { label: "Complete your profile", complete: profileIsComplete },
-    { label: "Join a club", complete: false },
+    { label: "Request club membership", complete: membershipRequested },
   ];
 
   return (
@@ -99,16 +145,12 @@ export default async function DashboardPage() {
         >
           <div className="target-mark absolute -right-36 -top-36 aspect-square w-[31rem] opacity-20" />
           <div className="relative">
-            <Badge tone="brand">
-              {profileIsComplete ? "Profile complete" : "Getting started"}
-            </Badge>
+            <Badge tone="brand">{heroBadge}</Badge>
             <h2 className="mt-5 text-2xl font-semibold tracking-[-0.04em] sm:text-3xl">
               Get ready to compete
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-white/58">
-              {profileIsComplete
-                ? "Your profile is ready. Club discovery and membership will be added in the next feature."
-                : "Complete your personal details now. Club discovery and competition entry will follow in later features."}
+              {heroCopy}
             </p>
 
             <div className="mt-8 rounded-2xl border border-white/12 bg-white/[.07] p-5 backdrop-blur-sm">
@@ -197,40 +239,95 @@ export default async function DashboardPage() {
       <section id="your-club" className="mt-10">
         <SectionHeader
           title="Your club"
-          description="Club membership will connect you to competitions and results"
+          description="Your current RifleLeagues club membership state"
         />
-        <Card className="p-6 sm:p-8">
-          <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+        {membershipsResult.error ? (
+          <Card className="border-danger/20 p-6 sm:p-8">
+            <div role="alert">
+              <h2 className="font-semibold text-foreground">Club membership unavailable</h2>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                Membership data could not be loaded. Run the supplied clubs and
+                memberships SQL in Supabase, then refresh this page.
+              </p>
+            </div>
+          </Card>
+        ) : membershipState.kind === "pending" ? (
+          <Card className="p-6 sm:p-8">
             <div className="flex items-start gap-4">
               <span
-                className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-subtle text-sm font-bold text-brand-deep"
+                className="grid size-11 shrink-0 place-items-center rounded-xl bg-warning-subtle text-sm font-bold text-warning"
+                aria-hidden="true"
+              >
+                P
+              </span>
+              <div>
+                <Badge tone="warning">Membership pending</Badge>
+                <h2 className="mt-3 font-semibold text-foreground">
+                  {membershipState.membership.club.name}
+                </h2>
+                {getClubLocation(membershipState.membership.club) ? (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {getClubLocation(membershipState.membership.club)}
+                  </p>
+                ) : null}
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  Your request is waiting for club approval.
+                </p>
+              </div>
+            </div>
+          </Card>
+        ) : membershipState.kind === "active" ? (
+          <Card className="p-6 sm:p-8">
+            <div className="flex items-start gap-4">
+              <span
+                className="grid size-11 shrink-0 place-items-center rounded-xl bg-success-subtle text-sm font-bold text-success"
                 aria-hidden="true"
               >
                 C
               </span>
               <div>
-                <h2 className="font-semibold text-foreground">No club connected</h2>
-                <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  You are not currently associated with a club. Club discovery and
-                  membership requests are intentionally not part of this feature.
+                <Badge tone="positive">Membership active</Badge>
+                <h2 className="mt-3 font-semibold text-foreground">
+                  {membershipState.membership.club.name}
+                </h2>
+                {getClubLocation(membershipState.membership.club) ? (
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    {getClubLocation(membershipState.membership.club)}
+                  </p>
+                ) : null}
+                <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  Your club membership is active. Competition functionality is not
+                  implemented yet.
                 </p>
               </div>
             </div>
-            <div className="shrink-0">
-              <button
-                type="button"
-                disabled
-                aria-describedby="find-club-help"
-                className="inline-flex min-h-11 w-full cursor-not-allowed items-center justify-center rounded-xl border border-border bg-surface-muted px-5 text-sm font-semibold text-muted-foreground opacity-75 sm:w-auto"
+          </Card>
+        ) : (
+          <Card className="p-6 sm:p-8">
+            <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+              <div className="flex items-start gap-4">
+                <span
+                  className="grid size-11 shrink-0 place-items-center rounded-xl bg-brand-subtle text-sm font-bold text-brand-deep"
+                  aria-hidden="true"
+                >
+                  C
+                </span>
+                <div>
+                  <h2 className="font-semibold text-foreground">No club connected</h2>
+                  <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">
+                    You are not currently associated with a club.
+                  </p>
+                </div>
+              </div>
+              <Link
+                href="/clubs"
+                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep"
               >
                 Find a club
-              </button>
-              <p id="find-club-help" className="mt-2 text-center text-[11px] text-muted-foreground">
-                Coming in the next feature
-              </p>
+              </Link>
             </div>
-          </div>
-        </Card>
+          </Card>
+        )}
       </section>
 
       <section id="settings" className="mt-10">

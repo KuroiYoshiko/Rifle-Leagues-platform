@@ -89,8 +89,19 @@ const sections: { label?: string; items: NavigationItem[] }[] = [
 const pageDetails: Record<string, { eyebrow: string; title: string }> = {
   "/dashboard": { eyebrow: "Shooter profile", title: "My dashboard" },
   "/profile": { eyebrow: "Account", title: "Your profile" },
+  "/clubs": { eyebrow: "Membership", title: "Find a club" },
   "/club": { eyebrow: "Northbridge Rifle Club", title: "Club administration" },
 };
+
+function isNavigationItemActive(pathname: string, href: string) {
+  if (href.includes("#")) return false;
+
+  const itemPath = href.split("#")[0];
+  return (
+    pathname === itemPath ||
+    (itemPath !== "/dashboard" && pathname.startsWith(`${itemPath}/`))
+  );
+}
 
 function Brand() {
   return (
@@ -125,12 +136,9 @@ function Navigation({
           ) : null}
           <div className="space-y-1">
             {section.items.map((item) => {
-              const itemPath = item.href.split("#")[0];
               const isActive =
                 !item.disabledReason &&
-                pathname === itemPath &&
-                ((pathname === "/dashboard" && item.label === "Overview") ||
-                  pathname === "/profile");
+                isNavigationItemActive(pathname, item.href);
 
               if (item.disabledReason) {
                 return (
@@ -160,15 +168,26 @@ function Navigation({
                   key={item.label}
                   href={item.href}
                   onClick={onNavigate}
-                  className={`group flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm transition ${isActive ? "bg-white text-brand-deep shadow-sm" : "text-white/62 hover:bg-white/[.07] hover:text-white"}`}
+                  aria-current={isActive ? "page" : undefined}
+                  className={`group flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm transition ${
+                    isActive
+                      ? "bg-white text-[var(--brand-deep)] shadow-sm hover:bg-white hover:text-[var(--brand-deep)] focus-visible:bg-white focus-visible:text-[var(--brand-deep)]"
+                      : "text-white/62 hover:bg-white/[.07] hover:text-white focus-visible:bg-white/[.1] focus-visible:text-white"
+                  }`}
                 >
                   <span
-                    className={`grid size-6 place-items-center rounded-md border text-[9px] font-semibold ${isActive ? "border-border bg-brand-subtle text-brand-strong" : "border-white/12 text-white/45 group-hover:border-white/20"}`}
+                    className={`grid size-6 place-items-center rounded-md border text-[9px] font-semibold ${
+                      isActive
+                        ? "border-border bg-brand-subtle text-[var(--brand-strong)] group-hover:border-brand/30 group-focus-visible:border-brand/40"
+                        : "border-white/12 text-white/45 group-hover:border-white/20 group-focus-visible:border-white/25"
+                    }`}
                     aria-hidden="true"
                   >
                     {item.mark}
                   </span>
-                  {item.label}
+                  <span className={isActive ? "text-[var(--brand-deep)]" : undefined}>
+                    {item.label}
+                  </span>
                 </Link>
               );
             })}
