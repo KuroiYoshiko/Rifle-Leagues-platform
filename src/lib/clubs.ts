@@ -1,3 +1,6 @@
+import { cache } from "react";
+import { createClient } from "@/lib/supabase/server";
+
 export const CLUB_STATUSES = ["active", "inactive"] as const;
 export const MEMBERSHIP_STATUSES = [
   "pending",
@@ -26,6 +29,18 @@ export type ClubMembership = {
   created_at: string;
   club: Club | null;
 };
+
+export type SidebarClub = Pick<Club, "id" | "name" | "slug">;
+
+export type ClubPageContext = {
+  club: Club;
+  membership: ClubMembership | null;
+};
+
+export const clubColumns =
+  "id, name, slug, town, county, postcode, website";
+
+const routeSafeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 export type DashboardMembershipState =
   | { kind: "none" }
@@ -79,3 +94,51 @@ export function getDashboardMembershipState(
 
   return { kind: "none" };
 }
+
+export const getClubPageContextBySlug = cache(async (slug: string) => {
+  if (slug.length > 180 || !routeSafeSlugPattern.test(slug)) {
+    return null;
+  }
+
+  const supabase = await createClient();
+  const [claimsResult, clubResult] = await Promise.all([
+    supabase.auth.getClaims(),
+    supabase
+      .from("clubs")
+      .select(clubColumns)
+      .eq("slug", slug)
+      .eq("status", "active")
+      .maybeSingle(),
+  ]);
+  const userId = claimsResult.data?.claims?.sub;
+
+  if (claimsResult.error || !userId) {
+    throw new Error("Your session could not be verified.");
+  }
+
+  if (clubResult.error) {
+    throw new Error("The club could not be loaded.");
+  }
+
+  if (!clubResult.data) {
+    return null;
+  }
+
+  const club = clubResult.data as Club;
+  const { data: membershipData, error: membershipError } = await supabase
+    .from("club_memberships")
+    .select("id, club_id, status, created_at")
+    .eq("club_id", club.id)
+    .eq("user_id", userId)
+    .maybeSingle();
+
+  if (membershipError) {
+    throw new Error("Your club membership status could not be loaded.");
+  }
+
+  const membership = membershipData
+    ? ({ ...membershipData, club } as ClubMembership)
+    : null;
+
+  return { club, membership } satisfies ClubPageContext;
+});

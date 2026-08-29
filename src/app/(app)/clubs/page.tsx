@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { MembershipRequestButton } from "@/components/membership-request-button";
 import { Card } from "@/components/ui";
 import {
+  clubColumns,
   getClubLocation,
   type Club,
   type MembershipStatus,
@@ -14,7 +15,6 @@ export const metadata: Metadata = {
   title: "Find a club",
 };
 
-const clubColumns = "id, name, slug, town, county, postcode, website";
 const resultLimit = 30;
 
 function readSearchTerm(value: string | string[] | undefined) {
@@ -159,8 +159,13 @@ export default async function ClubsPage({
                 <Card key={club.id} className="p-5 sm:p-6">
                   <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
                     <div className="min-w-0">
-                      <h3 className="text-base font-semibold tracking-[-0.02em] text-foreground">
-                        {club.name}
+                      <h3 className="text-base font-semibold tracking-[-0.02em]">
+                        <Link
+                          href={`/clubs/${club.slug}`}
+                          className="text-foreground hover:text-brand-deep hover:underline"
+                        >
+                          {club.name}
+                        </Link>
                       </h3>
                       <p className="mt-1.5 text-sm text-muted-foreground">
                         {location ?? club.postcode ?? "Location not yet provided"}
@@ -180,11 +185,19 @@ export default async function ClubsPage({
                         </a>
                       ) : null}
                     </div>
-                    <MembershipRequestButton
-                      clubId={club.id}
-                      currentStatus={membershipByClub.get(club.id)}
-                      statusUnavailable={Boolean(membershipsResult.error)}
-                    />
+                    <div className="flex flex-col gap-3 sm:items-end">
+                      <Link
+                        href={`/clubs/${club.slug}`}
+                        className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
+                      >
+                        View club
+                      </Link>
+                      <MembershipRequestButton
+                        clubId={club.id}
+                        currentStatus={membershipByClub.get(club.id)}
+                        statusUnavailable={Boolean(membershipsResult.error)}
+                      />
+                    </div>
                   </div>
                 </Card>
               );

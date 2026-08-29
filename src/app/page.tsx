@@ -91,8 +91,8 @@ export default async function Home() {
               <Link href="/dashboard" className="inline-flex min-h-12 items-center justify-center rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-lg transition hover:bg-brand-deep">
                 Explore shooter view <span className="ml-3" aria-hidden="true">→</span>
               </Link>
-              <Link href="/club" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/20 bg-white/[.03] px-6 text-sm font-semibold text-white/85 transition hover:bg-white/[.08] hover:text-white">
-                View club administration
+              <Link href="/clubs" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/20 bg-white/[.03] px-6 text-sm font-semibold text-white/85 transition hover:bg-white/[.08] hover:text-white">
+                Explore clubs
               </Link>
             </div>
           </div>
@@ -160,7 +160,7 @@ export default async function Home() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-strong">Made for club nights</p>
             <h2 className="mt-6 max-w-xl text-4xl font-semibold leading-[1.04] tracking-[-0.05em] sm:text-5xl">Know what needs attention before it becomes urgent.</h2>
             <p className="mt-6 max-w-lg leading-7 text-muted-foreground">Membership requests, competition entries, and outstanding scores stay in one calm, structured view.</p>
-            <Link href="/club" className="mt-9 inline-flex items-center text-sm font-semibold text-brand-strong">Explore the club view <span className="ml-3" aria-hidden="true">→</span></Link>
+            <Link href="/clubs" className="mt-9 inline-flex items-center text-sm font-semibold text-brand-strong">Explore clubs <span className="ml-3" aria-hidden="true">→</span></Link>
           </div>
           <div className="relative min-h-[28rem] bg-brand-deep p-6 sm:p-10">
             <div className="target-mark absolute -bottom-32 -right-24 aspect-square w-[31rem] rounded-full opacity-80" />

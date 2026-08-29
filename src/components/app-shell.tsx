@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
+import type { SidebarClub } from "@/lib/clubs";
 import type { SidebarOrganisation } from "@/lib/organisations";
 
 type NavigationItem = {
@@ -18,81 +19,41 @@ type AuthenticatedUser = {
   initials: string;
 };
 
-const sections: { label?: string; items: NavigationItem[] }[] = [
+const primaryNavigationItems: NavigationItem[] = [
+  { label: "Overview", href: "/dashboard", mark: "O" },
+  { label: "Profile", href: "/profile", mark: "P" },
+  { label: "Organisations", href: "/organisations", mark: "L" },
+];
+
+const shootingNavigationItems: NavigationItem[] = [
   {
-    items: [
-      { label: "Overview", href: "/dashboard", mark: "O" },
-      { label: "Profile", href: "/profile", mark: "P" },
-      { label: "Organisations", href: "/organisations", mark: "L" },
-    ],
+    label: "Competitions",
+    href: "/dashboard#competitions",
+    mark: "C",
+    disabledReason: "Personal competition activity is not available yet",
   },
   {
-    label: "My shooting",
-    items: [
-      {
-        label: "Competitions",
-        href: "/dashboard#competitions",
-        mark: "C",
-        disabledReason: "Join a club to access competitions",
-      },
-      {
-        label: "Results",
-        href: "/dashboard#results",
-        mark: "R",
-        disabledReason: "Competition results are not available yet",
-      },
-      {
-        label: "Statistics",
-        href: "/dashboard#statistics",
-        mark: "S",
-        disabledReason: "Competition statistics are not available yet",
-      },
-    ],
+    label: "Results",
+    href: "/dashboard#results",
+    mark: "R",
+    disabledReason: "Competition results are not available yet",
   },
   {
-    label: "My club",
-    items: [
-      {
-        label: "Members",
-        href: "/club#members",
-        mark: "M",
-        disabledReason: "Join a club to access members",
-      },
-      {
-        label: "Entries",
-        href: "/club#entries",
-        mark: "E",
-        disabledReason: "Join a club to access entries",
-      },
-      {
-        label: "Scores",
-        href: "/club#scores",
-        mark: "S",
-        disabledReason: "Join a club to access scores",
-      },
-    ],
+    label: "Statistics",
+    href: "/dashboard#statistics",
+    mark: "S",
+    disabledReason: "Competition statistics are not available yet",
   },
-  {
-    label: "Management",
-    items: [
-      {
-        label: "League administration",
-        href: "/club",
-        mark: "L",
-        disabledReason: "Club administration is not available yet",
-      },
-    ],
-  },
-  {
-    items: [{ label: "Settings", href: "/dashboard#settings", mark: "S" }],
-  },
+];
+
+const utilityNavigationItems: NavigationItem[] = [
+  { label: "Settings", href: "/dashboard#settings", mark: "S" },
 ];
 
 const pageDetails: Record<string, { eyebrow: string; title: string }> = {
   "/dashboard": { eyebrow: "Shooter profile", title: "My dashboard" },
   "/profile": { eyebrow: "Account", title: "Your profile" },
   "/clubs": { eyebrow: "Membership", title: "Find a club" },
-  "/club": { eyebrow: "Northbridge Rifle Club", title: "Club administration" },
   "/organisations": {
     eyebrow: "League organisations",
     title: "Find an organisation",
@@ -106,9 +67,14 @@ const organisationPageTitles: Record<string, string> = {
   contact: "Contact",
 };
 
+const clubPageTitles: Record<string, string> = {
+  competitions: "Competitions",
+};
+
 function getPageDetails(
   pathname: string,
   organisations: SidebarOrganisation[],
+  clubs: SidebarClub[],
 ) {
   const routeParts = pathname.split("/").filter(Boolean);
 
@@ -120,6 +86,15 @@ function getPageDetails(
     return {
       eyebrow: organisation?.name ?? "League organisation",
       title: organisationPageTitles[routeParts[2]] ?? "Overview",
+    };
+  }
+
+  if (routeParts[0] === "clubs" && routeParts[1]) {
+    const club = clubs.find((item) => item.slug === routeParts[1]);
+
+    return {
+      eyebrow: club?.name ?? "Club",
+      title: clubPageTitles[routeParts[2]] ?? "Overview",
     };
   }
 
@@ -152,201 +127,318 @@ function Brand() {
   );
 }
 
+function NavigationLinks({
+  items,
+  pathname,
+  onNavigate,
+}: {
+  items: NavigationItem[];
+  pathname: string;
+  onNavigate?: () => void;
+}) {
+  return (
+    <div className="space-y-1">
+      {items.map((item) => {
+        const isActive =
+          !item.disabledReason &&
+          isNavigationItemActive(pathname, item.href);
+
+        if (item.disabledReason) {
+          return (
+            <span
+              key={item.label}
+              aria-disabled="true"
+              title={item.disabledReason}
+              className="group flex min-h-10 cursor-not-allowed items-center gap-3 rounded-xl px-3 text-sm text-white/32"
+            >
+              <span
+                className="grid size-6 place-items-center rounded-md border border-white/[.08] text-[9px] font-semibold text-white/28"
+                aria-hidden="true"
+              >
+                {item.mark}
+              </span>
+              <span className="min-w-0 flex-1 truncate">{item.label}</span>
+              <span
+                className="text-[9px] font-medium text-white/25"
+                aria-hidden="true"
+              >
+                Locked
+              </span>
+              <span className="sr-only">{item.disabledReason}</span>
+            </span>
+          );
+        }
+
+        return (
+          <Link
+            key={item.label}
+            href={item.href}
+            onClick={onNavigate}
+            aria-current={isActive ? "page" : undefined}
+            className={`group flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm transition ${
+              isActive
+                ? "bg-white text-[var(--brand-deep)] shadow-sm hover:bg-white hover:text-[var(--brand-deep)] focus-visible:bg-white focus-visible:text-[var(--brand-deep)]"
+                : "text-white/62 hover:bg-white/[.07] hover:text-white focus-visible:bg-white/[.1] focus-visible:text-white"
+            }`}
+          >
+            <span
+              className={`grid size-6 place-items-center rounded-md border text-[9px] font-semibold ${
+                isActive
+                  ? "border-border bg-brand-subtle text-[var(--brand-strong)] group-hover:border-brand/30 group-focus-visible:border-brand/40"
+                  : "border-white/12 text-white/45 group-hover:border-white/20 group-focus-visible:border-white/25"
+              }`}
+              aria-hidden="true"
+            >
+              {item.mark}
+            </span>
+            <span className={isActive ? "text-[var(--brand-deep)]" : undefined}>
+              {item.label}
+            </span>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+type ContextNavigationItem = {
+  id: number;
+  name: string;
+  slug: string;
+  basePath: string;
+  mark: string;
+  items: Array<{ label: string; href: string }>;
+};
+
+function ContextNavigationSection({
+  label,
+  contexts,
+  pathname,
+  controlPrefix,
+  emptyMessage,
+  browseHref,
+  browseLabel,
+  emptyBrowseLabel,
+  highlightBrowseRoute = true,
+  onNavigate,
+}: {
+  label: string;
+  contexts: ContextNavigationItem[];
+  pathname: string;
+  controlPrefix: string;
+  emptyMessage: string;
+  browseHref: string;
+  browseLabel: string;
+  emptyBrowseLabel: string;
+  highlightBrowseRoute?: boolean;
+  onNavigate?: () => void;
+}) {
+  const activeContextSlug = contexts.find(
+    (context) =>
+      pathname === context.basePath ||
+      pathname.startsWith(`${context.basePath}/`),
+  )?.slug;
+  const [expandedContextSlug, setExpandedContextSlug] = useState<string | null>(
+    activeContextSlug ?? contexts[0]?.slug ?? null,
+  );
+  const browseIsActive = highlightBrowseRoute && pathname === browseHref;
+
+  return (
+    <div className="mt-7">
+      <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.17em] text-white/35">
+        {label}
+      </p>
+      {contexts.length > 0 ? (
+        <div className="space-y-1.5">
+          {contexts.map((context) => {
+            const isExpanded = expandedContextSlug === context.slug;
+            const isContextActive =
+              pathname === context.basePath ||
+              pathname.startsWith(`${context.basePath}/`);
+            const navigationId = `${controlPrefix}-${context.id}-navigation`;
+
+            return (
+              <div key={context.id}>
+                <button
+                  type="button"
+                  onClick={() =>
+                    setExpandedContextSlug((current) =>
+                      current === context.slug ? null : context.slug,
+                    )
+                  }
+                  aria-expanded={isExpanded}
+                  aria-controls={navigationId}
+                  className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm transition ${
+                    isContextActive
+                      ? "bg-white/[.09] text-white"
+                      : "text-white/66 hover:bg-white/[.07] hover:text-white"
+                  }`}
+                >
+                  <span
+                    className="grid size-6 shrink-0 place-items-center rounded-md border border-white/12 text-[9px] font-semibold text-white/50"
+                    aria-hidden="true"
+                  >
+                    {context.mark}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-medium">
+                    {context.name}
+                  </span>
+                  <span
+                    className={`shrink-0 text-xs text-white/40 transition-transform ${
+                      isExpanded ? "rotate-90" : ""
+                    }`}
+                    aria-hidden="true"
+                  >
+                    ›
+                  </span>
+                </button>
+                {isExpanded ? (
+                  <div
+                    id={navigationId}
+                    className="ml-6 mt-1 space-y-0.5 border-l border-white/10 pl-3"
+                  >
+                    {context.items.map((item) => {
+                      const isActive = pathname === item.href;
+
+                      return (
+                        <Link
+                          key={item.label}
+                          href={item.href}
+                          onClick={onNavigate}
+                          aria-current={isActive ? "page" : undefined}
+                          className={`flex min-h-9 items-center rounded-lg px-3 text-xs font-medium transition ${
+                            isActive
+                              ? "bg-white text-[var(--brand-deep)]"
+                              : "text-white/52 hover:bg-white/[.07] hover:text-white"
+                          }`}
+                        >
+                          {item.label}
+                        </Link>
+                      );
+                    })}
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="px-3 text-xs leading-5 text-white/40">{emptyMessage}</p>
+      )}
+      <Link
+        href={browseHref}
+        onClick={onNavigate}
+        aria-current={browseIsActive ? "page" : undefined}
+        className={`mt-2 flex min-h-9 items-center rounded-lg px-3 text-xs font-semibold transition ${
+          browseIsActive
+            ? "bg-white text-[var(--brand-deep)]"
+            : "text-brand hover:bg-white/[.07] hover:text-white"
+        }`}
+      >
+        {contexts.length > 0 ? browseLabel : emptyBrowseLabel}
+        <span className="ml-auto" aria-hidden="true">
+          →
+        </span>
+      </Link>
+    </div>
+  );
+}
+
 function Navigation({
   pathname,
   organisations,
+  clubs,
   onNavigate,
 }: {
   pathname: string;
   organisations: SidebarOrganisation[];
+  clubs: SidebarClub[];
   onNavigate?: () => void;
 }) {
-  const activeOrganisationSlug = organisations.find((organisation) => {
+  const organisationContexts = organisations.map((organisation) => {
     const basePath = `/organisations/${organisation.slug}`;
-    return pathname === basePath || pathname.startsWith(`${basePath}/`);
-  })?.slug;
-  const [expandedOrganisationSlug, setExpandedOrganisationSlug] = useState<
-    string | null
-  >(activeOrganisationSlug ?? organisations[0]?.slug ?? null);
+
+    return {
+      ...organisation,
+      basePath,
+      mark: "O",
+      items: [
+        { label: "Overview", href: basePath },
+        { label: "Leagues", href: `${basePath}/leagues` },
+        { label: "Results", href: `${basePath}/results` },
+        { label: "Information", href: `${basePath}/information` },
+        { label: "Contact", href: `${basePath}/contact` },
+      ],
+    };
+  });
+  const clubContexts = clubs.map((club) => {
+    const basePath = `/clubs/${club.slug}`;
+
+    return {
+      ...club,
+      basePath,
+      mark: "C",
+      items: [
+        { label: "Overview", href: basePath },
+        { label: "Competitions", href: `${basePath}/competitions` },
+      ],
+    };
+  });
 
   return (
     <nav
       className="application-navigation sidebar-scrollbar mt-9 flex-1 overflow-y-auto px-3 pb-5"
       aria-label="Application navigation"
     >
-      {sections.map((section, sectionIndex) => (
-        <div key={section.label ?? sectionIndex}>
-          {sectionIndex === 1 ? (
-            <div className="mt-7">
-              <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.17em] text-white/35">
-                My organisations
-              </p>
-              {organisations.length > 0 ? (
-                <div className="space-y-1.5">
-                  {organisations.map((organisation) => {
-                    const basePath = `/organisations/${organisation.slug}`;
-                    const isExpanded =
-                      expandedOrganisationSlug === organisation.slug;
-                    const isContextActive =
-                      pathname === basePath || pathname.startsWith(`${basePath}/`);
-                    const organisationItems = [
-                      { label: "Overview", href: basePath },
-                      { label: "Leagues", href: `${basePath}/leagues` },
-                      { label: "Results", href: `${basePath}/results` },
-                      { label: "Information", href: `${basePath}/information` },
-                      { label: "Contact", href: `${basePath}/contact` },
-                    ];
+      <NavigationLinks
+        items={primaryNavigationItems}
+        pathname={pathname}
+        onNavigate={onNavigate}
+      />
 
-                    return (
-                      <div key={organisation.id}>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setExpandedOrganisationSlug((current) =>
-                              current === organisation.slug
-                                ? null
-                                : organisation.slug,
-                            )
-                          }
-                          aria-expanded={isExpanded}
-                          aria-controls={`organisation-${organisation.id}-navigation`}
-                          className={`flex min-h-11 w-full items-center gap-3 rounded-xl px-3 text-left text-sm transition ${
-                            isContextActive
-                              ? "bg-white/[.09] text-white"
-                              : "text-white/66 hover:bg-white/[.07] hover:text-white"
-                          }`}
-                        >
-                          <span
-                            className="grid size-6 shrink-0 place-items-center rounded-md border border-white/12 text-[9px] font-semibold text-white/50"
-                            aria-hidden="true"
-                          >
-                            O
-                          </span>
-                          <span className="min-w-0 flex-1 truncate font-medium">
-                            {organisation.name}
-                          </span>
-                          <span
-                            className={`text-xs text-white/40 transition-transform ${
-                              isExpanded ? "rotate-90" : ""
-                            }`}
-                            aria-hidden="true"
-                          >
-                            ›
-                          </span>
-                        </button>
-                        {isExpanded ? (
-                          <div
-                            id={`organisation-${organisation.id}-navigation`}
-                            className="ml-6 mt-1 space-y-0.5 border-l border-white/10 pl-3"
-                          >
-                            {organisationItems.map((item) => {
-                              const isActive = pathname === item.href;
+      <ContextNavigationSection
+        label="My organisations"
+        contexts={organisationContexts}
+        pathname={pathname}
+        controlPrefix="organisation"
+        emptyMessage="No organisations added yet."
+        browseHref="/organisations"
+        browseLabel="Browse organisations"
+        emptyBrowseLabel="Find an organisation"
+        highlightBrowseRoute={false}
+        onNavigate={onNavigate}
+      />
 
-                              return (
-                                <Link
-                                  key={item.label}
-                                  href={item.href}
-                                  onClick={onNavigate}
-                                  aria-current={isActive ? "page" : undefined}
-                                  className={`flex min-h-9 items-center rounded-lg px-3 text-xs font-medium transition ${
-                                    isActive
-                                      ? "bg-white text-[var(--brand-deep)]"
-                                      : "text-white/52 hover:bg-white/[.07] hover:text-white"
-                                  }`}
-                                >
-                                  {item.label}
-                                </Link>
-                              );
-                            })}
-                          </div>
-                        ) : null}
-                      </div>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="px-3 text-xs leading-5 text-white/40">
-                  No organisations added yet.
-                </p>
-              )}
-              <Link
-                href="/organisations"
-                onClick={onNavigate}
-                className="mt-2 flex min-h-9 items-center rounded-lg px-3 text-xs font-semibold text-brand transition hover:bg-white/[.07] hover:text-white"
-              >
-                {organisations.length > 0 ? "Browse organisations" : "Find an organisation"}
-                <span className="ml-auto" aria-hidden="true">→</span>
-              </Link>
-            </div>
-          ) : null}
+      <ContextNavigationSection
+        label="My clubs"
+        contexts={clubContexts}
+        pathname={pathname}
+        controlPrefix="club"
+        emptyMessage="No active club memberships yet."
+        browseHref="/clubs"
+        browseLabel="Browse clubs"
+        emptyBrowseLabel="Find a club"
+        onNavigate={onNavigate}
+      />
 
-          <div className={sectionIndex === 0 ? "" : "mt-7"}>
-            {section.label ? (
-              <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.17em] text-white/35">
-                {section.label}
-              </p>
-            ) : null}
-            <div className="space-y-1">
-              {section.items.map((item) => {
-                const isActive =
-                  !item.disabledReason &&
-                  isNavigationItemActive(pathname, item.href);
+      <div className="mt-7">
+        <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.17em] text-white/35">
+          My shooting
+        </p>
+        <NavigationLinks
+          items={shootingNavigationItems}
+          pathname={pathname}
+          onNavigate={onNavigate}
+        />
+      </div>
 
-                if (item.disabledReason) {
-                  return (
-                    <span
-                      key={item.label}
-                      aria-disabled="true"
-                      title={item.disabledReason}
-                      className="group flex min-h-10 cursor-not-allowed items-center gap-3 rounded-xl px-3 text-sm text-white/32"
-                    >
-                      <span
-                        className="grid size-6 place-items-center rounded-md border border-white/[.08] text-[9px] font-semibold text-white/28"
-                        aria-hidden="true"
-                      >
-                        {item.mark}
-                      </span>
-                      <span className="min-w-0 flex-1 truncate">{item.label}</span>
-                      <span className="text-[9px] font-medium text-white/25" aria-hidden="true">
-                        Locked
-                      </span>
-                      <span className="sr-only">{item.disabledReason}</span>
-                    </span>
-                  );
-                }
-
-                return (
-                  <Link
-                    key={item.label}
-                    href={item.href}
-                    onClick={onNavigate}
-                    aria-current={isActive ? "page" : undefined}
-                    className={`group flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm transition ${
-                      isActive
-                        ? "bg-white text-[var(--brand-deep)] shadow-sm hover:bg-white hover:text-[var(--brand-deep)] focus-visible:bg-white focus-visible:text-[var(--brand-deep)]"
-                        : "text-white/62 hover:bg-white/[.07] hover:text-white focus-visible:bg-white/[.1] focus-visible:text-white"
-                    }`}
-                  >
-                    <span
-                      className={`grid size-6 place-items-center rounded-md border text-[9px] font-semibold ${
-                        isActive
-                          ? "border-border bg-brand-subtle text-[var(--brand-strong)] group-hover:border-brand/30 group-focus-visible:border-brand/40"
-                          : "border-white/12 text-white/45 group-hover:border-white/20 group-focus-visible:border-white/25"
-                      }`}
-                      aria-hidden="true"
-                    >
-                      {item.mark}
-                    </span>
-                    <span className={isActive ? "text-[var(--brand-deep)]" : undefined}>
-                      {item.label}
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
-          </div>
-        </div>
-      ))}
+      <div className="mt-7">
+        <NavigationLinks
+          items={utilityNavigationItems}
+          pathname={pathname}
+          onNavigate={onNavigate}
+        />
+      </div>
     </nav>
   );
 }
@@ -355,14 +447,19 @@ function SidebarContent({
   pathname,
   user,
   organisations,
+  clubs,
   onNavigate,
 }: {
   pathname: string;
   user: AuthenticatedUser;
   organisations: SidebarOrganisation[];
+  clubs: SidebarClub[];
   onNavigate?: () => void;
 }) {
-  const navigationContext = pathname.match(/^\/organisations\/([^/]+)/)?.[1] ?? "base";
+  const contextualRoute = pathname.match(/^\/(organisations|clubs)\/([^/]+)/);
+  const navigationContext = contextualRoute
+    ? `${contextualRoute[1]}-${contextualRoute[2]}`
+    : "base";
 
   return (
     <>
@@ -373,6 +470,7 @@ function SidebarContent({
         key={navigationContext}
         pathname={pathname}
         organisations={organisations}
+        clubs={clubs}
         onNavigate={onNavigate}
       />
       <div className="m-3 border-t border-white/10 pt-4">
@@ -406,14 +504,16 @@ export function AppShell({
   children,
   user,
   organisations,
+  clubs,
 }: {
   children: ReactNode;
   user: AuthenticatedUser;
   organisations: SidebarOrganisation[];
+  clubs: SidebarClub[];
 }) {
   const pathname = usePathname();
   const [menuOpen, setMenuOpen] = useState(false);
-  const details = getPageDetails(pathname, organisations);
+  const details = getPageDetails(pathname, organisations, clubs);
 
   return (
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-[264px_1fr]">
@@ -422,6 +522,7 @@ export function AppShell({
           pathname={pathname}
           user={user}
           organisations={organisations}
+          clubs={clubs}
         />
       </aside>
 
@@ -446,6 +547,7 @@ export function AppShell({
               pathname={pathname}
               user={user}
               organisations={organisations}
+              clubs={clubs}
               onNavigate={() => setMenuOpen(false)}
             />
           </aside>
