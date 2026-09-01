@@ -31,6 +31,82 @@ enables owner-only Row Level Security policies.
 No service-role key is used by the application and no additional environment
 variables are required.
 
+## Organisation management access
+
+Run the complete [`database/organisation-staff.sql`](database/organisation-staff.sql)
+file in the Supabase Dashboard SQL Editor after `database/user-profiles.sql` and
+`database/organisations.sql`. This adds the separate organisation-management
+relationship, its constraints and RLS policy, and the narrowly scoped RPCs used
+to request, approve, reject, revoke, list, and transfer access.
+
+The script is safe to rerun and does not modify `public.user_organisations`.
+Dashboard follows remain personal shortcuts and never grant management access.
+It also does not assign an owner automatically.
+
+To assign the first owner of an existing development organisation, run the
+guarded block below separately. Replace only the placeholder email and slug:
+
+```sql
+do $$
+declare
+  v_user_id uuid;
+  v_organisation_id bigint;
+  v_existing_owner_id uuid;
+begin
+  select users.id
+  into v_user_id
+  from auth.users as users
+  where lower(users.email) = lower('your-test-user@example.com');
+
+  if v_user_id is null then
+    raise exception 'Bootstrap user does not exist.';
+  end if;
+
+  -- Lock this organisation so two bootstrap attempts cannot race.
+  select organisations.id
+  into v_organisation_id
+  from public.organisations as organisations
+  where organisations.slug = 'eastern-region-shooting-association'
+  for update;
+
+  if v_organisation_id is null then
+    raise exception 'Bootstrap organisation does not exist.';
+  end if;
+
+  select staff.user_id
+  into v_existing_owner_id
+  from public.organisation_staff as staff
+  where staff.organisation_id = v_organisation_id
+    and staff.role = 'owner';
+
+  if v_existing_owner_id is not null and v_existing_owner_id <> v_user_id then
+    raise exception 'This organisation already has another owner.';
+  end if;
+
+  insert into public.organisation_staff (
+    organisation_id,
+    user_id,
+    role,
+    status
+  )
+  values (
+    v_organisation_id,
+    v_user_id,
+    'owner',
+    'active'
+  )
+  on conflict (organisation_id, user_id) do update
+  set role = 'owner',
+      status = 'active';
+end;
+$$;
+```
+
+The organisation row lock serialises bootstrap attempts. The block aborts
+without changes if the Auth user or organisation does not exist, or if another
+user is already the owner. Rerunning it for the same user and organisation is
+safe.
+
 ## Club roles and membership approval
 
 Run the complete [`database/clubs-and-memberships.sql`](database/clubs-and-memberships.sql)

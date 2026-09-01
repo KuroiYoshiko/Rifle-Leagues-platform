@@ -7,7 +7,8 @@ export type OrganisationSection =
   | "leagues"
   | "results"
   | "information"
-  | "contact";
+  | "contact"
+  | "management";
 
 const sectionItems: Array<{
   id: OrganisationSection;
@@ -24,13 +25,21 @@ const sectionItems: Array<{
 export function OrganisationPageFrame({
   organisation,
   currentSection,
+  showManagement = false,
   children,
 }: {
   organisation: Organisation;
   currentSection: OrganisationSection;
+  showManagement?: boolean;
   children: ReactNode;
 }) {
   const basePath = `/organisations/${organisation.slug}`;
+  const visibleSectionItems = showManagement
+    ? [
+        ...sectionItems,
+        { id: "management" as const, label: "Management", suffix: "/management" },
+      ]
+    : sectionItems;
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -59,7 +68,7 @@ export function OrganisationPageFrame({
         aria-label={`${organisation.name} sections`}
       >
         <div className="flex min-w-max gap-1">
-          {sectionItems.map((item) => {
+          {visibleSectionItems.map((item) => {
             const isActive = item.id === currentSection;
 
             return (

@@ -66,17 +66,25 @@ export default async function OrganisationsPage({
 
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="mb-8">
-        <p className="text-xs font-medium text-brand-strong">
-          Organisation discovery
-        </p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">
-          Find a league organisation
-        </h1>
-        <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          Add an organisation to your dashboard for quick access to its public
-          league context, information, results area and contact details.
-        </p>
+      <div className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-medium text-brand-strong">
+            Organisation discovery
+          </p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">
+            Find a league organisation
+          </h1>
+          <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+            Add an organisation to your dashboard for quick access to its public
+            league context, information, results area and contact details.
+          </p>
+        </div>
+        <Link
+          href="/organisations/access"
+          className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
+        >
+          Manage an organisation
+        </Link>
       </div>
 
       <Card className="p-5 sm:p-7">
