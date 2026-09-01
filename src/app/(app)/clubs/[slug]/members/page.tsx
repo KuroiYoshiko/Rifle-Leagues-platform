@@ -1,16 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import {
-  MembershipDecisionControls,
-  OfficialAccessControl,
-  TransferOwnershipControl,
-} from "@/components/club-member-actions";
+import { ActiveClubMembersList } from "@/components/active-club-members-list";
+import { MembershipDecisionControls } from "@/components/club-member-actions";
 import { ClubPageFrame } from "@/components/club-page-frame";
-import { Badge, Card, SectionHeader } from "@/components/ui";
+import { Card, SectionHeader } from "@/components/ui";
 import {
   getClubMemberName,
   getClubPageContextBySlug,
-  getClubRoleLabel,
   isClubManager,
   type ManagedClubMember,
 } from "@/lib/clubs";
@@ -113,64 +109,13 @@ export default async function ClubMembersPage({
             )}
           </section>
 
-          <section className="mt-10" aria-labelledby="active-members-heading">
-            <SectionHeader
-              title="Active members"
-              description={`${activeMembers.length} active member${activeMembers.length === 1 ? "" : "s"}`}
+          <section className="mt-10">
+            <ActiveClubMembersList
+              members={activeMembers}
+              currentMembershipId={membership!.id}
+              currentUserIsOwner={currentUserIsOwner}
+              club={{ id: club.id, name: club.name, slug: club.slug }}
             />
-            <Card className="divide-y divide-border overflow-hidden">
-              {activeMembers.map((member) => {
-                const memberName = getClubMemberName(member);
-                const isCurrentUser = member.membership_id === membership!.id;
-
-                return (
-                  <div
-                    key={member.membership_id}
-                    className="grid gap-4 p-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6"
-                  >
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h3 className="font-semibold text-foreground">
-                          {memberName}
-                          {isCurrentUser ? (
-                            <span className="ml-1 font-normal text-muted-foreground">
-                              (you)
-                            </span>
-                          ) : null}
-                        </h3>
-                        <Badge
-                          tone={member.club_role === "member" ? "neutral" : "brand"}
-                        >
-                          {getClubRoleLabel(member.club_role)}
-                        </Badge>
-                      </div>
-                      <p className="mt-1.5 text-xs text-muted-foreground">
-                        Membership recorded {formatDate(member.created_at)}
-                      </p>
-                    </div>
-
-                    {currentUserIsOwner &&
-                    !isCurrentUser &&
-                    member.club_role !== "owner" ? (
-                      <div className="flex flex-col items-start gap-1 sm:items-end">
-                        <OfficialAccessControl
-                          membershipId={member.membership_id}
-                          memberName={memberName}
-                          clubSlug={club.slug}
-                          currentRole={member.club_role}
-                        />
-                        <TransferOwnershipControl
-                          clubId={club.id}
-                          clubSlug={club.slug}
-                          memberName={memberName}
-                          targetMembershipId={member.membership_id}
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
-            </Card>
           </section>
         </>
       )}
