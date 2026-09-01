@@ -57,12 +57,6 @@ export const clubColumns =
 
 const routeSafeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-export type DashboardMembershipState =
-  | { kind: "none" }
-  | { kind: "pending"; membership: ClubMembership & { club: Club } }
-  | { kind: "rejected"; membership: ClubMembership & { club: Club } }
-  | { kind: "active"; membership: ClubMembership & { club: Club } };
-
 export function getClubLocation(
   club: Pick<Club, "town" | "county">,
 ): string | null {
@@ -90,47 +84,6 @@ export function getClubMemberName(
       .filter(Boolean)
       .join(" ") || "Club member"
   );
-}
-
-export function getDashboardMembershipState(
-  memberships: ClubMembership[] | null | undefined,
-): DashboardMembershipState {
-  // The schema supports multiple clubs per user. Until a club switcher exists,
-  // the dashboard presents the first row in the highest-priority current state.
-  const activeMembership = memberships?.find(
-    (membership) => membership.status === "active" && membership.club,
-  );
-
-  if (activeMembership?.club) {
-    return {
-      kind: "active",
-      membership: activeMembership as ClubMembership & { club: Club },
-    };
-  }
-
-  const pendingMembership = memberships?.find(
-    (membership) => membership.status === "pending" && membership.club,
-  );
-
-  if (pendingMembership?.club) {
-    return {
-      kind: "pending",
-      membership: pendingMembership as ClubMembership & { club: Club },
-    };
-  }
-
-  const rejectedMembership = memberships?.find(
-    (membership) => membership.status === "rejected" && membership.club,
-  );
-
-  if (rejectedMembership?.club) {
-    return {
-      kind: "rejected",
-      membership: rejectedMembership as ClubMembership & { club: Club },
-    };
-  }
-
-  return { kind: "none" };
 }
 
 export const getClubPageContextBySlug = cache(async (slug: string) => {

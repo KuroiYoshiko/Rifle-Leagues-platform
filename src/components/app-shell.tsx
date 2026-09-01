@@ -22,7 +22,6 @@ type AuthenticatedUser = {
 const primaryNavigationItems: NavigationItem[] = [
   { label: "Overview", href: "/dashboard", mark: "O" },
   { label: "Profile", href: "/profile", mark: "P" },
-  { label: "Organisations", href: "/organisations", mark: "L" },
 ];
 
 const shootingNavigationItems: NavigationItem[] = [
