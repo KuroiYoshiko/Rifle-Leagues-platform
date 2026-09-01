@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import { useActionState, useEffect, useId, useRef, useState } from "react";
 import {
   leaveClubMembership,
   type LeaveClubState,
@@ -15,6 +15,9 @@ export function LeaveClubButton({
   membershipId: number;
   clubName: string;
 }) {
+  const dialogId = useId();
+  const titleId = `${dialogId}-title`;
+  const descriptionId = `${dialogId}-description`;
   const dialogRef = useRef<HTMLDialogElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const menuTriggerRef = useRef<HTMLButtonElement>(null);
@@ -64,7 +67,7 @@ export function LeaveClubButton({
         <button
           ref={menuTriggerRef}
           type="button"
-          aria-label="Club membership options"
+          aria-label={`Club membership options for ${clubName}`}
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((open) => !open)}
@@ -85,7 +88,7 @@ export function LeaveClubButton({
         {menuOpen ? (
           <div
             role="menu"
-            aria-label="Club membership options"
+            aria-label={`Club membership options for ${clubName}`}
             className="absolute right-0 z-20 mt-2 min-w-44 rounded-xl border border-border bg-surface p-1.5 text-foreground shadow-lg"
           >
             <button
@@ -106,17 +109,17 @@ export function LeaveClubButton({
 
       <dialog
         ref={dialogRef}
-        aria-labelledby="leave-club-title"
-        aria-describedby="leave-club-description"
+        aria-labelledby={titleId}
+        aria-describedby={descriptionId}
         className="m-auto w-[min(92vw,30rem)] rounded-2xl border border-border bg-surface p-0 text-foreground shadow-2xl backdrop:bg-hero-background/70 backdrop:backdrop-blur-sm"
       >
         <form action={formAction} className="p-6 sm:p-7">
           <input type="hidden" name="membership_id" value={membershipId} />
-          <h2 id="leave-club-title" className="text-lg font-semibold">
+          <h2 id={titleId} className="text-lg font-semibold">
             Leave {clubName}?
           </h2>
           <p
-            id="leave-club-description"
+            id={descriptionId}
             className="mt-3 text-sm leading-6 text-muted-foreground"
           >
             Club-specific access will be removed. You can request to join this club

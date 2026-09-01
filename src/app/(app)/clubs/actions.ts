@@ -211,6 +211,29 @@ export async function leaveClubMembership(
 
   const { data, error } = await supabase
     .from("club_memberships")
+    .select("role")
+    .eq("id", membershipId)
+    .eq("user_id", userId)
+    .eq("status", "active")
+    .maybeSingle();
+
+  if (error || !data) {
+    return {
+      status: "error",
+      message:
+        "We could not leave this club. The membership may have changed; refresh the page and try again.",
+    };
+  }
+
+  if (data.role === "owner") {
+    return {
+      status: "error",
+      message: "Transfer club ownership to another active member before leaving.",
+    };
+  }
+
+  const { data: updatedMembership, error: updateError } = await supabase
+    .from("club_memberships")
     .update({ status: "left" })
     .eq("id", membershipId)
     .eq("user_id", userId)
@@ -218,7 +241,7 @@ export async function leaveClubMembership(
     .select("id, status")
     .maybeSingle();
 
-  if (error || data?.status !== "left") {
+  if (updateError || updatedMembership?.status !== "left") {
     return {
       status: "error",
       message:

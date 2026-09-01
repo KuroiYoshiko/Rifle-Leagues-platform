@@ -57,13 +57,14 @@ create table if not exists public.clubs (
 );
 
 comment on table public.clubs is
-  'Public discovery information for rifle clubs. Client access is read-only in this phase.';
+  'Public discovery information for rifle clubs; authenticated officials manage approved fields through a scoped function.';
 
 create table if not exists public.club_memberships (
   id bigint generated always as identity primary key,
   club_id bigint not null references public.clubs (id) on delete cascade,
   user_id uuid not null references public.profiles (id) on delete cascade,
   status text not null default 'pending',
+  role text not null default 'member',
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint club_memberships_status_value check (
@@ -72,8 +73,18 @@ create table if not exists public.club_memberships (
   constraint club_memberships_club_user_unique unique (club_id, user_id)
 );
 
--- Existing installations need their original status check replaced. Keeping
--- this in the main transaction makes the full schema file safe to rerun.
+-- Existing installations receive the new role as member without replacing or
+-- deleting any membership rows. Keeping the upgrade in the main transaction
+-- makes the complete schema file safe to rerun.
+alter table public.club_memberships
+  add column if not exists role text;
+update public.club_memberships
+set role = 'member'
+where role is null;
+alter table public.club_memberships
+  alter column role set default 'member',
+  alter column role set not null;
+
 alter table public.club_memberships
   drop constraint if exists club_memberships_status_value;
 alter table public.club_memberships
@@ -81,8 +92,22 @@ alter table public.club_memberships
     status in ('pending', 'active', 'rejected', 'left')
   );
 
+alter table public.club_memberships
+  drop constraint if exists club_memberships_role_value;
+alter table public.club_memberships
+  add constraint club_memberships_role_value check (
+    role in ('member', 'official', 'owner')
+  );
+
+alter table public.club_memberships
+  drop constraint if exists club_memberships_privileged_role_active;
+alter table public.club_memberships
+  add constraint club_memberships_privileged_role_active check (
+    role = 'member' or status = 'active'
+  );
+
 comment on table public.club_memberships is
-  'One user profile association with one club and its current membership state; users may have rows for multiple clubs.';
+  'One user profile association with one club, including its lifecycle state and club-contextual role.';
 
 -- Supports active-club browsing and indexed full-text discovery without loading
 -- the full clubs table into the application.
@@ -99,6 +124,15 @@ create index if not exists clubs_active_search_document_idx
 -- the dashboard's user/status lookup.
 create index if not exists club_memberships_user_status_created_idx
   on public.club_memberships (user_id, status, created_at desc);
+
+create index if not exists club_memberships_club_status_updated_idx
+  on public.club_memberships (club_id, status, updated_at desc);
+
+-- Existing clubs may have no owner, but no club can have two owners. The
+-- privileged-role check above guarantees every owner row is also active.
+create unique index if not exists club_memberships_one_owner_per_club_idx
+  on public.club_memberships (club_id)
+  where role = 'owner';
 
 create schema if not exists private;
 
@@ -131,6 +165,18 @@ begin
         using errcode = '42501';
     end if;
 
+    if new.role is distinct from old.role then
+      raise exception 'Club membership roles cannot be changed through self-service updates.'
+        using errcode = '42501';
+    end if;
+
+    if old.status = 'active'
+      and old.role = 'owner'
+      and new.status = 'left' then
+      raise exception 'Transfer club ownership before leaving this club.'
+        using errcode = '42501';
+    end if;
+
     if not (
       (old.status = 'active' and new.status = 'left')
       or (
@@ -141,6 +187,12 @@ begin
       raise exception 'Club membership status transition is not allowed.'
         using errcode = '42501';
     end if;
+
+    -- Role is deliberately not client-updatable. Normalising it here lets the
+    -- existing status-only self-service API remain intact.
+    if new.status in ('pending', 'left') then
+      new.role = 'member';
+    end if;
   end if;
 
   return new;
@@ -149,6 +201,442 @@ $$;
 
 revoke execute on function private.enforce_authenticated_membership_transition()
   from public, anon, authenticated;
+
+-- Returns only the safe profile fields required by club management. It does
+-- not change profiles RLS or expose private address/phone fields.
+create or replace function public.get_club_members(p_club_id bigint)
+returns table (
+  membership_id bigint,
+  first_name text,
+  last_name text,
+  membership_status text,
+  club_role text,
+  created_at timestamptz,
+  updated_at timestamptz
+)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor_id uuid := (select auth.uid());
+begin
+  if v_actor_id is null then
+    raise exception 'Authentication is required.' using errcode = '42501';
+  end if;
+
+  -- Keep the caller's manager membership stable for the duration of this
+  -- authorised read without blocking other club rows.
+  perform actor_membership.id
+  from public.club_memberships as actor_membership
+  where actor_membership.club_id = p_club_id
+    and actor_membership.user_id = v_actor_id
+  for share;
+
+  if not exists (
+    select 1
+    from public.club_memberships as actor_membership
+    join public.clubs as actor_club
+      on actor_club.id = actor_membership.club_id
+    where actor_membership.club_id = p_club_id
+      and actor_membership.user_id = v_actor_id
+      and actor_membership.status = 'active'
+      and actor_membership.role in ('official', 'owner')
+      and actor_club.status = 'active'
+  ) then
+    raise exception 'You do not have permission to view this club membership list.'
+      using errcode = '42501';
+  end if;
+
+  return query
+  select
+    membership.id,
+    profile.first_name,
+    profile.last_name,
+    membership.status,
+    membership.role,
+    membership.created_at,
+    membership.updated_at
+  from public.club_memberships as membership
+  join public.profiles as profile on profile.id = membership.user_id
+  where membership.club_id = p_club_id
+    and membership.status in ('pending', 'active')
+  order by
+    case when membership.status = 'pending' then 0 else 1 end,
+    membership.updated_at,
+    membership.id;
+end;
+$$;
+
+revoke execute on function public.get_club_members(bigint)
+  from public, anon;
+grant execute on function public.get_club_members(bigint)
+  to authenticated;
+
+create or replace function public.process_club_membership_request(
+  p_membership_id bigint,
+  p_decision text
+)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor_id uuid := (select auth.uid());
+  v_club_id bigint;
+  v_current_status text;
+begin
+  if v_actor_id is null then
+    raise exception 'Authentication is required.' using errcode = '42501';
+  end if;
+
+  if p_decision not in ('active', 'rejected') then
+    raise exception 'Membership requests may only be approved or rejected.'
+      using errcode = '22023';
+  end if;
+
+  select membership.club_id
+  into v_club_id
+  from public.club_memberships as membership
+  where membership.id = p_membership_id;
+
+  if not found then
+    raise exception 'Membership request not found.' using errcode = 'P0002';
+  end if;
+
+  if not exists (
+    select 1
+    from public.club_memberships as actor_membership
+    join public.clubs as actor_club
+      on actor_club.id = actor_membership.club_id
+    where actor_membership.club_id = v_club_id
+      and actor_membership.user_id = v_actor_id
+      and actor_membership.status = 'active'
+      and actor_membership.role in ('official', 'owner')
+      and actor_club.status = 'active'
+  ) then
+    raise exception 'You do not have permission to process this club request.'
+      using errcode = '42501';
+  end if;
+
+  -- Lock the actor and target in a stable order, then re-check the actor. This
+  -- prevents a concurrent demotion or leave from racing the decision.
+  perform membership.id
+  from public.club_memberships as membership
+  where membership.club_id = v_club_id
+    and (
+      membership.user_id = v_actor_id
+      or membership.id = p_membership_id
+    )
+  order by membership.id
+  for update;
+
+  if not exists (
+    select 1
+    from public.club_memberships as actor_membership
+    join public.clubs as actor_club
+      on actor_club.id = actor_membership.club_id
+    where actor_membership.club_id = v_club_id
+      and actor_membership.user_id = v_actor_id
+      and actor_membership.status = 'active'
+      and actor_membership.role in ('official', 'owner')
+      and actor_club.status = 'active'
+  ) then
+    raise exception 'You do not have permission to process this club request.'
+      using errcode = '42501';
+  end if;
+
+  select membership.status
+  into v_current_status
+  from public.club_memberships as membership
+  where membership.id = p_membership_id
+    and membership.club_id = v_club_id
+  for update;
+
+  if not found then
+    raise exception 'Membership request not found.' using errcode = 'P0002';
+  end if;
+
+  if v_current_status <> 'pending' then
+    raise exception 'Only pending membership requests can be processed.'
+      using errcode = '22023';
+  end if;
+
+  update public.club_memberships
+  set status = p_decision,
+      role = 'member'
+  where id = p_membership_id;
+
+  return p_decision;
+end;
+$$;
+
+revoke execute on function public.process_club_membership_request(bigint, text)
+  from public, anon;
+grant execute on function public.process_club_membership_request(bigint, text)
+  to authenticated;
+
+create or replace function public.set_club_member_role(
+  p_membership_id bigint,
+  p_role text
+)
+returns text
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor_id uuid := (select auth.uid());
+  v_club_id bigint;
+  v_target_status text;
+  v_target_role text;
+begin
+  if v_actor_id is null then
+    raise exception 'Authentication is required.' using errcode = '42501';
+  end if;
+
+  if p_role not in ('member', 'official') then
+    raise exception 'This role change is not allowed.' using errcode = '22023';
+  end if;
+
+  select membership.club_id
+  into v_club_id
+  from public.club_memberships as membership
+  where membership.id = p_membership_id;
+
+  if not found then
+    raise exception 'Club member not found.' using errcode = 'P0002';
+  end if;
+
+  if not exists (
+    select 1
+    from public.club_memberships as actor_membership
+    join public.clubs as actor_club
+      on actor_club.id = actor_membership.club_id
+    where actor_membership.club_id = v_club_id
+      and actor_membership.user_id = v_actor_id
+      and actor_membership.status = 'active'
+      and actor_membership.role = 'owner'
+      and actor_club.status = 'active'
+  ) then
+    raise exception 'Only this club owner can manage official access.'
+      using errcode = '42501';
+  end if;
+
+  -- Lock the owner and target in a stable order, then re-check ownership so a
+  -- concurrent transfer cannot race this role change.
+  perform membership.id
+  from public.club_memberships as membership
+  where membership.club_id = v_club_id
+    and (
+      membership.user_id = v_actor_id
+      or membership.id = p_membership_id
+    )
+  order by membership.id
+  for update;
+
+  if not exists (
+    select 1
+    from public.club_memberships as actor_membership
+    join public.clubs as actor_club
+      on actor_club.id = actor_membership.club_id
+    where actor_membership.club_id = v_club_id
+      and actor_membership.user_id = v_actor_id
+      and actor_membership.status = 'active'
+      and actor_membership.role = 'owner'
+      and actor_club.status = 'active'
+  ) then
+    raise exception 'Only this club owner can manage official access.'
+      using errcode = '42501';
+  end if;
+
+  select membership.status, membership.role
+  into v_target_status, v_target_role
+  from public.club_memberships as membership
+  where membership.id = p_membership_id
+    and membership.club_id = v_club_id
+  for update;
+
+  if not found then
+    raise exception 'Club member not found.' using errcode = 'P0002';
+  end if;
+
+  if v_target_status <> 'active'
+    or not (
+      (v_target_role = 'member' and p_role = 'official')
+      or (v_target_role = 'official' and p_role = 'member')
+    ) then
+    raise exception 'Only active members and officials can change official access.'
+      using errcode = '22023';
+  end if;
+
+  update public.club_memberships
+  set role = p_role
+  where id = p_membership_id;
+
+  return p_role;
+end;
+$$;
+
+revoke execute on function public.set_club_member_role(bigint, text)
+  from public, anon;
+grant execute on function public.set_club_member_role(bigint, text)
+  to authenticated;
+
+create or replace function public.transfer_club_ownership(
+  p_club_id bigint,
+  p_target_membership_id bigint
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor_id uuid := (select auth.uid());
+  v_actor_membership_id bigint;
+  v_target_user_id uuid;
+  v_target_status text;
+  v_target_role text;
+begin
+  if v_actor_id is null then
+    raise exception 'Authentication is required.' using errcode = '42501';
+  end if;
+
+  if not exists (
+    select 1
+    from public.club_memberships as actor_membership
+    join public.clubs as actor_club
+      on actor_club.id = actor_membership.club_id
+    where actor_membership.club_id = p_club_id
+      and actor_membership.user_id = v_actor_id
+      and actor_membership.status = 'active'
+      and actor_membership.role = 'owner'
+      and actor_club.status = 'active'
+  ) then
+    raise exception 'Only this club owner can transfer ownership.'
+      using errcode = '42501';
+  end if;
+
+  -- Lock both memberships in a stable order before validating or updating.
+  perform membership.id
+  from public.club_memberships as membership
+  where membership.club_id = p_club_id
+    and (
+      membership.user_id = v_actor_id
+      or membership.id = p_target_membership_id
+    )
+  order by membership.id
+  for update;
+
+  select membership.id
+  into v_actor_membership_id
+  from public.club_memberships as membership
+  join public.clubs as actor_club on actor_club.id = membership.club_id
+  where membership.club_id = p_club_id
+    and membership.user_id = v_actor_id
+    and membership.status = 'active'
+    and membership.role = 'owner'
+    and actor_club.status = 'active';
+
+  if v_actor_membership_id is null then
+    raise exception 'Only this club owner can transfer ownership.'
+      using errcode = '42501';
+  end if;
+
+  select membership.user_id, membership.status, membership.role
+  into v_target_user_id, v_target_status, v_target_role
+  from public.club_memberships as membership
+  where membership.id = p_target_membership_id
+    and membership.club_id = p_club_id;
+
+  if not found
+    or v_target_user_id = v_actor_id
+    or v_target_status <> 'active'
+    or v_target_role not in ('member', 'official') then
+    raise exception 'Ownership can only be transferred to another active club member.'
+      using errcode = '22023';
+  end if;
+
+  -- Both writes are part of the RPC transaction. Other transactions cannot
+  -- observe the temporary ownerless state between these statements.
+  update public.club_memberships
+  set role = 'official'
+  where id = v_actor_membership_id;
+
+  update public.club_memberships
+  set role = 'owner'
+  where id = p_target_membership_id;
+end;
+$$;
+
+revoke execute on function public.transfer_club_ownership(bigint, bigint)
+  from public, anon;
+grant execute on function public.transfer_club_ownership(bigint, bigint)
+  to authenticated;
+
+create or replace function public.update_club_details(
+  p_club_id bigint,
+  p_name text,
+  p_town text,
+  p_county text,
+  p_postcode text,
+  p_website text
+)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_actor_id uuid := (select auth.uid());
+begin
+  if v_actor_id is null then
+    raise exception 'Authentication is required.' using errcode = '42501';
+  end if;
+
+  -- Keep the caller's membership stable through authorisation and the update.
+  perform actor_membership.id
+  from public.club_memberships as actor_membership
+  where actor_membership.club_id = p_club_id
+    and actor_membership.user_id = v_actor_id
+  for update;
+
+  if not exists (
+    select 1
+    from public.club_memberships as actor_membership
+    join public.clubs as actor_club
+      on actor_club.id = actor_membership.club_id
+    where actor_membership.club_id = p_club_id
+      and actor_membership.user_id = v_actor_id
+      and actor_membership.status = 'active'
+      and actor_membership.role in ('official', 'owner')
+      and actor_club.status = 'active'
+  ) then
+    raise exception 'You do not have permission to edit this club.'
+      using errcode = '42501';
+  end if;
+
+  update public.clubs
+  set name = btrim(p_name),
+      town = nullif(btrim(p_town), ''),
+      county = nullif(btrim(p_county), ''),
+      postcode = nullif(btrim(p_postcode), ''),
+      website = nullif(btrim(p_website), '')
+  where id = p_club_id
+    and status = 'active';
+
+  if not found then
+    raise exception 'Active club not found.' using errcode = 'P0002';
+  end if;
+end;
+$$;
+
+revoke execute on function public.update_club_details(bigint, text, text, text, text, text)
+  from public, anon;
+grant execute on function public.update_club_details(bigint, text, text, text, text, text)
+  to authenticated;
 
 drop trigger if exists set_clubs_updated_at on public.clubs;
 create trigger set_clubs_updated_at
@@ -217,6 +705,7 @@ to authenticated
 with check (
   (select auth.uid()) = user_id
   and status = 'pending'
+  and role = 'member'
   and exists (
     select 1
     from public.clubs

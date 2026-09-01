@@ -45,6 +45,7 @@ export default async function ApplicationLayout({
       supabase
         .from("club_memberships")
         .select(`
+        role,
         club:clubs!inner (
           id,
           name,
@@ -70,10 +71,11 @@ export default async function ApplicationLayout({
     )
     .sort((left, right) => left.name.localeCompare(right.name));
   const clubMembershipRows = (clubMembershipsResult.data ?? []) as unknown as Array<{
-    club: SidebarClub | null;
+    role: SidebarClub["role"];
+    club: Omit<SidebarClub, "role"> | null;
   }>;
   const clubs = clubMembershipRows
-    .map((row) => row.club)
+    .map((row) => (row.club ? { ...row.club, role: row.role } : null))
     .filter((club): club is SidebarClub => Boolean(club))
     .sort((left, right) => left.name.localeCompare(right.name));
   const firstName =

@@ -8,9 +8,11 @@ export const MEMBERSHIP_STATUSES = [
   "rejected",
   "left",
 ] as const;
+export const CLUB_ROLES = ["member", "official", "owner"] as const;
 
 export type ClubStatus = (typeof CLUB_STATUSES)[number];
 export type MembershipStatus = (typeof MEMBERSHIP_STATUSES)[number];
+export type ClubRole = (typeof CLUB_ROLES)[number];
 
 export type Club = {
   id: number;
@@ -26,11 +28,24 @@ export type ClubMembership = {
   id: number;
   club_id: number;
   status: MembershipStatus;
+  role: ClubRole;
   created_at: string;
   club: Club | null;
 };
 
-export type SidebarClub = Pick<Club, "id" | "name" | "slug">;
+export type SidebarClub = Pick<Club, "id" | "name" | "slug"> & {
+  role: ClubRole;
+};
+
+export type ManagedClubMember = {
+  membership_id: number;
+  first_name: string | null;
+  last_name: string | null;
+  membership_status: "pending" | "active";
+  club_role: ClubRole;
+  created_at: string;
+  updated_at: string;
+};
 
 export type ClubPageContext = {
   club: Club;
@@ -42,57 +57,33 @@ export const clubColumns =
 
 const routeSafeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
-export type DashboardMembershipState =
-  | { kind: "none" }
-  | { kind: "pending"; membership: ClubMembership & { club: Club } }
-  | { kind: "rejected"; membership: ClubMembership & { club: Club } }
-  | { kind: "active"; membership: ClubMembership & { club: Club } };
-
 export function getClubLocation(
   club: Pick<Club, "town" | "county">,
 ): string | null {
   return [club.town, club.county].filter(Boolean).join(", ") || null;
 }
 
-export function getDashboardMembershipState(
-  memberships: ClubMembership[] | null | undefined,
-): DashboardMembershipState {
-  // The schema supports multiple clubs per user. Until a club switcher exists,
-  // the dashboard presents the first row in the highest-priority current state.
-  const activeMembership = memberships?.find(
-    (membership) => membership.status === "active" && membership.club,
+export function isClubManager(
+  membership: Pick<ClubMembership, "status" | "role"> | null,
+) {
+  return (
+    membership?.status === "active" &&
+    (membership.role === "official" || membership.role === "owner")
   );
+}
 
-  if (activeMembership?.club) {
-    return {
-      kind: "active",
-      membership: activeMembership as ClubMembership & { club: Club },
-    };
-  }
+export function getClubRoleLabel(role: ClubRole) {
+  return role[0].toUpperCase() + role.slice(1);
+}
 
-  const pendingMembership = memberships?.find(
-    (membership) => membership.status === "pending" && membership.club,
+export function getClubMemberName(
+  member: Pick<ManagedClubMember, "first_name" | "last_name">,
+) {
+  return (
+    [member.first_name?.trim(), member.last_name?.trim()]
+      .filter(Boolean)
+      .join(" ") || "Club member"
   );
-
-  if (pendingMembership?.club) {
-    return {
-      kind: "pending",
-      membership: pendingMembership as ClubMembership & { club: Club },
-    };
-  }
-
-  const rejectedMembership = memberships?.find(
-    (membership) => membership.status === "rejected" && membership.club,
-  );
-
-  if (rejectedMembership?.club) {
-    return {
-      kind: "rejected",
-      membership: rejectedMembership as ClubMembership & { club: Club },
-    };
-  }
-
-  return { kind: "none" };
 }
 
 export const getClubPageContextBySlug = cache(async (slug: string) => {
@@ -127,7 +118,7 @@ export const getClubPageContextBySlug = cache(async (slug: string) => {
   const club = clubResult.data as Club;
   const { data: membershipData, error: membershipError } = await supabase
     .from("club_memberships")
-    .select("id, club_id, status, created_at")
+    .select("id, club_id, status, role, created_at")
     .eq("club_id", club.id)
     .eq("user_id", userId)
     .maybeSingle();

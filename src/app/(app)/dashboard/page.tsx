@@ -1,12 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { LeaveClubButton } from "@/components/leave-club-button";
+import {
+  DashboardClubCards,
+  type DashboardClubMembership,
+} from "@/components/dashboard-club-cards";
 import { MembershipRequestButton } from "@/components/membership-request-button";
 import { Badge, Card, ProgressBar, SectionHeader } from "@/components/ui";
 import {
   getClubLocation,
-  getDashboardMembershipState,
   type ClubMembership,
 } from "@/lib/clubs";
 import {
@@ -21,6 +23,12 @@ export const metadata: Metadata = {
 
 const profileColumns =
   "id, first_name, last_name, title, address, town, county, postcode, phone_number, created_at, updated_at";
+
+function hasClub(
+  membership: ClubMembership,
+): membership is DashboardClubMembership {
+  return membership.club !== null;
+}
 
 function metadataValue(metadata: unknown, key: string) {
   if (!metadata || typeof metadata !== "object") return undefined;
@@ -74,6 +82,7 @@ export default async function DashboardPage() {
         id,
         club_id,
         status,
+        role,
         created_at,
         club:clubs (
           id,
@@ -122,21 +131,44 @@ export default async function DashboardPage() {
 
   const profile = data as Profile;
   const completeness = calculateProfileCompleteness(profile);
-  const membershipState = getDashboardMembershipState(
-    membershipsResult.data as unknown as ClubMembership[] | null,
-  );
+  const memberships = (
+    membershipsResult.data as unknown as ClubMembership[] | null
+  )?.filter(hasClub) ?? [];
+  const activeMemberships = memberships
+    .filter((membership) => membership.status === "active")
+    .sort((left, right) =>
+      left.club.name.localeCompare(right.club.name, "en", {
+        sensitivity: "base",
+      }),
+    );
+  const pendingMemberships = memberships
+    .filter((membership) => membership.status === "pending")
+    .sort((left, right) =>
+      left.club.name.localeCompare(right.club.name, "en", {
+        sensitivity: "base",
+      }),
+    );
+  const rejectedMemberships = memberships
+    .filter((membership) => membership.status === "rejected")
+    .sort((left, right) =>
+      left.club.name.localeCompare(right.club.name, "en", {
+        sensitivity: "base",
+      }),
+    );
+  const activeClubCount = activeMemberships.length;
+  const hasMembershipState = memberships.length > 0;
   const metadataFirstName = metadataValue(claims.user_metadata, "first_name");
   const firstName = profile.first_name?.trim() || metadataFirstName || "there";
   const profileIsComplete = completeness.isComplete;
   const showProfileOnboarding =
-    !profileIsComplete && membershipState.kind === "none";
+    !profileIsComplete && !hasMembershipState && !membershipsResult.error;
   const welcomeCopy =
-    membershipState.kind === "active"
-      ? "Your club membership is active. Competition features will appear here when they are ready."
-      : membershipState.kind === "pending"
-        ? "Your club membership request is waiting for approval."
-        : membershipState.kind === "rejected"
-          ? "Your club membership request needs your attention."
+    activeClubCount > 0
+      ? `You have ${activeClubCount} active club ${activeClubCount === 1 ? "membership" : "memberships"}. Competition features will appear here when they are ready.`
+      : pendingMemberships.length > 0
+        ? `You have ${pendingMemberships.length} club membership ${pendingMemberships.length === 1 ? "request" : "requests"} waiting for approval.`
+        : rejectedMemberships.length > 0
+          ? `You have ${rejectedMemberships.length} club membership ${rejectedMemberships.length === 1 ? "request" : "requests"} that need your attention.`
           : profileIsComplete
             ? "Your profile is ready. Connecting with your club is the next step."
             : "Complete your profile and connect with your club when you are ready.";
@@ -266,8 +298,12 @@ export default async function DashboardPage() {
         className={showProfileOnboarding ? "mt-10" : undefined}
       >
         <SectionHeader
-          title="Your club"
-          description="Your current RifleLeagues club membership state"
+          title="Your clubs"
+          description={
+            activeClubCount > 0
+              ? `${activeClubCount} active ${activeClubCount === 1 ? "club" : "clubs"}`
+              : "Your active RifleLeagues club memberships"
+          }
         />
         {membershipsResult.error ? (
           <Card className="border-danger/20 p-6 sm:p-8">
@@ -279,116 +315,85 @@ export default async function DashboardPage() {
               </p>
             </div>
           </Card>
-        ) : membershipState.kind === "pending" ? (
-          <Card className="p-6 sm:p-8">
-            <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
-              <div className="flex items-start gap-4">
-                <span
-                  className="grid size-11 shrink-0 place-items-center rounded-xl bg-warning-subtle text-sm font-bold text-warning"
-                  aria-hidden="true"
-                >
-                  P
-                </span>
-                <div>
-                  <Badge tone="warning">Membership pending</Badge>
-                  <h2 className="mt-3 font-semibold text-foreground">
-                    {membershipState.membership.club.name}
-                  </h2>
-                  {getClubLocation(membershipState.membership.club) ? (
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {getClubLocation(membershipState.membership.club)}
-                    </p>
-                  ) : null}
-                  <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-                    Your request is waiting for club approval.
-                  </p>
+        ) : activeClubCount > 0 ? (
+          <DashboardClubCards memberships={activeMemberships} />
+        ) : pendingMemberships.length > 0 || rejectedMemberships.length > 0 ? (
+          <div className="space-y-4">
+            {pendingMemberships.map((membership) => (
+              <Card key={membership.id} className="p-6 sm:p-8">
+                <div className="flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="flex items-start gap-4">
+                    <span
+                      className="grid size-11 shrink-0 place-items-center rounded-xl bg-warning-subtle text-sm font-bold text-warning"
+                      aria-hidden="true"
+                    >
+                      P
+                    </span>
+                    <div className="min-w-0">
+                      <Badge tone="warning">Membership pending</Badge>
+                      <h2 className="mt-3 break-words font-semibold text-foreground">
+                        {membership.club.name}
+                      </h2>
+                      {getClubLocation(membership.club) ? (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {getClubLocation(membership.club)}
+                        </p>
+                      ) : null}
+                      <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+                        Your request is waiting for club approval.
+                      </p>
+                    </div>
+                  </div>
+                  <CompactProfileStatus
+                    complete={profileIsComplete}
+                    percentage={completeness.percentage}
+                  />
                 </div>
-              </div>
+              </Card>
+            ))}
+            {rejectedMemberships.map((membership) => (
+              <Card key={membership.id} className="border-danger/20 p-6 sm:p-8">
+                <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
+                  <div className="flex items-start gap-4">
+                    <span
+                      className="grid size-11 shrink-0 place-items-center rounded-xl bg-danger-subtle text-sm font-bold text-danger"
+                      aria-hidden="true"
+                    >
+                      R
+                    </span>
+                    <div className="min-w-0">
+                      <span className="inline-flex rounded-full bg-danger-subtle px-2.5 py-1 text-[11px] font-semibold text-danger">
+                        Membership request declined
+                      </span>
+                      <h2 className="mt-3 break-words font-semibold text-foreground">
+                        {membership.club.name}
+                      </h2>
+                      {getClubLocation(membership.club) ? (
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {getClubLocation(membership.club)}
+                        </p>
+                      ) : null}
+                      <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
+                        This request was not approved. You can send the same membership
+                        request again when you are ready.
+                      </p>
+                    </div>
+                  </div>
+                  <MembershipRequestButton
+                    clubId={membership.club_id}
+                    currentStatus="rejected"
+                    showDeclinedLabel={false}
+                  />
+                </div>
+              </Card>
+            ))}
+            {!profileIsComplete ? (
               <CompactProfileStatus
-                complete={profileIsComplete}
+                complete={false}
                 percentage={completeness.percentage}
               />
-            </div>
-          </Card>
-        ) : membershipState.kind === "rejected" ? (
-          <Card className="border-danger/20 p-6 sm:p-8">
-            <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-              <div className="flex items-start gap-4">
-                <span
-                  className="grid size-11 shrink-0 place-items-center rounded-xl bg-danger-subtle text-sm font-bold text-danger"
-                  aria-hidden="true"
-                >
-                  R
-                </span>
-                <div>
-                  <span className="inline-flex rounded-full bg-danger-subtle px-2.5 py-1 text-[11px] font-semibold text-danger">
-                    Membership request declined
-                  </span>
-                  <h2 className="mt-3 font-semibold text-foreground">
-                    {membershipState.membership.club.name}
-                  </h2>
-                  {getClubLocation(membershipState.membership.club) ? (
-                    <p className="mt-1 text-sm text-muted-foreground">
-                      {getClubLocation(membershipState.membership.club)}
-                    </p>
-                  ) : null}
-                  <p className="mt-3 max-w-2xl text-sm leading-6 text-muted-foreground">
-                    This request was not approved. You can send the same membership
-                    request again when you are ready.
-                  </p>
-                </div>
-              </div>
-              <MembershipRequestButton
-                clubId={membershipState.membership.club_id}
-                currentStatus="rejected"
-                showDeclinedLabel={false}
-              />
-            </div>
-            {!profileIsComplete ? (
-              <div className="mt-6 border-t border-border pt-5">
-                <CompactProfileStatus
-                  complete={false}
-                  percentage={completeness.percentage}
-                />
-              </div>
             ) : null}
-          </Card>
-        ) : membershipState.kind === "active" ? (
-          <Card
-            background="navigation"
-            className="relative overflow-hidden border-0 p-6 text-white sm:p-8"
-          >
-            <div className="target-mark absolute -right-36 -top-36 aspect-square w-[31rem] opacity-15" />
-            <div className="relative flex flex-col gap-6 sm:flex-row sm:items-start sm:justify-between">
-              <div className="flex items-start gap-4">
-                <span
-                  className="grid size-11 shrink-0 place-items-center rounded-xl bg-success-subtle text-sm font-bold text-success"
-                  aria-hidden="true"
-                >
-                  C
-                </span>
-                <div>
-                  <Badge tone="positive">Membership active</Badge>
-                  <h2 className="mt-3 text-xl font-semibold text-white">
-                    {membershipState.membership.club.name}
-                  </h2>
-                  {getClubLocation(membershipState.membership.club) ? (
-                    <p className="mt-1 text-sm text-white/60">
-                      {getClubLocation(membershipState.membership.club)}
-                    </p>
-                  ) : null}
-                  <p className="mt-3 max-w-2xl text-sm leading-6 text-white/62">
-                    Your club membership is active. Your dashboard is ready for real
-                    competition features when they are introduced.
-                  </p>
-                </div>
-              </div>
-              <LeaveClubButton
-                membershipId={membershipState.membership.id}
-                clubName={membershipState.membership.club.name}
-              />
-            </div>
-          </Card>
+          </div>
         ) : (
           <Card
             background={profileIsComplete ? "navigation" : "surface"}
@@ -439,7 +444,7 @@ export default async function DashboardPage() {
         )}
       </section>
 
-      {membershipState.kind === "active" && !membershipsResult.error ? (
+      {activeClubCount > 0 && !membershipsResult.error ? (
         <section id="competitions" className="mt-10">
           <SectionHeader
             title="Competitions"

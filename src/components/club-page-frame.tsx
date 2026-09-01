@@ -5,12 +5,14 @@ import { MembershipRequestButton } from "@/components/membership-request-button"
 import { Badge, Card, SectionHeader } from "@/components/ui";
 import {
   getClubLocation,
+  getClubRoleLabel,
+  isClubManager,
   type Club,
   type ClubMembership,
   type MembershipStatus,
 } from "@/lib/clubs";
 
-export type ClubSection = "overview" | "competitions";
+export type ClubSection = "overview" | "competitions" | "members" | "settings";
 
 const sectionItems: Array<{
   id: ClubSection;
@@ -19,6 +21,8 @@ const sectionItems: Array<{
 }> = [
   { id: "overview", label: "Overview", suffix: "" },
   { id: "competitions", label: "Competitions", suffix: "/competitions" },
+  { id: "members", label: "Members", suffix: "/members" },
+  { id: "settings", label: "Club settings", suffix: "/settings" },
 ];
 
 export function ClubPageFrame({
@@ -34,6 +38,7 @@ export function ClubPageFrame({
 }) {
   const basePath = `/clubs/${club.slug}`;
   const membershipIsActive = membership?.status === "active";
+  const membershipIsManager = isClubManager(membership);
   const location = getClubLocation(club);
 
   return (
@@ -64,7 +69,13 @@ export function ClubPageFrame({
           aria-label={`${club.name} sections`}
         >
           <div className="flex min-w-max gap-1">
-            {sectionItems.map((item) => {
+            {sectionItems
+              .filter(
+                (item) =>
+                  membershipIsManager ||
+                  (item.id !== "members" && item.id !== "settings"),
+              )
+              .map((item) => {
               const isActive = item.id === currentSection;
 
               return (
@@ -81,7 +92,7 @@ export function ClubPageFrame({
                   {item.label}
                 </Link>
               );
-            })}
+              })}
           </div>
         </nav>
       ) : null}
@@ -136,7 +147,10 @@ export function ClubMembershipPanel({
           <div className="target-mark absolute -right-36 -top-36 aspect-square w-[31rem] opacity-15" />
           <div className="relative flex items-start justify-between gap-5">
             <div>
-              <Badge tone="positive">Active</Badge>
+              <div className="flex flex-wrap gap-2">
+                <Badge tone="positive">Active</Badge>
+                <Badge tone="brand">{getClubRoleLabel(membership.role)}</Badge>
+              </div>
               <h2 id="club-membership-heading" className="mt-3 text-xl font-semibold">
                 Active club membership
               </h2>
@@ -145,10 +159,16 @@ export function ClubMembershipPanel({
                 areas.
               </p>
             </div>
-            <LeaveClubButton
-              membershipId={membership.id}
-              clubName={club.name}
-            />
+            {membership.role === "owner" ? (
+              <p className="max-w-52 text-right text-xs leading-5 text-white/55">
+                Transfer ownership before leaving this club.
+              </p>
+            ) : (
+              <LeaveClubButton
+                membershipId={membership.id}
+                clubName={club.name}
+              />
+            )}
           </div>
         </Card>
       </section>
