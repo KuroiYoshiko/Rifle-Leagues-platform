@@ -74,6 +74,7 @@ export default async function DashboardPage() {
         id,
         club_id,
         status,
+        role,
         created_at,
         club:clubs (
           id,

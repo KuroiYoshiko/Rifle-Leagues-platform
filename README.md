@@ -31,6 +31,79 @@ enables owner-only Row Level Security policies.
 No service-role key is used by the application and no additional environment
 variables are required.
 
+## Club roles and membership approval
+
+Run the complete [`database/clubs-and-memberships.sql`](database/clubs-and-memberships.sql)
+file in the Supabase Dashboard SQL Editor before testing club roles, membership
+approval, the Members page, or Club settings.
+
+The file is the canonical club schema and is safe to rerun. It preserves every
+existing club and membership row, adds existing memberships as `member`, and
+recreates only idempotent constraints, indexes, policies, triggers, grants, and
+functions. It does not select an owner for an existing club.
+
+After running the schema, bootstrap a specific existing development club owner
+with this guarded SQL. Replace only the example email and slug:
+
+```sql
+do $$
+declare
+  v_user_id uuid;
+  v_club_id bigint;
+  v_membership_id bigint;
+  v_existing_owner_id uuid;
+begin
+  select users.id
+  into v_user_id
+  from auth.users as users
+  where lower(users.email) = lower('your-test-user@example.com');
+
+  if v_user_id is null then
+    raise exception 'Bootstrap user does not exist.';
+  end if;
+
+  select clubs.id
+  into v_club_id
+  from public.clubs as clubs
+  where clubs.slug = 'basildon-rifle-and-pistol-club';
+
+  if v_club_id is null then
+    raise exception 'Bootstrap club does not exist.';
+  end if;
+
+  select memberships.id
+  into v_membership_id
+  from public.club_memberships as memberships
+  where memberships.club_id = v_club_id
+    and memberships.user_id = v_user_id
+    and memberships.status = 'active';
+
+  if v_membership_id is null then
+    raise exception 'Bootstrap user is not an active member of this club.';
+  end if;
+
+  select memberships.user_id
+  into v_existing_owner_id
+  from public.club_memberships as memberships
+  where memberships.club_id = v_club_id
+    and memberships.role = 'owner';
+
+  if v_existing_owner_id is not null and v_existing_owner_id <> v_user_id then
+    raise exception 'This club already has another owner.';
+  end if;
+
+  update public.club_memberships
+  set role = 'owner'
+  where id = v_membership_id;
+end;
+$$;
+```
+
+The block changes exactly one active membership to `owner`. It raises a clear
+error and rolls back without changes when the user, club, or active membership
+does not exist, or when the club already has a different owner. Rerunning it for
+the same user and club is a harmless no-op update.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.

@@ -69,6 +69,8 @@ const organisationPageTitles: Record<string, string> = {
 
 const clubPageTitles: Record<string, string> = {
   competitions: "Competitions",
+  members: "Members",
+  settings: "Club settings",
 };
 
 function getPageDetails(
@@ -381,6 +383,12 @@ function Navigation({
       items: [
         { label: "Overview", href: basePath },
         { label: "Competitions", href: `${basePath}/competitions` },
+        ...(club.role === "official" || club.role === "owner"
+          ? [
+              { label: "Members", href: `${basePath}/members` },
+              { label: "Club settings", href: `${basePath}/settings` },
+            ]
+          : []),
       ],
     };
   });
