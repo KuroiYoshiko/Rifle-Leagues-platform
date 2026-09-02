@@ -4,6 +4,13 @@ import { notFound } from "next/navigation";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { Badge, Card, SectionHeader } from "@/components/ui";
 import {
+  formatCompetitionEntryFee,
+  getCompetitionEntryFormatLabel,
+  getCompetitions,
+  getCompetitionScoringMethodLabel,
+  type Competition,
+} from "@/lib/competitions";
+import {
   getLeagueEntryWindowDateDisplay,
   getLeagueEntryWindowState,
   getLeagueSeasonBySlug,
@@ -30,6 +37,69 @@ const badgeTones: Record<
   completed: "neutral",
 };
 
+function CompetitionCard({
+  competition,
+  organisationSlug,
+  seasonSlug,
+  isOwner,
+}: {
+  competition: Competition;
+  organisationSlug: string;
+  seasonSlug: string;
+  isOwner: boolean;
+}) {
+  const detailPath = `/organisations/${organisationSlug}/leagues/${seasonSlug}/competitions/${competition.slug}`;
+  const fee = formatCompetitionEntryFee(competition.entry_fee);
+  const entryFormat = getCompetitionEntryFormatLabel(
+    competition.entry_format,
+  );
+
+  return (
+    <Card className="min-w-0 p-5 sm:p-6">
+      <div className="grid min-w-0 gap-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <div className="min-w-0">
+          <div className="flex flex-wrap items-center gap-2">
+            <Badge
+              tone={competition.status === "draft" ? "warning" : "positive"}
+            >
+              {competition.status === "draft" ? "Draft" : "Published"}
+            </Badge>
+            {competition.status === "draft" ? (
+              <span className="text-xs text-muted-foreground">Owner only</span>
+            ) : null}
+          </div>
+          <h3 className="mt-3 break-words text-lg font-semibold tracking-[-0.02em] text-foreground">
+            <Link href={detailPath} className="hover:text-brand-deep hover:underline">
+              {competition.name}
+            </Link>
+          </h3>
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+            {entryFormat}
+            {competition.entry_format === "team"
+              ? ` · ${competition.team_size} shooters`
+              : ""}
+            {` · ${competition.number_of_rounds} round${competition.number_of_rounds === 1 ? "" : "s"}`}
+          </p>
+          <p className="mt-1 text-xs leading-5 text-muted-foreground">
+            {getCompetitionScoringMethodLabel(competition.scoring_method)}
+            {competition.maximum_score_per_round
+              ? ` · Ex ${competition.maximum_score_per_round.toLocaleString("en-GB")}`
+              : ""}
+            {competition.uses_x_score ? " · X score" : ""}
+            {fee ? ` · ${fee} entry` : ""}
+          </p>
+        </div>
+        <Link
+          href={detailPath}
+          className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
+        >
+          {isOwner ? "Manage" : "View"}
+        </Link>
+      </div>
+    </Card>
+  );
+}
+
 export default async function LeagueSeasonDetailPage({
   params,
   searchParams,
@@ -55,6 +125,7 @@ export default async function LeagueSeasonDetailPage({
   }
 
   const isOwner = managementContext?.access.role === "owner";
+  const competitions = await getCompetitions(season.id);
   const creationSucceeded = Array.isArray(created)
     ? created[0] === "1"
     : created === "1";
@@ -140,30 +211,64 @@ export default async function LeagueSeasonDetailPage({
         </dl>
       </Card>
 
-      <section className="mt-10" aria-labelledby="competitions-heading">
+      <section className="mt-10" aria-label="Competitions">
         <SectionHeader
           title="Competitions"
-          description="Competitions within this league season"
+          description={
+            isOwner
+              ? `${competitions.length} competition${competitions.length === 1 ? "" : "s"} within this league season`
+              : "Published competitions within this league season"
+          }
+          action={
+            isOwner ? (
+              <Link
+                href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/new`}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep"
+              >
+                + Add competition
+              </Link>
+            ) : null
+          }
         />
-        <Card className="p-6 sm:p-8">
-          <div className="flex flex-col items-start gap-5 sm:flex-row">
-            <span
-              className="grid size-12 shrink-0 place-items-center rounded-2xl bg-brand-subtle text-sm font-bold text-brand-deep"
-              aria-hidden="true"
-            >
-              C
-            </span>
-            <div>
-              <h3 id="competitions-heading" className="font-semibold text-foreground">
-                No competitions have been added yet
-              </h3>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                Competition creation is intentionally not available in this
-                league season foundation.
-              </p>
+        {competitions.length === 0 ? (
+          <Card className="p-6 sm:p-8">
+            <div className="flex flex-col items-start gap-5 sm:flex-row">
+              <span
+                className="grid size-12 shrink-0 place-items-center rounded-2xl bg-brand-subtle text-sm font-bold text-brand-deep"
+                aria-hidden="true"
+              >
+                C
+              </span>
+              <div>
+                <h3
+                  id="competitions-heading"
+                  className="font-semibold text-foreground"
+                >
+                  {isOwner
+                    ? "Add the first competition"
+                    : "No published competitions yet"}
+                </h3>
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+                  {isOwner
+                    ? "Configure its entry format, scoring details, and explicit round deadlines. It will begin as a private draft."
+                    : "This league season does not have any published competitions to show yet."}
+                </p>
+              </div>
             </div>
+          </Card>
+        ) : (
+          <div className="space-y-3">
+            {competitions.map((competition) => (
+              <CompetitionCard
+                key={competition.id}
+                competition={competition}
+                organisationSlug={organisation.slug}
+                seasonSlug={season.slug}
+                isOwner={isOwner}
+              />
+            ))}
           </div>
-        </Card>
+        )}
       </section>
     </OrganisationPageFrame>
   );

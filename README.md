@@ -172,6 +172,29 @@ seasons are always drafts. Status can remain unchanged or move one step forward
 through `draft`, `open`, `active`, and `completed`. Season route slugs are unique
 within an organisation and remain stable after a rename.
 
+## Competition and round configuration
+
+Run the complete
+[`database/competition-rounds.sql`](database/competition-rounds.sql) file in the
+Supabase Dashboard SQL Editor after `database/user-profiles.sql`,
+`database/organisations.sql`, `database/organisation-staff.sql`, and
+`database/league-seasons.sql`. The file is safe to rerun and creates no example
+competitions or rounds.
+
+It creates `public.competitions` and `public.competition_rounds`, their hard
+limits, indexes, audit and validation triggers, read-only authenticated Data API
+grants, and draft-aware RLS policies. Normal authenticated viewers can read only
+published competitions within a public parent season; the exact active
+organisation owner can additionally read private drafts. Direct table writes
+remain revoked.
+
+The authenticated `create_competition` and `update_competition` RPCs verify the
+active organisation, exact season, exact competition, and active owner before
+atomically saving configuration and explicit round deadlines. New competitions
+are always drafts. Publishing is a deliberate one-way transition and requires
+complete scoring values plus one chronological, in-season deadline for every
+configured round.
+
 ## Club roles and membership approval
 
 Run the complete [`database/clubs-and-memberships.sql`](database/clubs-and-memberships.sql)
