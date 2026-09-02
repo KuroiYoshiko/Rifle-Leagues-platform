@@ -53,6 +53,7 @@ const pageDetails: Record<string, { eyebrow: string; title: string }> = {
   "/dashboard": { eyebrow: "Shooter profile", title: "My dashboard" },
   "/profile": { eyebrow: "Account", title: "Your profile" },
   "/clubs": { eyebrow: "Membership", title: "Find a club" },
+  "/clubs/register": { eyebrow: "Club administration", title: "Register a club" },
   "/organisations": {
     eyebrow: "League organisations",
     title: "Find an organisation",
@@ -78,6 +79,7 @@ const organisationPageTitles: Record<string, string> = {
 const clubPageTitles: Record<string, string> = {
   competitions: "Competitions",
   members: "Members",
+  information: "Information",
   settings: "Club settings",
 };
 
@@ -399,10 +401,13 @@ function Navigation({
         { label: "Overview", href: basePath },
         { label: "Competitions", href: `${basePath}/competitions` },
         ...(club.role === "official" || club.role === "owner"
-          ? [
-              { label: "Members", href: `${basePath}/members` },
-              { label: "Club settings", href: `${basePath}/settings` },
-            ]
+          ? [{ label: "Members", href: `${basePath}/members` }]
+          : []),
+        ...(club.role === "owner" || club.informationCardCount > 0
+          ? [{ label: "Information", href: `${basePath}/information` }]
+          : []),
+        ...(club.role === "official" || club.role === "owner"
+          ? [{ label: "Club settings", href: `${basePath}/settings` }]
           : []),
       ],
     };

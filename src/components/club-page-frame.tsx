@@ -12,7 +12,12 @@ import {
   type MembershipStatus,
 } from "@/lib/clubs";
 
-export type ClubSection = "overview" | "competitions" | "members" | "settings";
+export type ClubSection =
+  | "overview"
+  | "competitions"
+  | "members"
+  | "information"
+  | "settings";
 
 const sectionItems: Array<{
   id: ClubSection;
@@ -22,23 +27,27 @@ const sectionItems: Array<{
   { id: "overview", label: "Overview", suffix: "" },
   { id: "competitions", label: "Competitions", suffix: "/competitions" },
   { id: "members", label: "Members", suffix: "/members" },
+  { id: "information", label: "Information", suffix: "/information" },
   { id: "settings", label: "Club settings", suffix: "/settings" },
 ];
 
 export function ClubPageFrame({
   club,
   membership,
+  informationCardCount,
   currentSection,
   children,
 }: {
   club: Club;
   membership: ClubMembership | null;
+  informationCardCount: number;
   currentSection: ClubSection;
   children: ReactNode;
 }) {
   const basePath = `/clubs/${club.slug}`;
   const membershipIsActive = membership?.status === "active";
   const membershipIsManager = isClubManager(membership);
+  const membershipIsOwner = membershipIsActive && membership?.role === "owner";
   const location = getClubLocation(club);
 
   return (
@@ -72,8 +81,10 @@ export function ClubPageFrame({
             {sectionItems
               .filter(
                 (item) =>
-                  membershipIsManager ||
-                  (item.id !== "members" && item.id !== "settings"),
+                  (item.id === "information"
+                    ? membershipIsOwner || informationCardCount > 0
+                    : membershipIsManager ||
+                      (item.id !== "members" && item.id !== "settings")),
               )
               .map((item) => {
               const isActive = item.id === currentSection;

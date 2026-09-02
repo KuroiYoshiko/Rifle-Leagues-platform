@@ -76,15 +76,23 @@ export default async function ClubsPage({
 
   return (
     <div className="mx-auto max-w-5xl">
-      <div className="mb-8">
-        <p className="text-xs font-medium text-brand-strong">Club discovery</p>
-        <h1 className="mt-3 text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">
-          Find your club
-        </h1>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Search by club name, town, county or postcode, then send a membership
-          request to the club you already shoot with.
-        </p>
+      <div className="mb-8 flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+        <div>
+          <p className="text-xs font-medium text-brand-strong">Club discovery</p>
+          <h1 className="mt-3 text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">
+            Find your club
+          </h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+            Search by club name, town, county or postcode, then send a membership
+            request to the club you already shoot with.
+          </p>
+        </div>
+        <Link
+          href="/clubs/register"
+          className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
+        >
+          Register a club
+        </Link>
       </div>
 
       <Card className="p-5 sm:p-7">
@@ -196,8 +204,15 @@ export default async function ClubsPage({
       <Card className="mt-8 bg-surface-muted p-5 sm:p-6">
         <h2 className="text-sm font-semibold text-foreground">Can&apos;t find your club?</h2>
         <p className="mt-1.5 text-sm leading-6 text-muted-foreground">
-          Requesting registration for a new club will be supported soon.
+          If it is not already registered, you can create the club and become its
+          first owner.
         </p>
+        <Link
+          href="/clubs/register"
+          className="mt-4 inline-flex text-sm font-semibold text-brand-deep hover:underline"
+        >
+          Register a new club
+        </Link>
       </Card>
     </div>
   );

@@ -234,6 +234,8 @@ export async function updateClubDetails(
       message:
         error.code === "42501"
           ? "You no longer have permission to edit this club."
+          : error.code === "23505"
+            ? "A club with this name appears to already be registered."
           : "The club details could not be saved. Check each field and try again.",
     };
   }

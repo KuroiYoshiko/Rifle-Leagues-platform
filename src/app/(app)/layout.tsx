@@ -115,10 +115,44 @@ export default async function ApplicationLayout({
   );
   const clubMembershipRows = (clubMembershipsResult.data ?? []) as unknown as Array<{
     role: SidebarClub["role"];
-    club: Omit<SidebarClub, "role"> | null;
+    club: Pick<SidebarClub, "id" | "name" | "slug"> | null;
   }>;
+  const clubIds = clubMembershipRows.flatMap((row) =>
+    row.club ? [row.club.id] : [],
+  );
+  const informationCardsResult =
+    clubIds.length > 0
+      ? await supabase
+          .from("club_information_cards")
+          .select("club_id")
+          .in("club_id", clubIds)
+      : { data: [], error: null };
+
+  if (informationCardsResult.error) {
+    throw new Error("Club information navigation could not be loaded.");
+  }
+
+  const informationCountByClub = new Map<number, number>();
+  for (const card of informationCardsResult.data ?? []) {
+    const clubId = card.club_id as number;
+    informationCountByClub.set(
+      clubId,
+      (informationCountByClub.get(clubId) ?? 0) + 1,
+    );
+  }
+
   const clubs = clubMembershipRows
-    .map((row) => (row.club ? { ...row.club, role: row.role } : null))
+    .map((row) =>
+      row.club
+        ? {
+            id: row.club.id,
+            name: row.club.name,
+            slug: row.club.slug,
+            role: row.role,
+            informationCardCount: informationCountByClub.get(row.club.id) ?? 0,
+          }
+        : null,
+    )
     .filter((club): club is SidebarClub => Boolean(club))
     .sort((left, right) => left.name.localeCompare(right.name));
   const firstName =
