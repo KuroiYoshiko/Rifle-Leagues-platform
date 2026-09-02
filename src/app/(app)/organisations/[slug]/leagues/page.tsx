@@ -141,7 +141,7 @@ export default async function OrganisationLeaguesPage({
           isOwner ? (
             <Link
               href={`/organisations/${organisation.slug}/leagues/new`}
-              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep"
+              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep"
             >
               + Create league
             </Link>
@@ -163,7 +163,7 @@ export default async function OrganisationLeaguesPage({
           {isOwner ? (
             <Link
               href={`/organisations/${organisation.slug}/leagues/new`}
-              className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep"
+              className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep"
             >
               Create league
             </Link>

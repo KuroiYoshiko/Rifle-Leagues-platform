@@ -9,6 +9,11 @@ export const LEAGUE_SEASON_STATUSES = [
 ] as const;
 
 export type LeagueSeasonStatus = (typeof LEAGUE_SEASON_STATUSES)[number];
+export type LeagueSeasonPresentationPhase =
+  | "upcoming"
+  | "ongoing"
+  | "ended"
+  | "unknown";
 
 export type LeagueSeason = {
   id: number;
@@ -128,6 +133,25 @@ export function getLeagueToday() {
   const day = parts.find((part) => part.type === "day")?.value;
 
   return `${year}-${month}-${day}`;
+}
+
+export function getLeagueSeasonPresentationPhase(
+  season: Pick<LeagueSeason, "starts_at" | "ends_at">,
+  today = getLeagueToday(),
+): LeagueSeasonPresentationPhase {
+  if (season.ends_at && season.ends_at < today) return "ended";
+  if (season.starts_at && season.starts_at > today) return "upcoming";
+
+  if (
+    season.starts_at &&
+    season.ends_at &&
+    season.starts_at <= today &&
+    season.ends_at >= today
+  ) {
+    return "ongoing";
+  }
+
+  return "unknown";
 }
 
 export function getLeagueEntryCloseSummary(

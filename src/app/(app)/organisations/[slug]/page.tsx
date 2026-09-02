@@ -8,6 +8,8 @@ import {
   getLeagueEntrySummary,
   getLeagueSeasons,
   getLeagueSeasonDateSummary,
+  getLeagueSeasonPresentationPhase,
+  getLeagueToday,
   type LeagueSeason,
 } from "@/lib/league-seasons";
 import {
@@ -22,15 +24,18 @@ export const metadata: Metadata = {
 function OverviewLeagueCard({
   organisationSlug,
   season,
-  type,
+  phase,
+  today,
 }: {
   organisationSlug: string;
   season: LeagueSeason;
-  type: "active" | "open";
+  phase: "ongoing" | "upcoming";
+  today: string;
 }) {
   const entrySummary = getLeagueEntrySummary(
     season.entry_opens_at,
     season.entry_closes_at,
+    today,
   );
   const seasonSummary = getLeagueSeasonDateSummary(
     season.starts_at,
@@ -39,8 +44,8 @@ function OverviewLeagueCard({
 
   return (
     <Card className="min-w-0 p-5 sm:p-6">
-      <Badge tone={type === "active" ? "positive" : "brand"}>
-        {type === "active" ? "Active" : "Open"}
+      <Badge tone={phase === "ongoing" ? "positive" : "brand"}>
+        {phase === "ongoing" ? "Ongoing" : "Upcoming"}
       </Badge>
       <h3 className="mt-3 break-words font-semibold text-foreground">
         <Link
@@ -81,8 +86,16 @@ export default async function OrganisationOverviewPage({
   }
 
   const seasons = await getLeagueSeasons(organisation.id);
-  const activeSeasons = seasons.filter((season) => season.status === "active");
-  const openSeasons = seasons.filter((season) => season.status === "open");
+  const today = getLeagueToday();
+  const publishedSeasons = seasons.filter(
+    (season) => season.status === "open" || season.status === "active",
+  );
+  const ongoingSeasons = publishedSeasons.filter(
+    (season) => getLeagueSeasonPresentationPhase(season, today) === "ongoing",
+  );
+  const upcomingSeasons = publishedSeasons.filter(
+    (season) => getLeagueSeasonPresentationPhase(season, today) === "upcoming",
+  );
 
   return (
     <OrganisationPageFrame
@@ -106,29 +119,31 @@ export default async function OrganisationOverviewPage({
         isOwner={managementContext?.access.role === "owner"}
       />
 
-      <section className="mt-10" aria-label="League activity">
+      <section className="mt-10" aria-label="Ongoing leagues">
         <SectionHeader
-          title="League activity"
-          description="League seasons currently marked as active"
+          title="Ongoing leagues"
+          description="Published seasons currently in progress"
         />
-        {activeSeasons.length > 0 ? (
+        {ongoingSeasons.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2">
-            {activeSeasons.map((season) => (
+            {ongoingSeasons.map((season) => (
               <OverviewLeagueCard
                 key={season.id}
                 organisationSlug={organisation.slug}
                 season={season}
-                type="active"
+                phase="ongoing"
+                today={today}
               />
             ))}
           </div>
         ) : (
           <Card className="p-6 sm:p-8">
             <h2 className="font-semibold text-foreground">
-              No active league seasons
+              No ongoing league seasons
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              A season will appear here when its owner moves it to Active.
+              Published seasons appear here while today falls within their
+              scheduled season dates.
             </p>
           </Card>
         )}
@@ -137,26 +152,27 @@ export default async function OrganisationOverviewPage({
       <section className="mt-10" aria-label="Upcoming leagues">
         <SectionHeader
           title="Upcoming leagues"
-          description="Published league seasons currently open"
+          description="Published seasons scheduled to start in the future"
         />
-        {openSeasons.length > 0 ? (
+        {upcomingSeasons.length > 0 ? (
           <div className="grid gap-4 sm:grid-cols-2">
-            {openSeasons.map((season) => (
+            {upcomingSeasons.map((season) => (
               <OverviewLeagueCard
                 key={season.id}
                 organisationSlug={organisation.slug}
                 season={season}
-                type="open"
+                phase="upcoming"
+                today={today}
               />
             ))}
           </div>
         ) : (
           <Card className="p-6 sm:p-8">
             <h2 className="font-semibold text-foreground">
-              No open league seasons
+              No upcoming league seasons
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Published seasons will appear here when they are marked Open.
+              Published seasons with a future start date will appear here.
             </p>
           </Card>
         )}

@@ -196,14 +196,6 @@ export function OrganisationContactDetails({
           </p>
         )}
 
-        {initialValues.contactEmail ? (
-          <a
-            href={`mailto:${initialValues.contactEmail}`}
-            className="mt-8 inline-flex min-h-11 max-w-full items-center justify-center rounded-xl bg-primary px-5 text-center text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep"
-          >
-            Email the organisation
-          </a>
-        ) : null}
       </Card>
 
       <dialog
