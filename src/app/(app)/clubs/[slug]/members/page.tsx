@@ -39,7 +39,7 @@ export default async function ClubMembersPage({
     notFound();
   }
 
-  const { club, membership } = context;
+  const { club, membership, informationCardCount } = context;
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("get_club_members", {
     p_club_id: club.id,
@@ -54,7 +54,12 @@ export default async function ClubMembersPage({
   const currentUserIsOwner = membership!.role === "owner";
 
   return (
-    <ClubPageFrame club={club} membership={membership} currentSection="members">
+    <ClubPageFrame
+      club={club}
+      membership={membership}
+      informationCardCount={informationCardCount}
+      currentSection="members"
+    >
       {error ? (
         <Card className="border-danger/20 p-6 sm:p-8">
           <div role="alert">

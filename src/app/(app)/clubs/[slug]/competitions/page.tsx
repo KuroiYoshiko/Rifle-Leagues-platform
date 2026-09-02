@@ -24,13 +24,14 @@ export default async function ClubCompetitionsPage({
     notFound();
   }
 
-  const { club, membership } = context;
+  const { club, membership, informationCardCount } = context;
   const membershipIsActive = membership?.status === "active";
 
   return (
     <ClubPageFrame
       club={club}
       membership={membership}
+      informationCardCount={informationCardCount}
       currentSection="competitions"
     >
       {membershipIsActive ? (

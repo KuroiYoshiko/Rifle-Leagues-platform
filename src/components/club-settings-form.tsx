@@ -12,7 +12,13 @@ const initialState: ClubManagementActionState = {};
 const inputClassName =
   "mt-2 min-h-12 w-full rounded-xl border border-border bg-surface px-4 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-brand focus:ring-4 focus:ring-brand/10 disabled:bg-surface-muted";
 
-export function ClubSettingsForm({ club }: { club: Club }) {
+export function ClubSettingsForm({
+  club,
+  isOwner,
+}: {
+  club: Club;
+  isOwner: boolean;
+}) {
   const [state, formAction, submitting] = useActionState(
     updateClubDetails,
     initialState,
@@ -22,20 +28,26 @@ export function ClubSettingsForm({ club }: { club: Club }) {
     <form action={formAction} className="space-y-5">
       <input type="hidden" name="club_id" value={club.id} />
       <input type="hidden" name="club_slug" value={club.slug} />
+      {!isOwner ? <input type="hidden" name="name" value={club.name} /> : null}
       <div>
         <label htmlFor="club-name" className="text-sm font-semibold text-foreground">
           Club name
         </label>
         <input
           id="club-name"
-          name="name"
+          name={isOwner ? "name" : undefined}
           required
           minLength={2}
           maxLength={160}
           defaultValue={club.name}
-          disabled={submitting}
+          disabled={submitting || !isOwner}
           className={inputClassName}
         />
+        {!isOwner ? (
+          <p className="mt-2 text-xs leading-5 text-muted-foreground">
+            Only the club owner can change the official club name.
+          </p>
+        ) : null}
       </div>
       <div className="grid gap-5 sm:grid-cols-2">
         <div>

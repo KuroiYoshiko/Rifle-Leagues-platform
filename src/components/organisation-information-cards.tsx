@@ -14,18 +14,58 @@ import {
   deleteOrganisationInformationCard,
   reorderOrganisationInformationCards,
   updateOrganisationInformationCard,
-  type InformationCardActionResult,
 } from "@/app/(app)/organisations/[slug]/information/actions";
 import { OrganisationInformationContent } from "@/components/organisation-information-content";
 import { OrganisationRichTextEditor } from "@/components/organisation-rich-text-editor";
-import type {
-  Organisation,
-  OrganisationInformationCard,
-} from "@/lib/organisations";
+import type { Organisation, OrganisationInformationCard } from "@/lib/organisations";
+
+export type InformationCardActionResult = {
+  status: "success" | "error";
+  message: string;
+};
+
+export type InformationCard = {
+  id: number;
+  title: string;
+  content: string;
+  position: number;
+  updated_at: string;
+};
+
+type InformationEntity = {
+  id: number;
+  name: string;
+  slug: string;
+};
+
+type MutationInput = {
+  entityId: number;
+  entitySlug: string;
+  title: string;
+  content: string;
+};
+
+type InformationCardActions = {
+  create: (input: MutationInput) => Promise<InformationCardActionResult>;
+  update: (input: MutationInput & { cardId: number }) => Promise<InformationCardActionResult>;
+  delete: (input: Pick<MutationInput, "entityId" | "entitySlug"> & { cardId: number }) => Promise<InformationCardActionResult>;
+  reorder: (input: Pick<MutationInput, "entityId" | "entitySlug"> & { cardIds: number[] }) => Promise<InformationCardActionResult>;
+};
+
+export type InformationCardsCopy = {
+  headingId: string;
+  description: string;
+  editorEyebrow: string;
+  onboardingTitle: string;
+  onboardingDescription: string;
+  emptyTitle: string;
+  emptyDescription: string;
+  deleteDescription: string;
+};
 
 type EditorState =
   | { mode: "add" }
-  | { mode: "edit"; card: OrganisationInformationCard };
+  | { mode: "edit"; card: InformationCard };
 
 type Draft = { title: string; content: string; contentLength: number };
 
@@ -55,12 +95,12 @@ function InformationCardArticle({
   onEdit,
   onDelete,
 }: {
-  card: OrganisationInformationCard;
+  card: InformationCard;
   ownerControls: boolean;
   dragHandleRef?: (element: Element | null) => void;
   dragging?: boolean;
-  onEdit?: (card: OrganisationInformationCard) => void;
-  onDelete?: (card: OrganisationInformationCard) => void;
+  onEdit?: (card: InformationCard) => void;
+  onDelete?: (card: InformationCard) => void;
 }) {
   return (
     <article
@@ -146,11 +186,11 @@ function SortableInformationCard({
   onEdit,
   onDelete,
 }: {
-  card: OrganisationInformationCard;
+  card: InformationCard;
   index: number;
   disabled: boolean;
-  onEdit: (card: OrganisationInformationCard) => void;
-  onDelete: (card: OrganisationInformationCard) => void;
+  onEdit: (card: InformationCard) => void;
+  onDelete: (card: InformationCard) => void;
 }) {
   const { ref, handleRef, isDragging } = useSortable({
     id: card.id,
@@ -172,14 +212,18 @@ function SortableInformationCard({
   );
 }
 
-export function OrganisationInformationCards({
-  organisation,
+export function InformationCards({
+  entity,
   initialCards,
   isOwner,
+  actions,
+  copy,
 }: {
-  organisation: Pick<Organisation, "id" | "name" | "slug">;
-  initialCards: OrganisationInformationCard[];
+  entity: InformationEntity;
+  initialCards: InformationCard[];
   isOwner: boolean;
+  actions: InformationCardActions;
+  copy: InformationCardsCopy;
 }) {
   const router = useRouter();
   const editorDialogRef = useRef<HTMLDialogElement>(null);
@@ -187,7 +231,7 @@ export function OrganisationInformationCards({
   const [cards, setCards] = useState(initialCards);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
-  const [deleteCard, setDeleteCard] = useState<OrganisationInformationCard | null>(null);
+  const [deleteCard, setDeleteCard] = useState<InformationCard | null>(null);
   const [editorMessage, setEditorMessage] = useState<InformationCardActionResult | null>(null);
   const [pageMessage, setPageMessage] = useState<InformationCardActionResult | null>(null);
   const [orderMessage, setOrderMessage] = useState<InformationCardActionResult | null>(null);
@@ -202,7 +246,7 @@ export function OrganisationInformationCards({
     editorDialogRef.current?.showModal();
   }
 
-  function openEditEditor(card: OrganisationInformationCard) {
+  function openEditEditor(card: InformationCard) {
     setEditor({ mode: "edit", card });
     setDraft({
       title: card.title,
@@ -213,7 +257,7 @@ export function OrganisationInformationCards({
     editorDialogRef.current?.showModal();
   }
 
-  function openDeleteDialog(card: OrganisationInformationCard) {
+  function openDeleteDialog(card: InformationCard) {
     setDeleteCard(card);
     deleteDialogRef.current?.showModal();
   }
@@ -241,15 +285,15 @@ export function OrganisationInformationCards({
     setEditorMessage(null);
     startSaving(async () => {
       const sharedInput = {
-        organisationId: organisation.id,
-        organisationSlug: organisation.slug,
+        entityId: entity.id,
+        entitySlug: entity.slug,
         title: draft.title,
         content: draft.content,
       };
       const result =
         editor.mode === "add"
-          ? await createOrganisationInformationCard(sharedInput)
-          : await updateOrganisationInformationCard({
+          ? await actions.create(sharedInput)
+          : await actions.update({
               ...sharedInput,
               cardId: editor.card.id,
             });
@@ -271,9 +315,9 @@ export function OrganisationInformationCards({
     if (!deleteCard) return;
 
     startDeleting(async () => {
-      const result = await deleteOrganisationInformationCard({
-        organisationId: organisation.id,
-        organisationSlug: organisation.slug,
+      const result = await actions.delete({
+        entityId: entity.id,
+        entitySlug: entity.slug,
         cardId: deleteCard.id,
       });
 
@@ -293,17 +337,17 @@ export function OrganisationInformationCards({
   const addDisabled = cards.length >= 5;
 
   return (
-    <section aria-labelledby="organisation-information-heading">
+    <section aria-labelledby={copy.headingId}>
       <div className="mb-5 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <h2
-            id="organisation-information-heading"
+            id={copy.headingId}
             className="text-lg font-semibold tracking-[-0.025em] text-foreground"
           >
             Information
           </h2>
           <p className="mt-1 text-sm leading-6 text-muted-foreground">
-            Published guidance and long-form information from {organisation.name}.
+            {copy.description}
           </p>
         </div>
 
@@ -368,12 +412,10 @@ export function OrganisationInformationCards({
               Get started
             </p>
             <h3 className="mt-2 text-xl font-semibold tracking-[-0.025em] text-foreground sm:text-2xl">
-              Build your information page
+              {copy.onboardingTitle}
             </h3>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Add up to 5 information cards for anything your shooters and clubs
-              may need to know — such as league information, entry instructions,
-              rules, or a privacy policy.
+              {copy.onboardingDescription}
             </p>
           </div>
 
@@ -447,10 +489,10 @@ export function OrganisationInformationCards({
             </span>
             <div>
               <h3 className="font-semibold text-foreground">
-                No information has been published yet
+                {copy.emptyTitle}
               </h3>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                This organisation has not added any public information cards yet.
+                {copy.emptyDescription}
               </p>
             </div>
           </div>
@@ -479,9 +521,9 @@ export function OrganisationInformationCards({
               setOrderMessage(null);
 
               startSavingOrder(async () => {
-                const result = await reorderOrganisationInformationCards({
-                  organisationId: organisation.id,
-                  organisationSlug: organisation.slug,
+                const result = await actions.reorder({
+                  entityId: entity.id,
+                  entitySlug: entity.slug,
                   cardIds: nextCards.map((card) => card.id),
                 });
 
@@ -546,7 +588,7 @@ export function OrganisationInformationCards({
       >
         <form onSubmit={submitEditor} className="p-6 sm:p-8">
           <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-strong">
-            Organisation information
+            {copy.editorEyebrow}
           </p>
           <h2
             id="information-card-editor-title"
@@ -672,7 +714,7 @@ export function OrganisationInformationCards({
             id="delete-information-card-description"
             className="mt-3 text-sm leading-6 text-muted-foreground"
           >
-            This published information will be removed from the organisation page.
+            {copy.deleteDescription}
           </p>
           <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
             <button
@@ -694,5 +736,65 @@ export function OrganisationInformationCards({
         </form>
       </dialog>
     </section>
+  );
+}
+
+export function OrganisationInformationCards({
+  organisation,
+  initialCards,
+  isOwner,
+}: {
+  organisation: Pick<Organisation, "id" | "name" | "slug">;
+  initialCards: OrganisationInformationCard[];
+  isOwner: boolean;
+}) {
+  return (
+    <InformationCards
+      entity={organisation}
+      initialCards={initialCards}
+      isOwner={isOwner}
+      copy={{
+        headingId: "organisation-information-heading",
+        description: `Published guidance and long-form information from ${organisation.name}.`,
+        editorEyebrow: "Organisation information",
+        onboardingTitle: "Build your information page",
+        onboardingDescription:
+          "Add up to 5 information cards for anything your shooters and clubs may need to know — such as league information, entry instructions, rules, or a privacy policy.",
+        emptyTitle: "No information has been published yet",
+        emptyDescription:
+          "This organisation has not added any public information cards yet.",
+        deleteDescription:
+          "This published information will be removed from the organisation page.",
+      }}
+      actions={{
+        create: ({ entityId, entitySlug, title, content }) =>
+          createOrganisationInformationCard({
+            organisationId: entityId,
+            organisationSlug: entitySlug,
+            title,
+            content,
+          }),
+        update: ({ entityId, entitySlug, cardId, title, content }) =>
+          updateOrganisationInformationCard({
+            organisationId: entityId,
+            organisationSlug: entitySlug,
+            cardId,
+            title,
+            content,
+          }),
+        delete: ({ entityId, entitySlug, cardId }) =>
+          deleteOrganisationInformationCard({
+            organisationId: entityId,
+            organisationSlug: entitySlug,
+            cardId,
+          }),
+        reorder: ({ entityId, entitySlug, cardIds }) =>
+          reorderOrganisationInformationCards({
+            organisationId: entityId,
+            organisationSlug: entitySlug,
+            cardIds,
+          }),
+      }}
+    />
   );
 }

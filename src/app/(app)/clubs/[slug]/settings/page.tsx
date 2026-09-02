@@ -21,10 +21,15 @@ export default async function ClubSettingsPage({
     notFound();
   }
 
-  const { club, membership } = context;
+  const { club, membership, informationCardCount } = context;
 
   return (
-    <ClubPageFrame club={club} membership={membership} currentSection="settings">
+    <ClubPageFrame
+      club={club}
+      membership={membership}
+      informationCardCount={informationCardCount}
+      currentSection="settings"
+    >
       <section aria-labelledby="club-settings-heading">
         <SectionHeader
           title="Club settings"
@@ -34,7 +39,10 @@ export default async function ClubSettingsPage({
           <h2 id="club-settings-heading" className="sr-only">
             Club details
           </h2>
-          <ClubSettingsForm club={club} />
+          <ClubSettingsForm
+            club={club}
+            isOwner={membership?.role === "owner"}
+          />
         </Card>
         <p className="mt-4 text-xs leading-5 text-muted-foreground">
           The club slug and status are managed separately and cannot be changed

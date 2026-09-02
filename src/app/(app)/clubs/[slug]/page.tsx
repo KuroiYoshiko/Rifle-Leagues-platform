@@ -1,11 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { ClubAbout } from "@/components/club-about";
 import {
   ClubMembershipPanel,
   ClubPageFrame,
 } from "@/components/club-page-frame";
 import { Card, SectionHeader } from "@/components/ui";
-import { getClubPageContextBySlug } from "@/lib/clubs";
+import { getClubPageContextBySlug, isClubOwner } from "@/lib/clubs";
 
 export const metadata: Metadata = {
   title: "Club overview",
@@ -26,25 +27,55 @@ function DetailItem({ label, value }: { label: string; value: string | null }) {
 
 export default async function ClubOverviewPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ registered?: string | string[] }>;
 }) {
   const { slug } = await params;
+  const { registered } = await searchParams;
   const context = await getClubPageContextBySlug(slug);
 
   if (!context) {
     notFound();
   }
 
-  const { club, membership } = context;
+  const { club, membership, informationCardCount } = context;
+  const owner = isClubOwner(membership);
+  const registrationSucceeded = Array.isArray(registered)
+    ? registered[0] === "1"
+    : registered === "1";
 
   return (
     <ClubPageFrame
       club={club}
       membership={membership}
+      informationCardCount={informationCardCount}
       currentSection="overview"
     >
+      {registrationSucceeded && owner ? (
+        <div
+          className="mb-8 rounded-2xl border border-success/20 bg-success-subtle px-5 py-4 text-sm leading-6 text-success"
+          role="status"
+        >
+          <strong className="font-semibold">Club registered.</strong>{" "}
+          You are now its owner, and it has been added to My Clubs through your
+          active membership.
+        </div>
+      ) : null}
+
       <ClubMembershipPanel club={club} membership={membership} />
+
+      {club.about_content || owner ? (
+        <div className="mt-10">
+          <ClubAbout
+            key={club.about_content ?? "empty"}
+            clubId={club.id}
+            initialContent={club.about_content}
+            isOwner={owner}
+          />
+        </div>
+      ) : null}
 
       <section className="mt-10" aria-labelledby="club-details-heading">
         <SectionHeader
