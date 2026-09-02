@@ -280,6 +280,15 @@ export async function reorderOrganisationInformationCards(
   );
 
   if (error) {
+    console.error("Organisation information card reorder RPC failed.", {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+      organisationId,
+      cardCount: cardIds.length,
+    });
+
     return {
       status: "error",
       message: writeErrorMessage(

@@ -378,7 +378,9 @@ begin
       using errcode = '22023';
   end if;
 
-  set constraints organisation_information_cards_organisation_position_unique deferred;
+  -- The function has an intentionally empty search_path, so the constraint
+  -- must be schema-qualified before positions can be swapped atomically.
+  set constraints public.organisation_information_cards_organisation_position_unique deferred;
 
   update public.organisation_information_cards as card
   set position = supplied.position::smallint,
