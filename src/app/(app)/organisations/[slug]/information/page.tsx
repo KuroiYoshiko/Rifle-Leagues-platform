@@ -2,7 +2,10 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { Card } from "@/components/ui";
-import { getActiveOrganisationBySlug } from "@/lib/organisations";
+import {
+  getActiveOrganisationBySlug,
+  getOrganisationTypeLabel,
+} from "@/lib/organisations";
 
 export const metadata: Metadata = {
   title: "Organisation information",
@@ -36,6 +39,9 @@ export default async function OrganisationInformationPage({
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
             {organisation.description ??
               "Detailed organisation-specific league information has not been published yet."}
+          </p>
+          <p className="mt-4 text-xs font-medium text-muted-foreground">
+            Type: {getOrganisationTypeLabel(organisation.organisation_type)}
           </p>
         </Card>
 

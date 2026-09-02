@@ -61,6 +61,10 @@ const pageDetails: Record<string, { eyebrow: string; title: string }> = {
     eyebrow: "League organisations",
     title: "Manage an organisation",
   },
+  "/organisations/register": {
+    eyebrow: "League organisations",
+    title: "Register an organisation",
+  },
 };
 
 const organisationPageTitles: Record<string, string> = {

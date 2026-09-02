@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { OrganisationAdministrationOptions } from "@/components/organisation-administration-options";
 import { OrganisationAccessRequestButton } from "@/components/organisation-access-request-button";
 import { Card } from "@/components/ui";
 import {
@@ -76,8 +77,8 @@ export default async function OrganisationAccessPage({
           Manage an organisation
         </h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-          If you are authorised to help administer an organisation already
-          registered on RifleLeagues, find it below and request access.
+          Choose whether you need access to an existing organisation or need to
+          register a new one.
         </p>
         <p className="mt-3 max-w-3xl text-xs leading-5 text-muted-foreground">
           Management access is reviewed by the organisation owner. It is
@@ -85,7 +86,9 @@ export default async function OrganisationAccessPage({
         </p>
       </div>
 
-      <Card className="p-5 sm:p-7">
+      <OrganisationAdministrationOptions current="access" />
+
+      <Card className="mt-8 p-5 sm:p-7">
         <form action="/organisations/access" method="get" role="search">
           <label
             htmlFor="organisation-access-search"

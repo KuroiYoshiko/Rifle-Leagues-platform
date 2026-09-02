@@ -58,7 +58,6 @@ export default async function OrganisationManagementPage({
     <OrganisationPageFrame
       organisation={organisation}
       currentSection="management"
-      showManagement
     >
       {error ? (
         <Card className="border-danger/20 p-6 sm:p-8">

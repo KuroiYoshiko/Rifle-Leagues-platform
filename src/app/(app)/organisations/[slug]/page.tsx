@@ -10,11 +10,17 @@ export const metadata: Metadata = {
 
 export default async function OrganisationOverviewPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ registered?: string | string[] }>;
 }) {
   const { slug } = await params;
+  const { registered } = await searchParams;
   const organisation = await getActiveOrganisationBySlug(slug);
+  const registrationSucceeded = Array.isArray(registered)
+    ? registered[0] === "1"
+    : registered === "1";
 
   if (!organisation) {
     notFound();
@@ -25,6 +31,16 @@ export default async function OrganisationOverviewPage({
       organisation={organisation}
       currentSection="overview"
     >
+      {registrationSucceeded ? (
+        <div
+          className="mb-8 rounded-2xl border border-success/20 bg-success-subtle px-5 py-4 text-sm leading-6 text-success"
+          role="status"
+        >
+          <strong className="font-semibold">Organisation registered.</strong>{" "}
+          You are now its owner, and it has been added to My Organisations through
+          your active management access.
+        </div>
+      ) : null}
       <section>
         <SectionHeader
           title="About"

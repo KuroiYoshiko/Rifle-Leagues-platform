@@ -2,6 +2,12 @@ import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 
 export const ORGANISATION_STATUSES = ["active", "inactive"] as const;
+export const ORGANISATION_TYPES = [
+  "county_association",
+  "regional_association",
+  "business",
+  "other",
+] as const;
 export const ORGANISATION_STAFF_ROLES = ["owner", "manager"] as const;
 export const ORGANISATION_STAFF_STATUSES = [
   "pending",
@@ -11,6 +17,7 @@ export const ORGANISATION_STAFF_STATUSES = [
 ] as const;
 
 export type OrganisationStatus = (typeof ORGANISATION_STATUSES)[number];
+export type OrganisationType = (typeof ORGANISATION_TYPES)[number];
 export type OrganisationStaffRole =
   (typeof ORGANISATION_STAFF_ROLES)[number];
 export type OrganisationStaffStatus =
@@ -24,6 +31,10 @@ export type Organisation = {
   description: string | null;
   website: string | null;
   contact_email: string | null;
+  organisation_type: OrganisationType;
+  address: string | null;
+  postcode: string | null;
+  telephone: string | null;
   status: OrganisationStatus;
   created_at: string;
   updated_at: string;
@@ -52,8 +63,15 @@ export type ManagedOrganisationStaff = {
   updated_at: string;
 };
 
+const organisationTypeLabels: Record<OrganisationType, string> = {
+  county_association: "County Association",
+  regional_association: "Regional Association",
+  business: "Business",
+  other: "Other",
+};
+
 export const organisationColumns =
-  "id, name, slug, short_name, description, website, contact_email, status, created_at, updated_at";
+  "id, name, slug, short_name, description, website, contact_email, organisation_type, address, postcode, telephone, status, created_at, updated_at";
 
 const routeSafeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
@@ -121,4 +139,8 @@ export function getOrganisationStaffName(staff: ManagedOrganisationStaff) {
       .filter(Boolean)
       .join(" ") || "Organisation staff member"
   );
+}
+
+export function getOrganisationTypeLabel(type: OrganisationType) {
+  return organisationTypeLabels[type];
 }

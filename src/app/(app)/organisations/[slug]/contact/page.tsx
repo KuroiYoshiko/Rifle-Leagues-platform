@@ -33,6 +33,35 @@ export default async function OrganisationContactPage({
 
           <dl className="mt-7 space-y-6">
             <div>
+              <dt className="text-xs font-medium text-muted-foreground">Address</dt>
+              <dd className="mt-1.5 whitespace-pre-line text-sm font-semibold text-foreground">
+                {organisation.address || organisation.postcode ? (
+                  <>
+                    {organisation.address ?? ""}
+                    {organisation.address && organisation.postcode ? "\n" : ""}
+                    {organisation.postcode ?? ""}
+                  </>
+                ) : (
+                  "Not published"
+                )}
+              </dd>
+            </div>
+            <div>
+              <dt className="text-xs font-medium text-muted-foreground">Telephone</dt>
+              <dd className="mt-1.5 text-sm font-semibold text-foreground">
+                {organisation.telephone ? (
+                  <a
+                    href={`tel:${organisation.telephone}`}
+                    className="text-brand-strong hover:text-brand-deep hover:underline"
+                  >
+                    {organisation.telephone}
+                  </a>
+                ) : (
+                  "Not published"
+                )}
+              </dd>
+            </div>
+            <div>
               <dt className="text-xs font-medium text-muted-foreground">Email</dt>
               <dd className="mt-1.5 text-sm font-semibold text-foreground">
                 {organisation.contact_email ? (

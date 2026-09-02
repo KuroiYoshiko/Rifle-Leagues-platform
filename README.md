@@ -107,6 +107,24 @@ without changes if the Auth user or organisation does not exist, or if another
 user is already the owner. Rerunning it for the same user and organisation is
 safe.
 
+## Organisation registration
+
+Run the complete
+[`database/organisation-registration.sql`](database/organisation-registration.sql)
+file in the Supabase Dashboard SQL Editor after `database/organisations.sql` and
+`database/organisation-staff.sql`. The file is safe to rerun.
+
+It adds the organisation type, address, postcode, and telephone registration
+fields, backfills pre-existing organisations to the `other` type, and creates
+the authenticated `register_organisation` RPC. That RPC validates and inserts
+the organisation and its first active owner in one database transaction. Direct
+client inserts into either organisation table remain unavailable, and no
+`user_organisations` follow row is created.
+
+New organisation slugs are generated from their official names. A collision
+with an existing slug is treated as a likely duplicate and registration stops
+with no rows committed; the function does not create a random suffixed copy.
+
 ## Club roles and membership approval
 
 Run the complete [`database/clubs-and-memberships.sql`](database/clubs-and-memberships.sql)
