@@ -153,6 +153,25 @@ active organisation owner can call the write operations. Content is stored as
 constrained Markdown (120-character titles and 20,000-character card content),
 and the database permits at most five ordered cards per organisation.
 
+## League seasons
+
+Run the complete [`database/league-seasons.sql`](database/league-seasons.sql)
+file in the Supabase Dashboard SQL Editor after `database/user-profiles.sql`,
+`database/organisations.sql`, and `database/organisation-staff.sql`. The file is
+safe to rerun and creates no example seasons.
+
+It creates `public.league_seasons`, its constraints, indexes, audit trigger,
+read-only authenticated Data API grant, and draft-aware RLS policy. Normal
+authenticated viewers can read only `open`, `active`, and `completed` seasons;
+an organisation's active owner can additionally read its drafts. Direct client
+writes remain revoked.
+
+The authenticated `create_league_season` and `update_league_season` RPCs verify
+the active organisation and its exact active owner before every write. New
+seasons are always drafts. Status can remain unchanged or move one step forward
+through `draft`, `open`, `active`, and `completed`. Season route slugs are unique
+within an organisation and remain stable after a rename.
+
 ## Club roles and membership approval
 
 Run the complete [`database/clubs-and-memberships.sql`](database/clubs-and-memberships.sql)

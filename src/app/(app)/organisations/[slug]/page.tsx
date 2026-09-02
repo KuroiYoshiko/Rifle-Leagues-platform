@@ -1,8 +1,14 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { OrganisationAbout } from "@/components/organisation-about";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
-import { Card, SectionHeader } from "@/components/ui";
+import { Badge, Card, SectionHeader } from "@/components/ui";
+import {
+  formatLeagueSeasonDate,
+  getLeagueSeasons,
+  type LeagueSeason,
+} from "@/lib/league-seasons";
 import {
   getActiveOrganisationBySlug,
   getOrganisationManagementContextBySlug,
@@ -11,6 +17,46 @@ import {
 export const metadata: Metadata = {
   title: "Organisation overview",
 };
+
+function OverviewLeagueCard({
+  organisationSlug,
+  season,
+  type,
+}: {
+  organisationSlug: string;
+  season: LeagueSeason;
+  type: "active" | "open";
+}) {
+  const starts = formatLeagueSeasonDate(season.starts_at);
+  const entryCloses = formatLeagueSeasonDate(season.entry_closes_at);
+
+  return (
+    <Card className="min-w-0 p-5 sm:p-6">
+      <Badge tone={type === "active" ? "positive" : "brand"}>
+        {type === "active" ? "Active" : "Open"}
+      </Badge>
+      <h3 className="mt-3 break-words font-semibold text-foreground">
+        <Link
+          href={`/organisations/${organisationSlug}/leagues/${season.slug}`}
+          className="hover:text-brand-deep hover:underline"
+        >
+          {season.name}
+        </Link>
+      </h3>
+      <p className="mt-2 text-xs leading-5 text-muted-foreground">
+        {type === "open"
+          ? entryCloses
+            ? `Entry closes ${entryCloses}`
+            : starts
+              ? `Starts ${starts}`
+              : "Dates have not been set"
+          : starts
+            ? `Started ${starts}`
+            : "Season dates have not been set"}
+      </p>
+    </Card>
+  );
+}
 
 export default async function OrganisationOverviewPage({
   params,
@@ -32,6 +78,10 @@ export default async function OrganisationOverviewPage({
   if (!organisation) {
     notFound();
   }
+
+  const seasons = await getLeagueSeasons(organisation.id);
+  const activeSeasons = seasons.filter((season) => season.status === "active");
+  const openSeasons = seasons.filter((season) => season.status === "open");
 
   return (
     <OrganisationPageFrame
@@ -55,36 +105,60 @@ export default async function OrganisationOverviewPage({
         isOwner={managementContext?.access.role === "owner"}
       />
 
-      <section className="mt-10" aria-labelledby="league-activity-heading">
+      <section className="mt-10" aria-label="League activity">
         <SectionHeader
           title="League activity"
-          description="A future summary of this organisation’s real leagues"
+          description="League seasons currently marked as active"
         />
-        <Card className="p-6 sm:p-8">
-          <h2 id="league-activity-heading" className="font-semibold text-foreground">
-            No league data has been added yet
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Current league and season activity will appear here after the league
-            data model is introduced and real records exist.
-          </p>
-        </Card>
+        {activeSeasons.length > 0 ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {activeSeasons.map((season) => (
+              <OverviewLeagueCard
+                key={season.id}
+                organisationSlug={organisation.slug}
+                season={season}
+                type="active"
+              />
+            ))}
+          </div>
+        ) : (
+          <Card className="p-6 sm:p-8">
+            <h2 className="font-semibold text-foreground">
+              No active league seasons
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              A season will appear here when its owner moves it to Active.
+            </p>
+          </Card>
+        )}
       </section>
 
-      <section className="mt-10" aria-labelledby="upcoming-leagues-heading">
+      <section className="mt-10" aria-label="Upcoming leagues">
         <SectionHeader
           title="Upcoming leagues"
-          description="Future entry windows and published league dates"
+          description="Published league seasons currently open"
         />
-        <Card className="p-6 sm:p-8">
-          <h2 id="upcoming-leagues-heading" className="font-semibold text-foreground">
-            Nothing to show yet
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Upcoming league information will appear here once real league data
-            exists. Adding this organisation does not grant entry permission.
-          </p>
-        </Card>
+        {openSeasons.length > 0 ? (
+          <div className="grid gap-4 sm:grid-cols-2">
+            {openSeasons.map((season) => (
+              <OverviewLeagueCard
+                key={season.id}
+                organisationSlug={organisation.slug}
+                season={season}
+                type="open"
+              />
+            ))}
+          </div>
+        ) : (
+          <Card className="p-6 sm:p-8">
+            <h2 className="font-semibold text-foreground">
+              No open league seasons
+            </h2>
+            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+              Published seasons will appear here when they are marked Open.
+            </p>
+          </Card>
+        )}
       </section>
     </OrganisationPageFrame>
   );
