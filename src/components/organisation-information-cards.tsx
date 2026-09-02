@@ -470,7 +470,7 @@ export function OrganisationInformationCards({
           </p>
         </div>
 
-        {isOwner ? (
+        {isOwner && cards.length > 0 ? (
           <div className="shrink-0 sm:text-right">
             <button
               type="button"
@@ -482,11 +482,10 @@ export function OrganisationInformationCards({
               <span className="mr-2 text-base" aria-hidden="true">+</span>
               Add information card
             </button>
-            {addDisabled ? (
-              <p className="mt-1.5 text-xs text-muted-foreground">
-                Maximum of five cards reached.
-              </p>
-            ) : null}
+            <p className="mt-1.5 text-xs text-muted-foreground">
+              {cards.length} of 5 cards
+              {addDisabled ? " · Maximum reached." : ""}
+            </p>
           </div>
         ) : null}
       </div>
@@ -497,7 +496,82 @@ export function OrganisationInformationCards({
         </div>
       ) : null}
 
-      {cards.length === 0 ? (
+      {cards.length === 0 && isOwner ? (
+        <div className="overflow-hidden rounded-2xl border border-border bg-surface shadow-xs">
+          <div className="border-b border-border bg-surface-muted px-6 py-6 sm:px-8 sm:py-7">
+            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-strong">
+              Get started
+            </p>
+            <h3 className="mt-2 text-xl font-semibold tracking-[-0.025em] text-foreground sm:text-2xl">
+              Build your information page
+            </h3>
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-muted-foreground">
+              Add up to 5 information cards for anything your shooters and clubs
+              may need to know — such as league information, entry instructions,
+              rules, or a privacy policy.
+            </p>
+          </div>
+
+          <div className="p-6 sm:p-8">
+            <ol className="grid gap-4 lg:grid-cols-3">
+              <li className="min-w-0 rounded-xl border border-border bg-surface p-5">
+                <span
+                  className="grid size-10 place-items-center rounded-xl bg-brand-subtle text-lg font-semibold text-brand-deep"
+                  aria-hidden="true"
+                >
+                  +
+                </span>
+                <h4 className="mt-4 font-semibold text-foreground">
+                  1. Add a card
+                </h4>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Give it any title and add the information you want to publish.
+                </p>
+              </li>
+              <li className="min-w-0 rounded-xl border border-border bg-surface p-5">
+                <span
+                  className="grid size-10 place-items-center rounded-xl bg-brand-subtle text-sm font-bold text-brand-deep"
+                  aria-hidden="true"
+                >
+                  B
+                </span>
+                <h4 className="mt-4 font-semibold text-foreground">
+                  2. Format your content
+                </h4>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Use headings, bold text, lists, and links to make longer
+                  information easy to read.
+                </p>
+              </li>
+              <li className="min-w-0 rounded-xl border border-border bg-surface p-5">
+                <span
+                  className="grid size-10 place-items-center rounded-xl bg-brand-subtle text-base font-semibold text-brand-deep"
+                  aria-hidden="true"
+                >
+                  ☰
+                </span>
+                <h4 className="mt-4 font-semibold text-foreground">
+                  3. Arrange your page
+                </h4>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                  Drag cards into the order you want. The saved order becomes the
+                  public order.
+                </p>
+              </li>
+            </ol>
+
+            <button
+              type="button"
+              onClick={openAddEditor}
+              aria-label="Add your first information card"
+              className="mt-6 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep sm:w-auto"
+            >
+              <span className="mr-2 text-base" aria-hidden="true">+</span>
+              Add your first information card
+            </button>
+          </div>
+        </div>
+      ) : cards.length === 0 ? (
         <div className="rounded-2xl border border-border bg-surface p-6 shadow-xs sm:p-8">
           <div className="flex flex-col items-start gap-5 sm:flex-row">
             <span
@@ -511,9 +585,7 @@ export function OrganisationInformationCards({
                 No information has been published yet
               </h3>
               <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                {isOwner
-                  ? "Add the first information card to publish guidance, rules, or other useful organisation content."
-                  : "This organisation has not added any public information cards yet."}
+                This organisation has not added any public information cards yet.
               </p>
             </div>
           </div>
