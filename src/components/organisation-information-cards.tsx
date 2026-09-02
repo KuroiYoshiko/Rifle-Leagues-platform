@@ -17,6 +17,7 @@ import {
   type InformationCardActionResult,
 } from "@/app/(app)/organisations/[slug]/information/actions";
 import { OrganisationInformationContent } from "@/components/organisation-information-content";
+import { OrganisationRichTextEditor } from "@/components/organisation-rich-text-editor";
 import type {
   Organisation,
   OrganisationInformationCard,
@@ -26,9 +27,9 @@ type EditorState =
   | { mode: "add" }
   | { mode: "edit"; card: OrganisationInformationCard };
 
-type Draft = { title: string; content: string };
+type Draft = { title: string; content: string; contentLength: number };
 
-const emptyDraft: Draft = { title: "", content: "" };
+const emptyDraft: Draft = { title: "", content: "", contentLength: 0 };
 
 function ActionMessage({ result }: { result: InformationCardActionResult | null }) {
   if (!result) return null;
@@ -48,7 +49,6 @@ function ActionMessage({ result }: { result: InformationCardActionResult | null 
 
 function InformationCardArticle({
   card,
-  index,
   ownerControls,
   dragHandleRef,
   dragging = false,
@@ -56,7 +56,6 @@ function InformationCardArticle({
   onDelete,
 }: {
   card: OrganisationInformationCard;
-  index: number;
   ownerControls: boolean;
   dragHandleRef?: (element: Element | null) => void;
   dragging?: boolean;
@@ -65,44 +64,29 @@ function InformationCardArticle({
 }) {
   return (
     <article
-      className={`min-w-0 rounded-2xl border bg-surface p-6 shadow-xs transition sm:p-8 ${
+      className={`relative min-w-0 rounded-2xl border bg-surface p-6 shadow-xs transition sm:p-8 ${
         dragging
           ? "border-brand/60 opacity-80 shadow-lg"
           : "border-border"
       }`}
       aria-labelledby={`information-card-title-${card.id}`}
     >
-      <div className="flex min-w-0 items-start gap-3 sm:gap-4">
-        {ownerControls ? (
+      {ownerControls ? (
+        <div className="absolute right-3 top-3 z-10 flex items-center gap-1 sm:right-5 sm:top-5">
           <button
             ref={dragHandleRef}
             type="button"
-            aria-label={`Reorder ${card.title}`}
+            aria-label={`Drag to reorder ${card.title}`}
             aria-describedby="information-reorder-instructions"
-            title="Drag to reorder. Keyboard users can press Space, then use the arrow keys."
-            className="mt-0.5 inline-flex size-11 shrink-0 touch-none cursor-grab items-center justify-center rounded-xl border border-border bg-surface-muted text-lg font-semibold text-neutral-strong transition hover:border-brand/40 hover:text-brand-deep active:cursor-grabbing"
+            title="Drag to reorder"
+            className="inline-flex size-11 shrink-0 touch-none cursor-grab items-center justify-center rounded-xl border border-transparent bg-transparent text-lg font-semibold text-neutral-strong transition hover:bg-surface-muted hover:text-brand-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand active:cursor-grabbing active:bg-brand-subtle"
           >
             <span aria-hidden="true">☰</span>
           </button>
-        ) : null}
-
-        <div className="min-w-0 flex-1">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-strong">
-            Information {index + 1}
-          </p>
-          <h2
-            id={`information-card-title-${card.id}`}
-            className="mt-2 break-words text-xl font-semibold tracking-[-0.025em] text-foreground sm:text-2xl"
-          >
-            {card.title}
-          </h2>
-        </div>
-
-        {ownerControls ? (
           <details className="relative shrink-0">
             <summary
               aria-label={`Manage ${card.title}`}
-              className="grid size-11 cursor-pointer list-none place-items-center rounded-xl border border-border bg-surface text-xl font-semibold leading-none text-neutral-strong transition hover:bg-surface-muted hover:text-brand-deep [&::-webkit-details-marker]:hidden"
+              className="grid size-11 cursor-pointer list-none place-items-center rounded-xl border border-transparent bg-transparent text-xl font-semibold leading-none text-neutral-strong transition hover:bg-surface-muted hover:text-brand-deep focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand [&::-webkit-details-marker]:hidden"
             >
               <span aria-hidden="true">⋯</span>
             </summary>
@@ -134,10 +118,19 @@ function InformationCardArticle({
               </button>
             </div>
           </details>
-        ) : null}
-      </div>
+        </div>
+      ) : null}
 
-      <div className={ownerControls ? "mt-6 sm:ml-[3.75rem]" : "mt-6"}>
+      <h2
+        id={`information-card-title-${card.id}`}
+        className={`break-words text-xl font-bold uppercase leading-7 tracking-[0.09em] text-brand-strong sm:text-[1.375rem] sm:leading-8 ${
+          ownerControls ? "pr-24" : ""
+        }`}
+      >
+        {card.title}
+      </h2>
+
+      <div className="mt-6">
         <div className="max-w-4xl">
           <OrganisationInformationContent content={card.content} />
         </div>
@@ -169,187 +162,12 @@ function SortableInformationCard({
     <div ref={ref}>
       <InformationCardArticle
         card={card}
-        index={index}
         ownerControls
         dragHandleRef={handleRef}
         dragging={isDragging}
         onEdit={onEdit}
         onDelete={onDelete}
       />
-    </div>
-  );
-}
-
-function EditorToolbar({
-  textareaRef,
-  draft,
-  setDraft,
-  setMessage,
-}: {
-  textareaRef: React.RefObject<HTMLTextAreaElement | null>;
-  draft: Draft;
-  setDraft: React.Dispatch<React.SetStateAction<Draft>>;
-  setMessage: (result: InformationCardActionResult | null) => void;
-}) {
-  function restoreSelection(start: number, end: number) {
-    requestAnimationFrame(() => {
-      textareaRef.current?.focus();
-      textareaRef.current?.setSelectionRange(start, end);
-    });
-  }
-
-  function wrapSelection(before: string, after: string, placeholder: string) {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const selected = draft.content.slice(start, end) || placeholder;
-    const content = `${draft.content.slice(0, start)}${before}${selected}${after}${draft.content.slice(end)}`;
-
-    if ([...content].length > 20_000) {
-      setMessage({ status: "error", message: "Content cannot exceed 20,000 characters." });
-      return;
-    }
-
-    setMessage(null);
-    setDraft((current) => ({ ...current, content }));
-    restoreSelection(start + before.length, start + before.length + selected.length);
-  }
-
-  function prefixSelectedLines(kind: "heading" | "unordered" | "ordered") {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const selectionStart = textarea.selectionStart;
-    const selectionEnd = textarea.selectionEnd;
-    const blockStart = draft.content.lastIndexOf("\n", Math.max(0, selectionStart - 1)) + 1;
-    const nextLineBreak = draft.content.indexOf("\n", selectionEnd);
-    const blockEnd = nextLineBreak === -1 ? draft.content.length : nextLineBreak;
-    const block = draft.content.slice(blockStart, blockEnd) || "Heading";
-    const formatted = block
-      .split("\n")
-      .map((line, lineIndex) => {
-        if (kind === "heading") return `## ${line.replace(/^#{1,6}\s+/, "")}`;
-        if (kind === "ordered") return `${lineIndex + 1}. ${line.replace(/^\s*(?:[-*+] |\d+\. )/, "")}`;
-        return `- ${line.replace(/^\s*(?:[-*+] |\d+\. )/, "")}`;
-      })
-      .join("\n");
-    const content = `${draft.content.slice(0, blockStart)}${formatted}${draft.content.slice(blockEnd)}`;
-
-    if ([...content].length > 20_000) {
-      setMessage({ status: "error", message: "Content cannot exceed 20,000 characters." });
-      return;
-    }
-
-    setMessage(null);
-    setDraft((current) => ({ ...current, content }));
-    restoreSelection(blockStart, blockStart + formatted.length);
-  }
-
-  function insertLink() {
-    const textarea = textareaRef.current;
-    if (!textarea) return;
-
-    const enteredUrl = window.prompt("Link URL", "https://");
-    if (!enteredUrl) return;
-
-    const url = /^[a-z][a-z\d+.-]*:/i.test(enteredUrl)
-      ? enteredUrl.trim()
-      : `https://${enteredUrl.trim()}`;
-
-    try {
-      const parsedUrl = new URL(url);
-      if (!["http:", "https:", "mailto:"].includes(parsedUrl.protocol)) {
-        throw new Error("Unsupported link protocol");
-      }
-    } catch {
-      setMessage({
-        status: "error",
-        message: "Enter a valid http, https, or email link.",
-      });
-      return;
-    }
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const label = draft.content.slice(start, end) || "link text";
-    const markdown = `[${label}](${url})`;
-    const content = `${draft.content.slice(0, start)}${markdown}${draft.content.slice(end)}`;
-
-    if ([...content].length > 20_000) {
-      setMessage({ status: "error", message: "Content cannot exceed 20,000 characters." });
-      return;
-    }
-
-    setMessage(null);
-    setDraft((current) => ({ ...current, content }));
-    restoreSelection(start + 1, start + 1 + label.length);
-  }
-
-  const toolbarButtonClass =
-    "inline-flex min-h-10 min-w-10 items-center justify-center rounded-lg border border-border bg-surface px-3 text-sm font-semibold text-neutral-strong transition hover:bg-brand-subtle hover:text-brand-deep";
-
-  return (
-    <div
-      className="flex flex-wrap gap-2 rounded-t-xl border border-b-0 border-border bg-surface-muted p-2"
-      role="toolbar"
-      aria-label="Content formatting"
-    >
-      <button
-        type="button"
-        aria-label="Bold"
-        title="Bold"
-        onClick={() => wrapSelection("**", "**", "bold text")}
-        className={toolbarButtonClass}
-      >
-        <strong>B</strong>
-      </button>
-      <button
-        type="button"
-        aria-label="Italic"
-        title="Italic"
-        onClick={() => wrapSelection("*", "*", "italic text")}
-        className={toolbarButtonClass}
-      >
-        <em>I</em>
-      </button>
-      <button
-        type="button"
-        aria-label="Heading"
-        title="Heading"
-        onClick={() => prefixSelectedLines("heading")}
-        className={toolbarButtonClass}
-      >
-        H
-      </button>
-      <button
-        type="button"
-        aria-label="Unordered list"
-        title="Unordered list"
-        onClick={() => prefixSelectedLines("unordered")}
-        className={toolbarButtonClass}
-      >
-        • List
-      </button>
-      <button
-        type="button"
-        aria-label="Ordered list"
-        title="Ordered list"
-        onClick={() => prefixSelectedLines("ordered")}
-        className={toolbarButtonClass}
-      >
-        1. List
-      </button>
-      <button
-        type="button"
-        aria-label="Insert link"
-        title="Insert link"
-        onClick={insertLink}
-        className={toolbarButtonClass}
-      >
-        Link
-      </button>
     </div>
   );
 }
@@ -366,7 +184,6 @@ export function OrganisationInformationCards({
   const router = useRouter();
   const editorDialogRef = useRef<HTMLDialogElement>(null);
   const deleteDialogRef = useRef<HTMLDialogElement>(null);
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [cards, setCards] = useState(initialCards);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [draft, setDraft] = useState<Draft>(emptyDraft);
@@ -387,7 +204,11 @@ export function OrganisationInformationCards({
 
   function openEditEditor(card: OrganisationInformationCard) {
     setEditor({ mode: "edit", card });
-    setDraft({ title: card.title, content: card.content });
+    setDraft({
+      title: card.title,
+      content: card.content,
+      contentLength: card.content.length,
+    });
     setEditorMessage(null);
     editorDialogRef.current?.showModal();
   }
@@ -400,6 +221,22 @@ export function OrganisationInformationCards({
   function submitEditor(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!editor) return;
+
+    if (draft.contentLength < 1) {
+      setEditorMessage({
+        status: "error",
+        message: "Add some content before saving this card.",
+      });
+      return;
+    }
+
+    if (draft.contentLength > 20_000 || [...draft.content].length > 20_000) {
+      setEditorMessage({
+        status: "error",
+        message: "Content cannot exceed 20,000 characters.",
+      });
+      return;
+    }
 
     setEditorMessage(null);
     startSaving(async () => {
@@ -493,6 +330,34 @@ export function OrganisationInformationCards({
       {pageMessage ? (
         <div className="mb-5 rounded-xl border border-border bg-surface px-4 py-3">
           <ActionMessage result={pageMessage} />
+        </div>
+      ) : null}
+
+      {isOwner && cards.length > 0 ? (
+        <div className="mb-5 flex min-w-0 items-start gap-3 rounded-xl border border-border bg-surface-muted px-4 py-3 text-sm leading-6 text-muted-foreground">
+          <span
+            className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-brand-subtle text-xs font-bold text-brand-deep"
+            aria-hidden="true"
+          >
+            i
+          </span>
+          <p>
+            {cards.length === 1 ? (
+              <>
+                <span className="font-semibold text-neutral-strong">Tip:</span>{" "}
+                You can add up to 5 cards and format their content. Add more cards
+                to arrange the page using drag and drop.
+              </>
+            ) : (
+              <>
+                <span className="font-semibold text-neutral-strong">Tip:</span>{" "}
+                Drag cards to reorder them. Use ⋯ to edit or delete.
+                {cards.length === 5
+                  ? " Maximum of 5 information cards reached."
+                  : ""}
+              </>
+            )}
+          </p>
         </div>
       ) : null}
 
@@ -655,11 +520,10 @@ export function OrganisationInformationCards({
         </>
       ) : (
         <div className="space-y-5">
-          {cards.map((card, index) => (
+          {cards.map((card) => (
             <InformationCardArticle
               key={card.id}
               card={card}
-              index={index}
               ownerControls={false}
             />
           ))}
@@ -718,28 +582,44 @@ export function OrganisationInformationCards({
               Content
             </label>
             <div className="mt-2">
-              <EditorToolbar
-                textareaRef={textareaRef}
-                draft={draft}
-                setDraft={setDraft}
-                setMessage={setEditorMessage}
-              />
-              <textarea
-                ref={textareaRef}
-                id="information-card-content"
-                value={draft.content}
-                onChange={(event) => setDraft((current) => ({ ...current, content: event.target.value }))}
-                maxLength={20_000}
-                required
-                disabled={saving}
-                rows={14}
-                className="min-h-72 w-full resize-y rounded-b-xl border border-border bg-surface px-4 py-3 text-sm leading-6 text-foreground outline-none transition placeholder:text-muted-foreground focus:border-brand"
-                placeholder="Write the information this organisation wants to publish…"
-              />
+              {editor ? (
+                <OrganisationRichTextEditor
+                  key={editor.mode === "edit" ? editor.card.id : "new-card"}
+                  disabled={saving}
+                  initialMarkdown={draft.content}
+                  onChange={({ markdown, textLength }) => {
+                    setDraft((current) => ({
+                      ...current,
+                      content: markdown,
+                      contentLength: textLength,
+                    }));
+                    if (textLength > 20_000 || [...markdown].length > 20_000) {
+                      setEditorMessage({
+                        status: "error",
+                        message: "Content cannot exceed 20,000 characters.",
+                      });
+                    } else {
+                      setEditorMessage(null);
+                    }
+                  }}
+                  onMessage={(message) =>
+                    setEditorMessage(
+                      message ? { status: "error", message } : null,
+                    )
+                  }
+                />
+              ) : null}
             </div>
             <div className="mt-1.5 flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
-              <span>Raw HTML and embedded content are not supported.</span>
-              <span>{[...draft.content].length.toLocaleString()}/20,000</span>
+              <span id="information-card-content-help">
+                Paste or type normally. Raw HTML and embedded content are not supported.
+              </span>
+              <span
+                id="information-card-content-count"
+                className={draft.contentLength > 20_000 ? "text-danger" : undefined}
+              >
+                {draft.contentLength.toLocaleString()}/20,000
+              </span>
             </div>
           </div>
 
@@ -758,7 +638,11 @@ export function OrganisationInformationCards({
             </button>
             <button
               type="submit"
-              disabled={saving}
+              disabled={
+                saving ||
+                draft.contentLength > 20_000 ||
+                [...draft.content].length > 20_000
+              }
               className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep disabled:cursor-wait disabled:opacity-60"
             >
               {saving
