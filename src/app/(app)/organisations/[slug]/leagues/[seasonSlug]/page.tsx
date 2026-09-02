@@ -4,8 +4,10 @@ import { notFound } from "next/navigation";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { Badge, Card, SectionHeader } from "@/components/ui";
 import {
-  formatLeagueSeasonDate,
+  getLeagueEntryWindowDateDisplay,
+  getLeagueEntryWindowState,
   getLeagueSeasonBySlug,
+  getLeagueSeasonDateDisplay,
   getLeagueSeasonStatusLabel,
   type LeagueSeasonStatus,
 } from "@/lib/league-seasons";
@@ -56,12 +58,18 @@ export default async function LeagueSeasonDetailPage({
   const creationSucceeded = Array.isArray(created)
     ? created[0] === "1"
     : created === "1";
-  const dates = [
-    ["Entry opens", season.entry_opens_at],
-    ["Entry closes", season.entry_closes_at],
-    ["Starts", season.starts_at],
-    ["Ends", season.ends_at],
-  ] as const;
+  const entryWindowDates = getLeagueEntryWindowDateDisplay(
+    season.entry_opens_at,
+    season.entry_closes_at,
+  );
+  const entryWindowState = getLeagueEntryWindowState(
+    season.entry_opens_at,
+    season.entry_closes_at,
+  );
+  const seasonDates = getLeagueSeasonDateDisplay(
+    season.starts_at,
+    season.ends_at,
+  );
 
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="leagues">
@@ -107,17 +115,28 @@ export default async function LeagueSeasonDetailPage({
           ) : null}
         </div>
 
-        <dl className="mt-8 grid gap-5 border-t border-border pt-6 sm:grid-cols-2 lg:grid-cols-4">
-          {dates.map(([label, value]) => (
-            <div key={label} className="min-w-0">
-              <dt className="text-xs font-medium text-muted-foreground">
-                {label}
-              </dt>
-              <dd className="mt-1.5 break-words text-sm font-semibold text-foreground">
-                {formatLeagueSeasonDate(value) ?? "Not set"}
+        <dl className="mt-8 grid gap-4 border-t border-border pt-6 sm:grid-cols-2">
+          <div className="min-w-0 rounded-xl bg-surface-muted p-5">
+            <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Entry window
+            </dt>
+            <dd className="mt-2 break-words text-base font-semibold leading-6 text-foreground">
+              {entryWindowDates ?? "Not scheduled"}
+            </dd>
+            {entryWindowState ? (
+              <dd className="mt-1.5 text-xs leading-5 text-muted-foreground">
+                {entryWindowState}
               </dd>
-            </div>
-          ))}
+            ) : null}
+          </div>
+          <div className="min-w-0 rounded-xl bg-surface-muted p-5">
+            <dt className="text-xs font-semibold uppercase tracking-[0.12em] text-muted-foreground">
+              Season
+            </dt>
+            <dd className="mt-2 break-words text-base font-semibold leading-6 text-foreground">
+              {seasonDates ?? "Not scheduled"}
+            </dd>
+          </div>
         </dl>
       </Card>
 

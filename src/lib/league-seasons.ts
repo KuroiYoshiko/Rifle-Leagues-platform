@@ -42,6 +42,19 @@ const dateFormatter = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
 });
 
+const dayMonthFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "long",
+  timeZone: "UTC",
+});
+
+const warsawDatePartsFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+  timeZone: "Europe/Warsaw",
+});
+
 export const getLeagueSeasons = cache(async (organisationId: number) => {
   const supabase = await createClient();
   const { data, error } = await supabase
@@ -87,6 +100,135 @@ export function getLeagueSeasonStatusLabel(status: LeagueSeasonStatus) {
   return statusLabels[status];
 }
 
+function formatRequiredLeagueSeasonDate(value: string) {
+  return dateFormatter.format(new Date(`${value}T00:00:00Z`));
+}
+
 export function formatLeagueSeasonDate(value: string | null) {
-  return value ? dateFormatter.format(new Date(`${value}T00:00:00Z`)) : null;
+  return value ? formatRequiredLeagueSeasonDate(value) : null;
+}
+
+export function formatLeagueSeasonDateRange(start: string, end: string) {
+  if (start === end) return formatRequiredLeagueSeasonDate(start);
+
+  const startDate = new Date(`${start}T00:00:00Z`);
+  const endDate = new Date(`${end}T00:00:00Z`);
+
+  if (start.slice(0, 4) === end.slice(0, 4)) {
+    return `${dayMonthFormatter.format(startDate)} – ${dateFormatter.format(endDate)}`;
+  }
+
+  return `${dateFormatter.format(startDate)} – ${dateFormatter.format(endDate)}`;
+}
+
+export function getLeagueToday() {
+  const parts = warsawDatePartsFormatter.formatToParts(new Date());
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+
+  return `${year}-${month}-${day}`;
+}
+
+export function getLeagueEntryCloseSummary(
+  entryClosesAt: string,
+  today = getLeagueToday(),
+) {
+  if (entryClosesAt === today) return "Entries close today";
+
+  const date = formatRequiredLeagueSeasonDate(entryClosesAt);
+  return entryClosesAt < today
+    ? `Entries closed ${date}`
+    : `Entries close ${date}`;
+}
+
+export function getLeagueEntryOpenSummary(
+  entryOpensAt: string,
+  today = getLeagueToday(),
+) {
+  if (entryOpensAt === today) return "Entries open today";
+
+  const date = formatRequiredLeagueSeasonDate(entryOpensAt);
+  return entryOpensAt < today
+    ? `Entries opened ${date}`
+    : `Entries open ${date}`;
+}
+
+export function getLeagueEntrySummary(
+  entryOpensAt: string | null,
+  entryClosesAt: string | null,
+  today = getLeagueToday(),
+) {
+  if (entryClosesAt) return getLeagueEntryCloseSummary(entryClosesAt, today);
+  if (entryOpensAt) return getLeagueEntryOpenSummary(entryOpensAt, today);
+  return null;
+}
+
+export function getLeagueEntryWindowState(
+  entryOpensAt: string | null,
+  entryClosesAt: string | null,
+  today = getLeagueToday(),
+) {
+  if (entryClosesAt && entryClosesAt < today) return "Entries closed";
+  if (entryClosesAt === today) return "Entries close today";
+  if (entryOpensAt === today) return "Entries open today";
+
+  if (entryOpensAt && entryOpensAt > today) {
+    return `Entries open ${formatRequiredLeagueSeasonDate(entryOpensAt)}`;
+  }
+
+  if (entryClosesAt) {
+    return `Entries close ${formatRequiredLeagueSeasonDate(entryClosesAt)}`;
+  }
+
+  if (entryOpensAt) {
+    return getLeagueEntryOpenSummary(entryOpensAt, today);
+  }
+
+  return null;
+}
+
+export function getLeagueEntryWindowDateDisplay(
+  entryOpensAt: string | null,
+  entryClosesAt: string | null,
+) {
+  if (entryOpensAt && entryClosesAt) {
+    return formatLeagueSeasonDateRange(entryOpensAt, entryClosesAt);
+  }
+
+  if (entryOpensAt) {
+    return `Opens ${formatRequiredLeagueSeasonDate(entryOpensAt)}`;
+  }
+
+  if (entryClosesAt) {
+    return `Closes ${formatRequiredLeagueSeasonDate(entryClosesAt)}`;
+  }
+
+  return null;
+}
+
+export function getLeagueSeasonDateDisplay(
+  startsAt: string | null,
+  endsAt: string | null,
+) {
+  if (startsAt && endsAt) {
+    return formatLeagueSeasonDateRange(startsAt, endsAt);
+  }
+
+  if (startsAt) return `Starts ${formatRequiredLeagueSeasonDate(startsAt)}`;
+  if (endsAt) return `Ends ${formatRequiredLeagueSeasonDate(endsAt)}`;
+  return null;
+}
+
+export function getLeagueSeasonDateSummary(
+  startsAt: string | null,
+  endsAt: string | null,
+) {
+  if (startsAt && endsAt) {
+    return `Season: ${formatLeagueSeasonDateRange(startsAt, endsAt)}`;
+  }
+
+  if (startsAt) return `Season starts ${formatRequiredLeagueSeasonDate(startsAt)}`;
+  if (endsAt) return `Season ends ${formatRequiredLeagueSeasonDate(endsAt)}`;
+  return null;
 }

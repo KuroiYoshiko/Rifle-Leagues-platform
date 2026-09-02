@@ -7,8 +7,9 @@ import {
 } from "@/components/organisation-page-frame";
 import { Badge, Card, SectionHeader } from "@/components/ui";
 import {
-  formatLeagueSeasonDate,
+  getLeagueEntrySummary,
   getLeagueSeasons,
+  getLeagueSeasonDateSummary,
   getLeagueSeasonStatusLabel,
   type LeagueSeason,
   type LeagueSeasonStatus,
@@ -66,9 +67,14 @@ function LeagueSeasonCard({
   tone: "neutral" | "positive" | "warning" | "brand";
 }) {
   const detailPath = `/organisations/${organisationSlug}/leagues/${season.slug}`;
-  const entryClose = formatLeagueSeasonDate(season.entry_closes_at);
-  const starts = formatLeagueSeasonDate(season.starts_at);
-  const ends = formatLeagueSeasonDate(season.ends_at);
+  const entrySummary = getLeagueEntrySummary(
+    season.entry_opens_at,
+    season.entry_closes_at,
+  );
+  const seasonSummary = getLeagueSeasonDateSummary(
+    season.starts_at,
+    season.ends_at,
+  );
 
   return (
     <Card className="min-w-0 p-5 sm:p-6">
@@ -87,11 +93,10 @@ function LeagueSeasonCard({
               {season.name}
             </Link>
           </h3>
-          <div className="mt-3 flex flex-wrap gap-x-5 gap-y-1.5 text-xs leading-5 text-muted-foreground">
-            {entryClose ? <span>Entry closes {entryClose}</span> : null}
-            {starts ? <span>Starts {starts}</span> : null}
-            {ends ? <span>Ends {ends}</span> : null}
-            {!entryClose && !starts && !ends ? <span>Dates not set</span> : null}
+          <div className="mt-3 space-y-1 text-xs leading-5 text-muted-foreground">
+            {entrySummary ? <p>{entrySummary}</p> : null}
+            {seasonSummary ? <p>{seasonSummary}</p> : null}
+            {!entrySummary && !seasonSummary ? <p>Dates not set</p> : null}
           </div>
         </div>
         <Link

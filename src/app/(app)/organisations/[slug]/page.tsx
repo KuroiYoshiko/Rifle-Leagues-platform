@@ -5,8 +5,9 @@ import { OrganisationAbout } from "@/components/organisation-about";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { Badge, Card, SectionHeader } from "@/components/ui";
 import {
-  formatLeagueSeasonDate,
+  getLeagueEntrySummary,
   getLeagueSeasons,
+  getLeagueSeasonDateSummary,
   type LeagueSeason,
 } from "@/lib/league-seasons";
 import {
@@ -27,8 +28,14 @@ function OverviewLeagueCard({
   season: LeagueSeason;
   type: "active" | "open";
 }) {
-  const starts = formatLeagueSeasonDate(season.starts_at);
-  const entryCloses = formatLeagueSeasonDate(season.entry_closes_at);
+  const entrySummary = getLeagueEntrySummary(
+    season.entry_opens_at,
+    season.entry_closes_at,
+  );
+  const seasonSummary = getLeagueSeasonDateSummary(
+    season.starts_at,
+    season.ends_at,
+  );
 
   return (
     <Card className="min-w-0 p-5 sm:p-6">
@@ -43,17 +50,11 @@ function OverviewLeagueCard({
           {season.name}
         </Link>
       </h3>
-      <p className="mt-2 text-xs leading-5 text-muted-foreground">
-        {type === "open"
-          ? entryCloses
-            ? `Entry closes ${entryCloses}`
-            : starts
-              ? `Starts ${starts}`
-              : "Dates have not been set"
-          : starts
-            ? `Started ${starts}`
-            : "Season dates have not been set"}
-      </p>
+      <div className="mt-2 space-y-1 text-xs leading-5 text-muted-foreground">
+        {entrySummary ? <p>{entrySummary}</p> : null}
+        {seasonSummary ? <p>{seasonSummary}</p> : null}
+        {!entrySummary && !seasonSummary ? <p>Dates have not been set</p> : null}
+      </div>
     </Card>
   );
 }
