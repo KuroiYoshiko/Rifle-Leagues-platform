@@ -63,6 +63,16 @@ export type ManagedOrganisationStaff = {
   updated_at: string;
 };
 
+export type OrganisationInformationCard = {
+  id: number;
+  organisation_id: number;
+  title: string;
+  content: string;
+  position: number;
+  created_at: string;
+  updated_at: string;
+};
+
 const organisationTypeLabels: Record<OrganisationType, string> = {
   county_association: "County Association",
   regional_association: "Regional Association",
@@ -130,6 +140,26 @@ export const getOrganisationManagementContextBySlug = cache(
       organisation,
       access: data as OrganisationStaffAccess,
     };
+  },
+);
+
+export const getOrganisationInformationCards = cache(
+  async (organisationId: number) => {
+    const supabase = await createClient();
+    const { data, error } = await supabase
+      .from("organisation_information_cards")
+      .select(
+        "id, organisation_id, title, content, position, created_at, updated_at",
+      )
+      .eq("organisation_id", organisationId)
+      .order("position", { ascending: true })
+      .order("id", { ascending: true });
+
+    if (error) {
+      throw new Error("Organisation information could not be loaded.");
+    }
+
+    return (data ?? []) as OrganisationInformationCard[];
   },
 );
 

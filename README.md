@@ -125,6 +125,20 @@ New organisation slugs are generated from their official names. A collision
 with an existing slug is treated as a likely duplicate and registration stops
 with no rows committed; the function does not create a random suffixed copy.
 
+## Organisation information cards
+
+Run the complete
+[`database/organisation-information-cards.sql`](database/organisation-information-cards.sql)
+file in the Supabase Dashboard SQL Editor after `database/user-profiles.sql`,
+`database/organisations.sql`, and `database/organisation-staff.sql`. The file is
+safe to rerun and does not add placeholder or development content.
+
+It creates the generic information-card table, read-only authenticated access,
+and the narrowly scoped create, update, delete, and atomic reorder RPCs. Only an
+active organisation owner can call the write operations. Content is stored as
+constrained Markdown (120-character titles and 20,000-character card content),
+and the database permits at most five ordered cards per organisation.
+
 ## Club roles and membership approval
 
 Run the complete [`database/clubs-and-memberships.sql`](database/clubs-and-memberships.sql)
