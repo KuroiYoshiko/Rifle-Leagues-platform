@@ -1,8 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { DiscoverySearchForm } from "@/components/discovery-search-form";
 import { OrganisationDashboardButton } from "@/components/organisation-dashboard-button";
 import { Card } from "@/components/ui";
+import {
+  createPrefixTextSearchQuery,
+  normaliseDiscoverySearchTerm,
+} from "@/lib/discovery-search";
 import {
   organisationColumns,
   type Organisation,
@@ -18,7 +23,7 @@ const pageSize = 10;
 
 function readSearchTerm(value: string | string[] | undefined) {
   const rawValue = Array.isArray(value) ? value[0] : value;
-  return rawValue?.trim().slice(0, 100) ?? "";
+  return normaliseDiscoverySearchTerm(rawValue ?? "");
 }
 
 function readPage(value: string | string[] | undefined) {
@@ -93,8 +98,8 @@ export default async function OrganisationsPage({
   if (searchTerm) {
     organisationsQuery = organisationsQuery.textSearch(
       "search_document",
-      searchTerm,
-      { config: "simple", type: "websearch" },
+      createPrefixTextSearchQuery(searchTerm),
+      { config: "simple" },
     );
   }
 
@@ -158,42 +163,13 @@ export default async function OrganisationsPage({
       </div>
 
       <Card className="p-5 sm:p-7">
-        <form action="/organisations" method="get" role="search">
-          <label
-            htmlFor="organisation-search"
-            className="text-sm font-semibold text-foreground"
-          >
-            Search organisations
-          </label>
-          <div className="mt-2 flex flex-col gap-3 sm:flex-row">
-            <input
-              id="organisation-search"
-              name="q"
-              type="search"
-              defaultValue={searchTerm}
-              maxLength={100}
-              placeholder="Organisation name or short name"
-              className="min-h-12 min-w-0 flex-1 rounded-xl border border-border bg-surface px-4 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/70 focus:border-brand focus:ring-4 focus:ring-brand/10"
-            />
-            <button
-              type="submit"
-              className="min-h-12 rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep"
-            >
-              Search
-            </button>
-            {searchTerm ? (
-              <Link
-                href="/organisations"
-                className="inline-flex min-h-12 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
-              >
-                Clear
-              </Link>
-            ) : null}
-          </div>
-          <p className="mt-2 text-xs leading-5 text-muted-foreground">
-            Search checks all active organisations by full or abbreviated name.
-          </p>
-        </form>
+        <DiscoverySearchForm
+          inputId="organisation-search"
+          label="Search organisations"
+          placeholder="Organisation name or short name"
+          initialQuery={searchTerm}
+          hint="Search checks all active organisations by full or abbreviated name."
+        />
       </Card>
 
       {organisationsResult.error ? (
@@ -217,7 +193,10 @@ export default async function OrganisationsPage({
             >
               {searchTerm ? "Search results" : "Active organisations"}
             </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
+            <p
+              className="mt-1 text-sm text-muted-foreground"
+              aria-live="polite"
+            >
               {totalResults === 0
                 ? searchTerm
                   ? `No active organisations matched “${searchTerm}”.`
