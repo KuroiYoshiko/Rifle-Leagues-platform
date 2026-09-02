@@ -57,6 +57,14 @@ const pageDetails: Record<string, { eyebrow: string; title: string }> = {
     eyebrow: "League organisations",
     title: "Find an organisation",
   },
+  "/organisations/access": {
+    eyebrow: "League organisations",
+    title: "Manage an organisation",
+  },
+  "/organisations/register": {
+    eyebrow: "League organisations",
+    title: "Register an organisation",
+  },
 };
 
 const organisationPageTitles: Record<string, string> = {
@@ -64,6 +72,7 @@ const organisationPageTitles: Record<string, string> = {
   results: "Results",
   information: "Information",
   contact: "Contact",
+  management: "Management",
 };
 
 const clubPageTitles: Record<string, string> = {
@@ -77,6 +86,10 @@ function getPageDetails(
   organisations: SidebarOrganisation[],
   clubs: SidebarClub[],
 ) {
+  if (pageDetails[pathname]) {
+    return pageDetails[pathname];
+  }
+
   const routeParts = pathname.split("/").filter(Boolean);
 
   if (routeParts[0] === "organisations" && routeParts[1]) {
@@ -99,7 +112,7 @@ function getPageDetails(
     };
   }
 
-  return pageDetails[pathname] ?? pageDetails["/dashboard"];
+  return pageDetails["/dashboard"];
 }
 
 function isNavigationItemActive(pathname: string, href: string) {
@@ -369,6 +382,9 @@ function Navigation({
         { label: "Results", href: `${basePath}/results` },
         { label: "Information", href: `${basePath}/information` },
         { label: "Contact", href: `${basePath}/contact` },
+        ...(organisation.managementRole
+          ? [{ label: "Management", href: `${basePath}/management` }]
+          : []),
       ],
     };
   });

@@ -5,14 +5,22 @@ import {
   updateOrganisationDashboard,
   type OrganisationDashboardState,
 } from "@/app/(app)/organisations/actions";
+import type {
+  OrganisationStaffRole,
+  OrganisationStaffStatus,
+} from "@/lib/organisations";
 
 export function OrganisationDashboardButton({
   organisationId,
   initiallyAdded,
+  managementRole,
+  managementStatus,
   statusUnavailable = false,
 }: {
   organisationId: number;
   initiallyAdded: boolean;
+  managementRole?: OrganisationStaffRole;
+  managementStatus?: OrganisationStaffStatus;
   statusUnavailable?: boolean;
 }) {
   const [state, formAction, submitting] = useActionState(
@@ -20,12 +28,42 @@ export function OrganisationDashboardButton({
     { isAdded: initiallyAdded } satisfies OrganisationDashboardState,
   );
   const isAdded = state.isAdded ?? initiallyAdded;
+  const hasActiveManagement = managementStatus === "active" && managementRole;
+  const managementLabel =
+    managementStatus === "pending"
+      ? "Management request pending"
+      : managementStatus === "rejected"
+        ? "Previous management request rejected"
+        : managementStatus === "revoked"
+          ? "Previous management access revoked"
+          : null;
+
+  if (hasActiveManagement) {
+    return (
+      <div className="sm:text-right">
+        <span className="inline-flex min-h-9 items-center rounded-full border border-success/20 bg-success-subtle px-3.5 text-xs font-semibold text-success">
+          {managementRole === "owner" ? "Owner access" : "Manager access"}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="sm:text-right">
+      {managementLabel ? (
+        <p
+          className={`mb-2 text-xs font-semibold ${
+            managementStatus === "pending"
+              ? "text-warning"
+              : "text-muted-foreground"
+          }`}
+        >
+          {managementLabel}
+        </p>
+      ) : null}
       {isAdded ? (
         <p className="mb-2 text-xs font-semibold text-success">
-          Added to your organisations
+          Manually added to My Organisations
         </p>
       ) : null}
       <form action={formAction}>
@@ -49,7 +87,7 @@ export function OrganisationDashboardButton({
                 ? "Removing…"
                 : "Adding…"
               : isAdded
-                ? "Remove"
+                ? "Remove manual shortcut"
                 : "Add to my organisations"}
         </button>
       </form>

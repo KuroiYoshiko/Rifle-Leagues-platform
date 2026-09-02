@@ -1,13 +1,17 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
-import type { Organisation } from "@/lib/organisations";
+import {
+  getOrganisationManagementContextBySlug,
+  type Organisation,
+} from "@/lib/organisations";
 
 export type OrganisationSection =
   | "overview"
   | "leagues"
   | "results"
   | "information"
-  | "contact";
+  | "contact"
+  | "management";
 
 const sectionItems: Array<{
   id: OrganisationSection;
@@ -21,7 +25,7 @@ const sectionItems: Array<{
   { id: "contact", label: "Contact", suffix: "/contact" },
 ];
 
-export function OrganisationPageFrame({
+export async function OrganisationPageFrame({
   organisation,
   currentSection,
   children,
@@ -31,6 +35,16 @@ export function OrganisationPageFrame({
   children: ReactNode;
 }) {
   const basePath = `/organisations/${organisation.slug}`;
+  const managementContext = await getOrganisationManagementContextBySlug(
+    organisation.slug,
+  );
+  const showManagement = Boolean(managementContext);
+  const visibleSectionItems = showManagement
+    ? [
+        ...sectionItems,
+        { id: "management" as const, label: "Management", suffix: "/management" },
+      ]
+    : sectionItems;
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -39,7 +53,7 @@ export function OrganisationPageFrame({
           <p className="text-xs font-medium text-brand-strong">
             {organisation.short_name ?? "League organisation"}
           </p>
-          <h1 className="mt-3 max-w-4xl text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">
+          <h1 className="mt-3 max-w-4xl break-words text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">
             {organisation.name}
           </h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
@@ -59,7 +73,7 @@ export function OrganisationPageFrame({
         aria-label={`${organisation.name} sections`}
       >
         <div className="flex min-w-max gap-1">
-          {sectionItems.map((item) => {
+          {visibleSectionItems.map((item) => {
             const isActive = item.id === currentSection;
 
             return (
