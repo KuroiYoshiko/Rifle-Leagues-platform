@@ -80,6 +80,10 @@ type OrganisationRichTextEditorProps = {
   initialMarkdown: string;
   onChange: (value: { markdown: string; textLength: number }) => void;
   onMessage: (message: string | null) => void;
+  editorId?: string;
+  ariaLabel?: string;
+  describedBy?: string;
+  placeholder?: string;
 };
 
 function getEditorValue() {
@@ -428,6 +432,10 @@ export function OrganisationRichTextEditor({
   initialMarkdown,
   onChange,
   onMessage,
+  editorId = "information-card-content",
+  ariaLabel = "Content",
+  describedBy = "information-card-content-help information-card-content-count",
+  placeholder = "Write the information this organisation wants to publish…",
 }: OrganisationRichTextEditorProps) {
   const initialConfig = useMemo(
     () => ({
@@ -471,15 +479,15 @@ export function OrganisationRichTextEditor({
         <RichTextPlugin
           contentEditable={
             <ContentEditable
-              id="information-card-content"
-              aria-label="Content"
-              aria-describedby="information-card-content-help information-card-content-count"
+              id={editorId}
+              aria-label={ariaLabel}
+              aria-describedby={describedBy}
               className="min-h-72 max-h-[52vh] w-full overflow-y-auto overflow-x-hidden rounded-b-xl px-4 py-3 text-sm leading-6 text-foreground outline-none sm:px-5"
             />
           }
           placeholder={
             <p className="pointer-events-none absolute left-4 top-3 text-sm leading-6 text-muted-foreground sm:left-5">
-              Write the information this organisation wants to publish…
+              {placeholder}
             </p>
           }
           ErrorBoundary={LexicalErrorBoundary}

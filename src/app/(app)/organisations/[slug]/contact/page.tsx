@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { OrganisationContactDetails } from "@/components/organisation-contact-details";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { Card } from "@/components/ui";
-import { getActiveOrganisationBySlug } from "@/lib/organisations";
+import {
+  getActiveOrganisationBySlug,
+  getOrganisationManagementContextBySlug,
+} from "@/lib/organisations";
 
 export const metadata: Metadata = {
   title: "Organisation contact",
@@ -14,7 +18,10 @@ export default async function OrganisationContactPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const organisation = await getActiveOrganisationBySlug(slug);
+  const [organisation, managementContext] = await Promise.all([
+    getActiveOrganisationBySlug(slug),
+    getOrganisationManagementContextBySlug(slug),
+  ]);
 
   if (!organisation) {
     notFound();
@@ -23,88 +30,19 @@ export default async function OrganisationContactPage({
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="contact">
       <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.7fr)]">
-        <Card className="p-6 sm:p-8">
-          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-strong">
-            Contact details
-          </p>
-          <h2 className="mt-3 text-xl font-semibold tracking-[-0.025em] text-foreground">
-            {organisation.name}
-          </h2>
-
-          <dl className="mt-7 space-y-6">
-            <div>
-              <dt className="text-xs font-medium text-muted-foreground">Address</dt>
-              <dd className="mt-1.5 whitespace-pre-line text-sm font-semibold text-foreground">
-                {organisation.address || organisation.postcode ? (
-                  <>
-                    {organisation.address ?? ""}
-                    {organisation.address && organisation.postcode ? "\n" : ""}
-                    {organisation.postcode ?? ""}
-                  </>
-                ) : (
-                  "Not published"
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-muted-foreground">Telephone</dt>
-              <dd className="mt-1.5 text-sm font-semibold text-foreground">
-                {organisation.telephone ? (
-                  <a
-                    href={`tel:${organisation.telephone}`}
-                    className="text-brand-strong hover:text-brand-deep hover:underline"
-                  >
-                    {organisation.telephone}
-                  </a>
-                ) : (
-                  "Not published"
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-muted-foreground">Email</dt>
-              <dd className="mt-1.5 text-sm font-semibold text-foreground">
-                {organisation.contact_email ? (
-                  <a
-                    href={`mailto:${organisation.contact_email}`}
-                    className="text-brand-strong hover:text-brand-deep hover:underline"
-                  >
-                    {organisation.contact_email}
-                  </a>
-                ) : (
-                  "Not published"
-                )}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-muted-foreground">Website</dt>
-              <dd className="mt-1.5 text-sm font-semibold text-foreground">
-                {organisation.website ? (
-                  <a
-                    href={organisation.website}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="break-all text-brand-strong hover:text-brand-deep hover:underline"
-                  >
-                    {organisation.website}
-                    <span className="ml-1" aria-hidden="true">↗</span>
-                  </a>
-                ) : (
-                  "Not published"
-                )}
-              </dd>
-            </div>
-          </dl>
-
-          {organisation.contact_email ? (
-            <a
-              href={`mailto:${organisation.contact_email}`}
-              className="mt-8 inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep"
-            >
-              Email the organisation
-            </a>
-          ) : null}
-        </Card>
+        <OrganisationContactDetails
+          key={organisation.updated_at}
+          organisationId={organisation.id}
+          organisationName={organisation.name}
+          initialValues={{
+            address: organisation.address ?? "",
+            postcode: organisation.postcode ?? "",
+            telephone: organisation.telephone ?? "",
+            contactEmail: organisation.contact_email ?? "",
+            website: organisation.website ?? "",
+          }}
+          isOwner={managementContext?.access.role === "owner"}
+        />
 
         <Card className="bg-surface-muted p-6 sm:p-8">
           <span

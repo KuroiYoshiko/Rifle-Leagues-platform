@@ -1,8 +1,12 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
+import { OrganisationAbout } from "@/components/organisation-about";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { Card, SectionHeader } from "@/components/ui";
-import { getActiveOrganisationBySlug } from "@/lib/organisations";
+import {
+  getActiveOrganisationBySlug,
+  getOrganisationManagementContextBySlug,
+} from "@/lib/organisations";
 
 export const metadata: Metadata = {
   title: "Organisation overview",
@@ -17,7 +21,10 @@ export default async function OrganisationOverviewPage({
 }) {
   const { slug } = await params;
   const { registered } = await searchParams;
-  const organisation = await getActiveOrganisationBySlug(slug);
+  const [organisation, managementContext] = await Promise.all([
+    getActiveOrganisationBySlug(slug),
+    getOrganisationManagementContextBySlug(slug),
+  ]);
   const registrationSucceeded = Array.isArray(registered)
     ? registered[0] === "1"
     : registered === "1";
@@ -41,29 +48,12 @@ export default async function OrganisationOverviewPage({
           your active management access.
         </div>
       ) : null}
-      <section>
-        <SectionHeader
-          title="About"
-          description="Public information supplied for this organisation"
-        />
-        <Card className="p-6 sm:p-8">
-          <p className="max-w-3xl text-sm leading-7 text-muted-foreground">
-            {organisation.description ??
-              "A detailed organisation description has not been added yet."}
-          </p>
-          {organisation.website ? (
-            <a
-              href={organisation.website}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-5 inline-flex text-sm font-semibold text-brand-strong hover:text-brand-deep hover:underline"
-            >
-              Visit organisation website
-              <span className="ml-1" aria-hidden="true">↗</span>
-            </a>
-          ) : null}
-        </Card>
-      </section>
+      <OrganisationAbout
+        key={organisation.updated_at}
+        organisationId={organisation.id}
+        initialContent={organisation.about_content}
+        isOwner={managementContext?.access.role === "owner"}
+      />
 
       <section className="mt-10" aria-labelledby="league-activity-heading">
         <SectionHeader
@@ -94,29 +84,6 @@ export default async function OrganisationOverviewPage({
             Upcoming league information will appear here once real league data
             exists. Adding this organisation does not grant entry permission.
           </p>
-        </Card>
-      </section>
-
-      <section className="mt-10" aria-labelledby="overview-contact-heading">
-        <SectionHeader title="Contact" description="Published organisation contact details" />
-        <Card className="p-6 sm:p-8">
-          <h2 id="overview-contact-heading" className="font-semibold text-foreground">
-            {organisation.contact_email
-              ? "Contact the organisation"
-              : "Contact details are not available yet"}
-          </h2>
-          {organisation.contact_email ? (
-            <a
-              href={`mailto:${organisation.contact_email}`}
-              className="mt-3 inline-flex text-sm font-semibold text-brand-strong hover:text-brand-deep hover:underline"
-            >
-              {organisation.contact_email}
-            </a>
-          ) : (
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              A contact email has not been published for this organisation.
-            </p>
-          )}
         </Card>
       </section>
     </OrganisationPageFrame>

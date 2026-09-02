@@ -125,6 +125,20 @@ New organisation slugs are generated from their official names. A collision
 with an existing slug is treated as a likely duplicate and registration stops
 with no rows committed; the function does not create a random suffixed copy.
 
+## Organisation About and Contact management
+
+Run the complete
+[`database/organisation-about-contact.sql`](database/organisation-about-contact.sql)
+file in the Supabase Dashboard SQL Editor after `database/organisations.sql`,
+`database/organisation-staff.sql`, and `database/organisation-registration.sql`.
+The file is safe to rerun and does not create placeholder content.
+
+It adds the single nullable `about_content` Markdown document to each
+organisation and narrowly scoped About and structured Contact update RPCs.
+Only the exact organisation's active owner can call either mutation. Managers
+and other authenticated users retain read-only access, and direct client
+`UPDATE` access to `public.organisations` remains revoked.
+
 ## Organisation information cards
 
 Run the complete

@@ -29,6 +29,7 @@ export type Organisation = {
   slug: string;
   short_name: string | null;
   description: string | null;
+  about_content: string | null;
   website: string | null;
   contact_email: string | null;
   organisation_type: OrganisationType;
@@ -81,7 +82,7 @@ const organisationTypeLabels: Record<OrganisationType, string> = {
 };
 
 export const organisationColumns =
-  "id, name, slug, short_name, description, website, contact_email, organisation_type, address, postcode, telephone, status, created_at, updated_at";
+  "id, name, slug, short_name, description, about_content, website, contact_email, organisation_type, address, postcode, telephone, status, created_at, updated_at";
 
 const routeSafeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 

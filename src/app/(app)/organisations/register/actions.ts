@@ -6,6 +6,10 @@ import {
   ORGANISATION_TYPES,
   type OrganisationType,
 } from "@/lib/organisations";
+import {
+  normaliseOrganisationContactValues,
+  validateOrganisationContact,
+} from "@/lib/organisation-contact";
 import { createClient } from "@/lib/supabase/server";
 
 type RegistrationField =
@@ -27,26 +31,29 @@ export type OrganisationRegistrationState = {
   fieldErrors?: Partial<Record<RegistrationField, string>>;
 };
 
-const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const routeSafeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 function readRegistrationValues(formData: FormData): OrganisationRegistrationValues {
+  const contactValues = normaliseOrganisationContactValues({
+    address: formData.get("address"),
+    postcode: formData.get("postcode"),
+    telephone: formData.get("telephone"),
+    contactEmail: formData.get("contact_email"),
+    website: formData.get("website"),
+  });
+
   return {
     name: String(formData.get("name") ?? "").trim(),
     shortName: String(formData.get("short_name") ?? "").trim(),
     organisationType: String(formData.get("organisation_type") ?? "").trim(),
-    address: String(formData.get("address") ?? "").trim(),
-    postcode: String(formData.get("postcode") ?? "").trim(),
-    telephone: String(formData.get("telephone") ?? "").trim(),
-    contactEmail: String(formData.get("contact_email") ?? "")
-      .trim()
-      .toLowerCase(),
-    website: String(formData.get("website") ?? "").trim(),
+    ...contactValues,
   };
 }
 
 function validateRegistration(values: OrganisationRegistrationValues) {
-  const fieldErrors: OrganisationRegistrationState["fieldErrors"] = {};
+  const fieldErrors: OrganisationRegistrationState["fieldErrors"] = {
+    ...validateOrganisationContact(values),
+  };
 
   if (!values.name) fieldErrors.name = "Enter the organisation name.";
   else if (values.name.length < 2 || values.name.length > 160) {
@@ -59,42 +66,6 @@ function validateRegistration(values: OrganisationRegistrationValues) {
 
   if (!ORGANISATION_TYPES.includes(values.organisationType as OrganisationType)) {
     fieldErrors.organisationType = "Select an organisation type.";
-  }
-
-  if (values.address.length > 1000) {
-    fieldErrors.address = "Use 1000 characters or fewer.";
-  }
-
-  if (values.postcode.length > 20) {
-    fieldErrors.postcode = "Use 20 characters or fewer.";
-  }
-
-  if (
-    values.telephone &&
-    (values.telephone.length < 3 || values.telephone.length > 50)
-  ) {
-    fieldErrors.telephone = "Use between 3 and 50 characters.";
-  }
-
-  if (values.contactEmail && !emailPattern.test(values.contactEmail)) {
-    fieldErrors.contactEmail = "Enter a valid email address.";
-  } else if (values.contactEmail.length > 320) {
-    fieldErrors.contactEmail = "Use 320 characters or fewer.";
-  }
-
-  if (values.website) {
-    try {
-      const url = new URL(values.website);
-      if (url.protocol !== "http:" && url.protocol !== "https:") {
-        fieldErrors.website = "Use a website beginning with http:// or https://.";
-      }
-    } catch {
-      fieldErrors.website = "Enter a complete website address.";
-    }
-
-    if (values.website.length > 2048) {
-      fieldErrors.website = "Use 2048 characters or fewer.";
-    }
   }
 
   return fieldErrors;
