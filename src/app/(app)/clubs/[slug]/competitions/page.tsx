@@ -346,7 +346,7 @@ export default async function ClubCompetitionsPage({
     } else if (phase === "upcoming") {
       upcomingEntries.push(entry);
     } else {
-      // A submitted entry remains useful when one or both season boundaries
+      // A submitted entry remains useful when one or both date boundaries
       // are absent. Keep it current without manufacturing presentation dates.
       ongoingEntries.push(entry);
     }
@@ -409,13 +409,13 @@ export default async function ClubCompetitionsPage({
             <CompetitionSection
               id="ongoing-competitions-heading"
               title="Ongoing competitions"
-              description="Submitted entries in seasons currently in progress"
+              description="Submitted entries in competitions currently in progress"
               entries={ongoingEntries}
             />
             <CompetitionSection
               id="upcoming-competitions-heading"
               title="Upcoming competitions"
-              description="Submitted entries in seasons scheduled to start"
+              description="Submitted entries in competitions scheduled to start"
               entries={upcomingEntries}
             />
             <CompetitionSection

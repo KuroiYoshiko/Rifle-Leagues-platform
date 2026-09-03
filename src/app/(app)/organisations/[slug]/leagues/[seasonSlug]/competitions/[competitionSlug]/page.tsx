@@ -11,14 +11,21 @@ import {
 } from "@/lib/competition-divisions";
 import {
   formatCompetitionEntryFee,
+  getCompetitionMaximumPerRound,
   getCompetitionBySlug,
   getCompetitionEntryFormatLabel,
+  getCompetitionRankingMethodLabel,
   getCompetitionRounds,
+  getCompetitionScoreComponents,
   getCompetitionScoringMethodLabel,
   getCompetitionStatusLabel,
+  resolveCompetitionEffectiveDates,
 } from "@/lib/competitions";
 import { getCompetitionClubEntryContext } from "@/lib/competition-entries";
-import { getLeagueSeasonBySlug } from "@/lib/league-seasons";
+import {
+  formatLeagueSeasonDate,
+  getLeagueSeasonBySlug,
+} from "@/lib/league-seasons";
 import {
   getActiveOrganisationBySlug,
   getOrganisationManagementContextBySlug,
@@ -108,8 +115,9 @@ export default async function CompetitionDetailPage({
     notFound();
   }
 
-  const [rounds, entryContexts, divisionManagement, publishedDivisions] = await Promise.all([
+  const [rounds, scoreComponents, entryContexts, divisionManagement, publishedDivisions] = await Promise.all([
     getCompetitionRounds(competition.id),
+    getCompetitionScoreComponents(competition.id),
     competition.status === "published"
       ? getCompetitionClubEntryContext(competition.id)
       : Promise.resolve([]),
@@ -140,6 +148,16 @@ export default async function CompetitionDetailPage({
     competition.entry_format === "team"
       ? `${entryFormat} · ${competition.team_size} shooters`
       : entryFormat;
+  const effectiveDates = resolveCompetitionEffectiveDates(competition, season);
+  const derivedMaximum = getCompetitionMaximumPerRound(
+    competition.sets_per_round,
+    scoreComponents,
+  );
+  const entryWindow =
+    effectiveDates.effective_entry_opens_at &&
+    effectiveDates.effective_entry_closes_at
+      ? `${formatLeagueSeasonDate(effectiveDates.effective_entry_opens_at)} – ${formatLeagueSeasonDate(effectiveDates.effective_entry_closes_at)}`
+      : "Not configured";
 
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="leagues">
@@ -219,8 +237,8 @@ export default async function CompetitionDetailPage({
               Scoring
             </dt>
             <dd className="mt-2 text-sm font-semibold text-foreground">
-              {getCompetitionScoringMethodLabel(competition.scoring_method)}
-              {competition.uses_x_score ? " · X score" : ""}
+              {getCompetitionRankingMethodLabel(competition.ranking_method)}
+              {competition.uses_x_score ? " · Records X" : " · No X"}
             </dd>
           </div>
           <div className="min-w-0 rounded-xl bg-surface-muted p-4">
@@ -228,8 +246,8 @@ export default async function CompetitionDetailPage({
               Maximum score
             </dt>
             <dd className="mt-2 text-sm font-semibold text-foreground">
-              {competition.maximum_score_per_round
-                ? `Ex ${competition.maximum_score_per_round.toLocaleString("en-GB")}`
+              {scoreComponents.length
+                ? `Ex ${derivedMaximum.toLocaleString("en-GB", { maximumFractionDigits: 2 })}`
                 : "Not set"}
             </dd>
           </div>
@@ -251,8 +269,67 @@ export default async function CompetitionDetailPage({
               {fee ?? "Not set"}
             </dd>
           </div>
+          <div className="min-w-0 rounded-xl bg-surface-muted p-4">
+            <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+              Entry window
+            </dt>
+            <dd className="mt-2 text-sm font-semibold text-foreground">
+              {entryWindow}
+            </dd>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {competition.entry_window_mode === "custom" ? "Custom" : "Season default"}
+            </p>
+          </div>
+          <div className="min-w-0 rounded-xl bg-surface-muted p-4">
+            <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+              Competition Start
+            </dt>
+            <dd className="mt-2 text-sm font-semibold text-foreground">
+              {formatLeagueSeasonDate(effectiveDates.effective_starts_at) ?? "Not configured"}
+            </dd>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {competition.start_date_mode === "custom" ? "Custom" : "Season start"}
+            </p>
+          </div>
+          <div className="min-w-0 rounded-xl bg-surface-muted p-4">
+            <dt className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+              Scoring access
+            </dt>
+            <dd className="mt-2 text-sm font-semibold text-foreground">
+              {competition.local_scoring_enabled
+                ? "Club + organisation scoring"
+                : "Organisation scoring only"}
+            </dd>
+          </div>
         </dl>
       </Card>
+
+      <section className="mt-10" aria-labelledby="course-of-fire-heading">
+        <SectionHeader
+          title="Course of Fire"
+          description={`${competition.sets_per_round} set${competition.sets_per_round === 1 ? "" : "s"} per shooter / round`}
+        />
+        <Card className="p-5 sm:p-6">
+          <h3 id="course-of-fire-heading" className="sr-only">Course of Fire score components</h3>
+          {scoreComponents.length ? (
+            <ol className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {scoreComponents.map((component) => (
+                <li key={component.id} className="rounded-xl bg-surface-muted p-4">
+                  <p className="text-xs font-semibold uppercase tracking-[0.08em] text-brand-strong">
+                    {component.short_label || `Score ${component.position}`}
+                  </p>
+                  <p className="mt-2 text-sm font-semibold text-foreground">
+                    Ex {Number(component.maximum_score).toLocaleString("en-GB", { maximumFractionDigits: 2 })}
+                    {` · ${getCompetitionScoringMethodLabel(component.score_method)}`}
+                  </p>
+                </li>
+              ))}
+            </ol>
+          ) : (
+            <p className="text-sm text-muted-foreground">No score components configured.</p>
+          )}
+        </Card>
+      </section>
 
       <CompetitionEntryControls
         contexts={entryContexts}
@@ -263,12 +340,12 @@ export default async function CompetitionDetailPage({
       <section className="mt-10" aria-labelledby="round-schedule-heading">
         <SectionHeader
           title="Round schedule"
-          description={`${rounds.length} of ${competition.number_of_rounds} deadlines set`}
+          description={`${rounds.length} of ${competition.number_of_rounds} Round End dates set`}
         />
         {rounds.length === 0 ? (
           <Card className="p-6 sm:p-8">
             <h3 id="round-schedule-heading" className="font-semibold text-foreground">
-              No round deadlines set
+              No Round End dates set
             </h3>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
               The owner can generate and edit this schedule while configuring the
@@ -278,7 +355,7 @@ export default async function CompetitionDetailPage({
         ) : (
           <Card className="overflow-hidden bg-border">
             <h3 id="round-schedule-heading" className="sr-only">
-              Round deadlines
+              Round End dates
             </h3>
             <ol className="grid min-w-0 grid-cols-1 gap-px min-[360px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-5 2xl:grid-cols-10">
               {rounds.map((round, index) => (
@@ -297,6 +374,11 @@ export default async function CompetitionDetailPage({
                   >
                     {roundDateLabels[index].compact}
                   </time>
+                  {round.shoot_by_date ? (
+                    <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                      Shoot by {formatLeagueSeasonDate(round.shoot_by_date)}
+                    </p>
+                  ) : null}
                 </li>
               ))}
             </ol>

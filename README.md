@@ -196,10 +196,19 @@ remain revoked.
 
 The authenticated `create_competition` and `update_competition` RPCs verify the
 active organisation, exact season, exact competition, and active owner before
-atomically saving configuration and explicit round deadlines. New competitions
-are always drafts. Publishing is a deliberate one-way transition and requires
-complete scoring values plus one chronological, in-season deadline for every
-configured round.
+atomically saving configuration and the round schedule. New competitions are
+always drafts, and publishing remains a deliberate one-way transition.
+
+For an existing populated installation, then run the complete focused additive
+[`database/competition-configuration-refactor.sql`](database/competition-configuration-refactor.sql)
+file after `database/season-description.sql`, `database/competition-rounds.sql`,
+`database/competition-entries.sql`, and `database/competition-divisions.sql`.
+It adds Competition date inheritance, optional Shoot-by dates, ranking and
+scoring-access configuration, and the relational Course of Fire table. It
+backfills existing one-score Competitions without replacing any Competition,
+Round, Entry, Entrant, Participant, Division, or assignment row. No reset or
+reseed is required. The historical baseline SQL files should be run before this
+focused upgrade; rerun the upgrade last if a baseline file is reapplied.
 
 ## Club competition entries
 

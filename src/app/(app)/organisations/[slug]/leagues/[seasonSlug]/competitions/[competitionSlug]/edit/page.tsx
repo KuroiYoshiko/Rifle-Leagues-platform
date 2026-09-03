@@ -6,6 +6,7 @@ import { Card, SectionHeader } from "@/components/ui";
 import {
   getCompetitionBySlug,
   getCompetitionRounds,
+  getCompetitionScoreComponents,
 } from "@/lib/competitions";
 import { getLeagueSeasonBySlug } from "@/lib/league-seasons";
 import { getOrganisationManagementContextBySlug } from "@/lib/organisations";
@@ -43,7 +44,10 @@ export default async function EditCompetitionPage({
     notFound();
   }
 
-  const rounds = await getCompetitionRounds(competition.id);
+  const [rounds, scoreComponents] = await Promise.all([
+    getCompetitionRounds(competition.id),
+    getCompetitionScoreComponents(competition.id),
+  ]);
 
   return (
     <OrganisationPageFrame
@@ -52,7 +56,7 @@ export default async function EditCompetitionPage({
     >
       <SectionHeader
         title="Edit competition"
-        description={`Update the configuration and round deadlines for ${competition.name}`}
+        description={`Update the configuration, Round End dates, and optional Shoot-by dates for ${competition.name}`}
       />
       <Card className="min-w-0 p-5 sm:p-8">
         <CompetitionForm
@@ -60,6 +64,7 @@ export default async function EditCompetitionPage({
           season={season}
           competition={competition}
           rounds={rounds}
+          scoreComponents={scoreComponents}
         />
       </Card>
       <p className="mt-4 text-xs leading-5 text-muted-foreground">
