@@ -27,8 +27,7 @@ export default async function ApplicationLayout({
 
   const [
     profileResult,
-    followedOrganisationsResult,
-    managedOrganisationsResult,
+    myOrganisationsResult,
     clubMembershipsResult,
   ] =
     await Promise.all([
@@ -37,29 +36,7 @@ export default async function ApplicationLayout({
         .select("first_name, last_name")
         .eq("id", claims.sub)
         .maybeSingle(),
-      supabase
-        .from("user_organisations")
-        .select(`
-        organisation:organisations!inner (
-          id,
-          name,
-          slug
-        )
-        `)
-        .eq("user_id", claims.sub),
-      supabase
-        .from("organisation_staff")
-        .select(`
-        role,
-        organisation:organisations!inner (
-          id,
-          name,
-          slug
-        )
-      `)
-        .eq("user_id", claims.sub)
-        .eq("status", "active")
-        .eq("organisation.status", "active"),
+      supabase.rpc("get_my_organisations"),
       supabase
         .from("club_memberships")
         .select(`
@@ -79,40 +56,22 @@ export default async function ApplicationLayout({
     Profile,
     "first_name" | "last_name"
   > | null;
-  const followedOrganisationRows = (
-    followedOrganisationsResult.data ?? []
-  ) as unknown as Array<{
-    organisation: Omit<SidebarOrganisation, "managementRole"> | null;
-  }>;
-  const managedOrganisationRows = (
-    managedOrganisationsResult.data ?? []
-  ) as unknown as Array<{
-    role: NonNullable<SidebarOrganisation["managementRole"]>;
-    organisation: Omit<SidebarOrganisation, "managementRole"> | null;
-  }>;
-  const organisationsById = new Map<number, SidebarOrganisation>();
-
-  for (const row of followedOrganisationRows) {
-    if (row.organisation) {
-      organisationsById.set(row.organisation.id, {
-        ...row.organisation,
-        managementRole: null,
-      });
-    }
+  if (myOrganisationsResult.error) {
+    throw new Error("Organisation navigation could not be loaded.");
   }
 
-  for (const row of managedOrganisationRows) {
-    if (row.organisation) {
-      organisationsById.set(row.organisation.id, {
-        ...row.organisation,
-        managementRole: row.role,
-      });
-    }
-  }
-
-  const organisations = Array.from(organisationsById.values()).sort(
-    (left, right) => left.name.localeCompare(right.name),
-  );
+  const myOrganisationRows = (myOrganisationsResult.data ?? []) as Array<{
+    id: number;
+    name: string;
+    slug: string;
+    management_role: SidebarOrganisation["managementRole"];
+  }>;
+  const organisations = myOrganisationRows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    managementRole: row.management_role,
+  }));
   const clubMembershipRows = (clubMembershipsResult.data ?? []) as unknown as Array<{
     role: SidebarClub["role"];
     club: Pick<SidebarClub, "id" | "name" | "slug"> | null;

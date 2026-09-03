@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { CompetitionEntryControls } from "@/components/competition-entry-controls";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { Badge, Card, SectionHeader } from "@/components/ui";
 import {
@@ -11,6 +12,7 @@ import {
   getCompetitionScoringMethodLabel,
   getCompetitionStatusLabel,
 } from "@/lib/competitions";
+import { getCompetitionClubEntryContext } from "@/lib/competition-entries";
 import { getLeagueSeasonBySlug } from "@/lib/league-seasons";
 import {
   getActiveOrganisationBySlug,
@@ -101,7 +103,12 @@ export default async function CompetitionDetailPage({
     notFound();
   }
 
-  const rounds = await getCompetitionRounds(competition.id);
+  const [rounds, entryContexts] = await Promise.all([
+    getCompetitionRounds(competition.id),
+    competition.status === "published"
+      ? getCompetitionClubEntryContext(competition.id)
+      : Promise.resolve([]),
+  ]);
   const roundDateLabels = getCompactRoundDateLabels(rounds);
   const isOwner = managementContext?.access.role === "owner";
   const creationSucceeded = Array.isArray(created)
@@ -231,6 +238,12 @@ export default async function CompetitionDetailPage({
           </div>
         </dl>
       </Card>
+
+      <CompetitionEntryControls
+        contexts={entryContexts}
+        competitionId={competition.id}
+        basePath={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}`}
+      />
 
       <section className="mt-10" aria-labelledby="round-schedule-heading">
         <SectionHeader
