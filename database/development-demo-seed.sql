@@ -1,4 +1,4 @@
--- RifleLeagues standalone development/demo application-data seed.
+-- RifleLeagues standalone development/demo seed.
 -- DEVELOPMENT AND TEST PROJECTS ONLY. Do not run against production.
 --
 -- First run the schema files in this order:
@@ -15,86 +15,392 @@
 --  11. database/competition-entries.sql
 --  12. database/competition-divisions.sql
 --
--- Then create the login-capable demo Auth users with:
---   node --env-file=.env.local scripts/development-demo-auth.mjs
--- Finally run this file in the Supabase SQL Editor.
+-- Then run this entire file in the Supabase SQL Editor. It creates 40
+-- confirmed email/password Auth users and the complete demo domain world and
+-- is safe to rerun.
+-- Shared development-only password: RifleLeagues-Demo-2026!
 --
--- The Auth helper uses the documented server-only Admin API so this SQL does
--- not depend on the internal, Supabase-managed shape of auth.users or
--- auth.identities. The existing auth.users trigger creates public.profiles.
--- This file updates only marked demo profiles and stable demo-domain records.
+-- Direct Auth-table writes are intentionally limited to this private
+-- development seed. Supabase-managed Auth internals can change between
+-- versions, so the seed validates the current required shape before writing.
 
 begin;
 
 set local lock_timeout = '10s';
 set local statement_timeout = '120s';
 
-create temporary table demo_users on commit drop as
-select
-  users.id as user_id,
-  lower(users.email) as email,
-  nullif(btrim(users.raw_user_meta_data ->> 'first_name'), '') as first_name,
-  nullif(btrim(users.raw_user_meta_data ->> 'last_name'), '') as last_name,
-  row_number() over (order by lower(users.email))::integer as demo_number
-from auth.users as users
-where users.raw_app_meta_data ->> 'demo_dataset' = 'development-demo-v1'
-  and users.raw_app_meta_data ->> 'rifleleagues_demo' = 'true';
-
 do $$
 declare
-  v_auth_count integer;
-  v_profile_count integer;
+  v_missing text;
 begin
-  select count(*) into v_auth_count from demo_users;
-  select count(*) into v_profile_count
-  from demo_users as demo
-  join public.profiles as profile on profile.id = demo.user_id;
+  select string_agg(required.relation_name, ', ' order by required.relation_name)
+  into v_missing
+  from (values
+    ('auth.users'),
+    ('auth.identities'),
+    ('public.profiles'),
+    ('public.organisations'),
+    ('public.organisation_staff'),
+    ('public.user_organisations'),
+    ('public.clubs'),
+    ('public.club_memberships'),
+    ('public.league_seasons'),
+    ('public.competitions'),
+    ('public.competition_rounds'),
+    ('public.club_competition_entries'),
+    ('public.competition_entrants'),
+    ('public.competition_entrant_participants'),
+    ('public.competition_division_configs'),
+    ('public.competition_divisions'),
+    ('public.competition_division_assignments')
+  ) as required(relation_name)
+  where to_regclass(required.relation_name) is null;
 
-  if v_auth_count <> 40 then
-    raise exception
-      'Expected 40 marked RifleLeagues demo Auth users, found %. Run scripts/development-demo-auth.mjs first.',
-      v_auth_count;
+  if v_missing is not null then
+    raise exception 'RifleLeagues application schema is incomplete. Missing relations: %', v_missing;
   end if;
 
-  if v_profile_count <> v_auth_count then
-    raise exception
-      'Every demo Auth user must have a public.profiles row. Run database/user-profiles.sql before the Auth helper.';
+  select string_agg(required.column_name, ', ' order by required.column_name)
+  into v_missing
+  from (values
+    ('instance_id'), ('id'), ('aud'), ('role'), ('email'),
+    ('encrypted_password'), ('email_confirmed_at'), ('last_sign_in_at'),
+    ('raw_app_meta_data'), ('raw_user_meta_data'), ('created_at'),
+    ('updated_at'), ('is_sso_user'), ('is_anonymous'),
+    ('confirmation_token'), ('recovery_token'), ('email_change'),
+    ('email_change_token_current'), ('email_change_token_new'),
+    ('email_change_confirm_status'), ('phone_change'),
+    ('phone_change_token'), ('reauthentication_token')
+  ) as required(column_name)
+  where not exists (
+    select 1
+    from information_schema.columns as columns
+    where columns.table_schema = 'auth'
+      and columns.table_name = 'users'
+      and columns.column_name = required.column_name
+  );
+
+  if v_missing is not null then
+    raise exception 'Unsupported auth.users shape. Missing current Supabase Auth columns: %', v_missing;
   end if;
 
-  if exists (
-    select 1 from demo_users
-    where first_name is null or last_name is null
-  ) then
-    raise exception 'Demo Auth user name metadata is incomplete.';
+  select string_agg(required.column_name, ', ' order by required.column_name)
+  into v_missing
+  from (values
+    ('id'), ('provider_id'), ('user_id'), ('identity_data'), ('provider'),
+    ('last_sign_in_at'), ('created_at'), ('updated_at')
+  ) as required(column_name)
+  where not exists (
+    select 1
+    from information_schema.columns as columns
+    where columns.table_schema = 'auth'
+      and columns.table_name = 'identities'
+      and columns.column_name = required.column_name
+  );
+
+  if v_missing is not null then
+    raise exception 'Unsupported auth.identities shape. Missing current Supabase Auth columns: %', v_missing;
+  end if;
+
+  if to_regprocedure('extensions.crypt(text,text)') is null
+     or to_regprocedure('extensions.gen_salt(text)') is null then
+    raise exception 'Supabase pgcrypto functions extensions.crypt and extensions.gen_salt are required.';
   end if;
 end;
 $$;
 
-update public.profiles as profile
-set first_name = demo.first_name,
-    last_name = demo.last_name,
-    title = (array['Mr', 'Mrs', 'Ms', 'Miss', 'Dr'])[1 + ((demo.demo_number - 1) % 5)],
-    address = format('%s Demo Close', 10 + demo.demo_number),
-    town = case
-      when demo.email like 'basildon.%' then 'Basildon'
-      when demo.email like 'northbridge.%' then 'Northbridge'
-      when demo.email like 'westmere.%' then 'Westmere'
-      else 'Southend-on-Sea'
-    end,
-    county = case
-      when demo.email like 'northbridge.%' then 'North Yorkshire'
-      when demo.email like 'westmere.%' then 'Cumbria'
-      else 'Essex'
-    end,
-    postcode = case
-      when demo.email like 'basildon.%' then 'SS14 1DL'
-      when demo.email like 'northbridge.%' then 'YO26 4RL'
-      when demo.email like 'westmere.%' then 'CA10 2TS'
-      else 'SS2 6ER'
-    end,
-    phone_number = format('+44 7700 90%s', lpad(demo.demo_number::text, 4, '0'))
+create temporary table demo_user_specs (
+  intended_user_id uuid primary key,
+  user_id uuid not null unique,
+  email text not null unique,
+  first_name text not null,
+  last_name text not null,
+  demo_number integer not null unique
+) on commit drop;
+
+insert into demo_user_specs (
+  intended_user_id, user_id, email, first_name, last_name, demo_number
+)
+values
+  ('10000000-0000-4000-8000-000000000001', '10000000-0000-4000-8000-000000000001', 'basildon.demo01@example.com', 'Eleanor', 'Hughes', 1),
+  ('10000000-0000-4000-8000-000000000002', '10000000-0000-4000-8000-000000000002', 'basildon.demo02@example.com', 'Oliver', 'Bennett', 2),
+  ('10000000-0000-4000-8000-000000000003', '10000000-0000-4000-8000-000000000003', 'basildon.demo03@example.com', 'Amelia', 'Clarke', 3),
+  ('10000000-0000-4000-8000-000000000004', '10000000-0000-4000-8000-000000000004', 'basildon.demo04@example.com', 'George', 'Foster', 4),
+  ('10000000-0000-4000-8000-000000000005', '10000000-0000-4000-8000-000000000005', 'basildon.demo05@example.com', 'Sophie', 'Turner', 5),
+  ('10000000-0000-4000-8000-000000000006', '10000000-0000-4000-8000-000000000006', 'basildon.demo06@example.com', 'Harry', 'Collins', 6),
+  ('10000000-0000-4000-8000-000000000007', '10000000-0000-4000-8000-000000000007', 'basildon.demo07@example.com', 'Isla', 'Morgan', 7),
+  ('10000000-0000-4000-8000-000000000008', '10000000-0000-4000-8000-000000000008', 'basildon.demo08@example.com', 'Jack', 'Ward', 8),
+  ('10000000-0000-4000-8000-000000000009', '10000000-0000-4000-8000-000000000009', 'basildon.demo09@example.com', 'Emily', 'Price', 9),
+  ('10000000-0000-4000-8000-000000000010', '10000000-0000-4000-8000-000000000010', 'basildon.demo10@example.com', 'Thomas', 'Reed', 10),
+  ('20000000-0000-4000-8000-000000000001', '20000000-0000-4000-8000-000000000001', 'northbridge.demo01@example.com', 'Charlotte', 'Wilson', 11),
+  ('20000000-0000-4000-8000-000000000002', '20000000-0000-4000-8000-000000000002', 'northbridge.demo02@example.com', 'James', 'Hall', 12),
+  ('20000000-0000-4000-8000-000000000003', '20000000-0000-4000-8000-000000000003', 'northbridge.demo03@example.com', 'Grace', 'Walker', 13),
+  ('20000000-0000-4000-8000-000000000004', '20000000-0000-4000-8000-000000000004', 'northbridge.demo04@example.com', 'Alfie', 'Robinson', 14),
+  ('20000000-0000-4000-8000-000000000005', '20000000-0000-4000-8000-000000000005', 'northbridge.demo05@example.com', 'Phoebe', 'Wood', 15),
+  ('20000000-0000-4000-8000-000000000006', '20000000-0000-4000-8000-000000000006', 'northbridge.demo06@example.com', 'Henry', 'Thompson', 16),
+  ('20000000-0000-4000-8000-000000000007', '20000000-0000-4000-8000-000000000007', 'northbridge.demo07@example.com', 'Lucy', 'Green', 17),
+  ('20000000-0000-4000-8000-000000000008', '20000000-0000-4000-8000-000000000008', 'northbridge.demo08@example.com', 'Oscar', 'Harris', 18),
+  ('20000000-0000-4000-8000-000000000009', '20000000-0000-4000-8000-000000000009', 'northbridge.demo09@example.com', 'Freya', 'Martin', 19),
+  ('20000000-0000-4000-8000-000000000010', '20000000-0000-4000-8000-000000000010', 'northbridge.demo10@example.com', 'William', 'Cooper', 20),
+  ('30000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000001', 'westmere.demo01@example.com', 'Alice', 'Davidson', 21),
+  ('30000000-0000-4000-8000-000000000002', '30000000-0000-4000-8000-000000000002', 'westmere.demo02@example.com', 'Arthur', 'Scott', 22),
+  ('30000000-0000-4000-8000-000000000003', '30000000-0000-4000-8000-000000000003', 'westmere.demo03@example.com', 'Matilda', 'Brown', 23),
+  ('30000000-0000-4000-8000-000000000004', '30000000-0000-4000-8000-000000000004', 'westmere.demo04@example.com', 'Frederick', 'Taylor', 24),
+  ('30000000-0000-4000-8000-000000000005', '30000000-0000-4000-8000-000000000005', 'westmere.demo05@example.com', 'Evie', 'Anderson', 25),
+  ('30000000-0000-4000-8000-000000000006', '30000000-0000-4000-8000-000000000006', 'westmere.demo06@example.com', 'Leo', 'Mitchell', 26),
+  ('30000000-0000-4000-8000-000000000007', '30000000-0000-4000-8000-000000000007', 'westmere.demo07@example.com', 'Poppy', 'White', 27),
+  ('30000000-0000-4000-8000-000000000008', '30000000-0000-4000-8000-000000000008', 'westmere.demo08@example.com', 'Archie', 'Moore', 28),
+  ('30000000-0000-4000-8000-000000000009', '30000000-0000-4000-8000-000000000009', 'westmere.demo09@example.com', 'Rosie', 'Jackson', 29),
+  ('30000000-0000-4000-8000-000000000010', '30000000-0000-4000-8000-000000000010', 'westmere.demo10@example.com', 'Samuel', 'Hill', 30),
+  ('40000000-0000-4000-8000-000000000001', '40000000-0000-4000-8000-000000000001', 'southessex.demo01@example.com', 'Harriet', 'Evans', 31),
+  ('40000000-0000-4000-8000-000000000002', '40000000-0000-4000-8000-000000000002', 'southessex.demo02@example.com', 'Edward', 'King', 32),
+  ('40000000-0000-4000-8000-000000000003', '40000000-0000-4000-8000-000000000003', 'southessex.demo03@example.com', 'Florence', 'Wright', 33),
+  ('40000000-0000-4000-8000-000000000004', '40000000-0000-4000-8000-000000000004', 'southessex.demo04@example.com', 'Charlie', 'Baker', 34),
+  ('40000000-0000-4000-8000-000000000005', '40000000-0000-4000-8000-000000000005', 'southessex.demo05@example.com', 'Daisy', 'Adams', 35),
+  ('40000000-0000-4000-8000-000000000006', '40000000-0000-4000-8000-000000000006', 'southessex.demo06@example.com', 'Alexander', 'Nelson', 36),
+  ('40000000-0000-4000-8000-000000000007', '40000000-0000-4000-8000-000000000007', 'southessex.demo07@example.com', 'Molly', 'Carter', 37),
+  ('40000000-0000-4000-8000-000000000008', '40000000-0000-4000-8000-000000000008', 'southessex.demo08@example.com', 'Joseph', 'Phillips', 38),
+  ('40000000-0000-4000-8000-000000000009', '40000000-0000-4000-8000-000000000009', 'southessex.demo09@example.com', 'Lily', 'Campbell', 39),
+  ('40000000-0000-4000-8000-000000000010', '40000000-0000-4000-8000-000000000010', 'southessex.demo10@example.com', 'Daniel', 'Parker', 40);
+
+do $$
+begin
+  if exists (
+    select 1
+    from auth.users as users
+    join demo_user_specs as demo on lower(users.email) = demo.email
+    where users.raw_app_meta_data ->> 'demo_dataset' is distinct from 'development-demo-v1'
+       or users.raw_app_meta_data ->> 'rifleleagues_demo' is distinct from 'true'
+  ) then
+    raise exception 'A demo email belongs to an unmarked Auth account. Refusing to modify it.';
+  end if;
+
+  if exists (
+    select 1
+    from auth.users as users
+    join demo_user_specs as demo on users.id = demo.intended_user_id
+    where lower(users.email) is distinct from demo.email
+       or users.raw_app_meta_data ->> 'demo_dataset' is distinct from 'development-demo-v1'
+       or users.raw_app_meta_data ->> 'rifleleagues_demo' is distinct from 'true'
+  ) then
+    raise exception 'A deterministic demo UUID belongs to another Auth account. Refusing to modify it.';
+  end if;
+end;
+$$;
+
+-- Reuse marked accounts made by the former helper, if present. Fresh projects
+-- always retain the deterministic UUIDs declared above.
+update demo_user_specs as demo
+set user_id = users.id
+from auth.users as users
+where lower(users.email) = demo.email
+  and users.raw_app_meta_data ->> 'demo_dataset' = 'development-demo-v1'
+  and users.raw_app_meta_data ->> 'rifleleagues_demo' = 'true';
+
+do $$
+begin
+  if exists (
+    select 1
+    from auth.identities as identity
+    join demo_user_specs as demo on identity.user_id = demo.user_id
+    where identity.provider = 'email'
+      and identity.provider_id is distinct from demo.user_id::text
+  ) then
+    raise exception 'A marked demo user has an unexpected email identity provider_id.';
+  end if;
+
+  if exists (
+    select 1
+    from auth.identities as identity
+    join demo_user_specs as demo
+      on identity.provider_id = demo.user_id::text
+     and identity.provider = 'email'
+    where identity.user_id is distinct from demo.user_id
+  ) then
+    raise exception 'A demo email identity is attached to another Auth user.';
+  end if;
+
+  if exists (
+    select 1
+    from auth.identities as identity
+    join demo_user_specs as demo on identity.id = demo.user_id
+    where identity.provider_id is distinct from demo.user_id::text
+       or identity.provider is distinct from 'email'
+       or identity.user_id is distinct from demo.user_id
+  ) then
+    raise exception 'A deterministic demo identity UUID belongs to another Auth identity.';
+  end if;
+end;
+$$;
+
+insert into auth.users (
+  instance_id, id, aud, role, email, encrypted_password,
+  email_confirmed_at, last_sign_in_at, raw_app_meta_data,
+  raw_user_meta_data, created_at, updated_at, is_sso_user, is_anonymous,
+  confirmation_token, recovery_token, email_change,
+  email_change_token_current, email_change_token_new,
+  email_change_confirm_status, phone_change, phone_change_token,
+  reauthentication_token
+)
+select
+  '00000000-0000-0000-0000-000000000000'::uuid,
+  demo.user_id,
+  'authenticated',
+  'authenticated',
+  demo.email,
+  extensions.crypt('RifleLeagues-Demo-2026!', extensions.gen_salt('bf')),
+  now(),
+  now(),
+  jsonb_build_object(
+    'provider', 'email',
+    'providers', jsonb_build_array('email'),
+    'rifleleagues_demo', true,
+    'demo_dataset', 'development-demo-v1'
+  ),
+  jsonb_build_object(
+    'first_name', demo.first_name,
+    'last_name', demo.last_name,
+    'email_verified', true
+  ),
+  now(),
+  now(),
+  false,
+  false,
+  '', '', '', '', '', 0, '', '', ''
+from demo_user_specs as demo
+on conflict (id) do update
+set instance_id = excluded.instance_id,
+    aud = excluded.aud,
+    role = excluded.role,
+    email = excluded.email,
+    encrypted_password = excluded.encrypted_password,
+    email_confirmed_at = coalesce(auth.users.email_confirmed_at, excluded.email_confirmed_at),
+    raw_app_meta_data = excluded.raw_app_meta_data,
+    raw_user_meta_data = excluded.raw_user_meta_data,
+    updated_at = excluded.updated_at,
+    is_sso_user = excluded.is_sso_user,
+    is_anonymous = excluded.is_anonymous,
+    confirmation_token = excluded.confirmation_token,
+    recovery_token = excluded.recovery_token,
+    email_change = excluded.email_change,
+    email_change_token_current = excluded.email_change_token_current,
+    email_change_token_new = excluded.email_change_token_new,
+    email_change_confirm_status = excluded.email_change_confirm_status,
+    phone_change = excluded.phone_change,
+    phone_change_token = excluded.phone_change_token,
+    reauthentication_token = excluded.reauthentication_token;
+
+insert into auth.identities (
+  id, provider_id, user_id, identity_data, provider,
+  last_sign_in_at, created_at, updated_at
+)
+select
+  demo.user_id,
+  demo.user_id::text,
+  demo.user_id,
+  jsonb_build_object(
+    'sub', demo.user_id::text,
+    'email', demo.email,
+    'email_verified', true,
+    'phone_verified', false
+  ),
+  'email',
+  now(),
+  now(),
+  now()
+from demo_user_specs as demo
+on conflict (provider_id, provider) do update
+set user_id = excluded.user_id,
+    identity_data = excluded.identity_data,
+    updated_at = excluded.updated_at;
+
+create temporary table demo_users on commit drop as
+select user_id, email, first_name, last_name, demo_number
+from demo_user_specs;
+
+insert into public.profiles (
+  id, first_name, last_name, title, address, town, county, postcode,
+  phone_number
+)
+select
+  demo.user_id,
+  demo.first_name,
+  demo.last_name,
+  (array['Mr', 'Mrs', 'Ms', 'Miss', 'Dr'])[1 + ((demo.demo_number - 1) % 5)],
+  format('%s Demo Close', 10 + demo.demo_number),
+  case
+    when demo.email like 'basildon.%' then 'Basildon'
+    when demo.email like 'northbridge.%' then 'Northbridge'
+    when demo.email like 'westmere.%' then 'Westmere'
+    else 'Southend-on-Sea'
+  end,
+  case
+    when demo.email like 'northbridge.%' then 'North Yorkshire'
+    when demo.email like 'westmere.%' then 'Cumbria'
+    else 'Essex'
+  end,
+  case
+    when demo.email like 'basildon.%' then 'SS14 1DL'
+    when demo.email like 'northbridge.%' then 'YO26 4RL'
+    when demo.email like 'westmere.%' then 'CA10 2TS'
+    else 'SS2 6ER'
+  end,
+  format('+44 7700 90%s', lpad(demo.demo_number::text, 4, '0'))
 from demo_users as demo
-where profile.id = demo.user_id;
+on conflict (id) do update
+set first_name = excluded.first_name,
+    last_name = excluded.last_name,
+    title = excluded.title,
+    address = excluded.address,
+    town = excluded.town,
+    county = excluded.county,
+    postcode = excluded.postcode,
+    phone_number = excluded.phone_number;
+
+do $$
+declare
+  v_auth_count integer;
+  v_identity_count integer;
+  v_profile_count integer;
+begin
+  select count(*) into v_auth_count
+  from demo_users as demo
+  join auth.users as users on users.id = demo.user_id
+  where lower(users.email) = demo.email
+    and users.instance_id = '00000000-0000-0000-0000-000000000000'::uuid
+    and users.aud = 'authenticated'
+    and users.role = 'authenticated'
+    and users.email_confirmed_at is not null
+    and users.encrypted_password is not null
+    and users.encrypted_password <> ''
+    and extensions.crypt('RifleLeagues-Demo-2026!', users.encrypted_password)
+        = users.encrypted_password
+    and users.is_sso_user = false
+    and users.is_anonymous = false
+    and users.raw_app_meta_data ->> 'provider' = 'email'
+    and users.raw_app_meta_data -> 'providers' @> '["email"]'::jsonb;
+
+  select count(*) into v_identity_count
+  from demo_users as demo
+  join auth.identities as identity
+   on identity.user_id = demo.user_id
+   and identity.provider_id = demo.user_id::text
+   and identity.provider = 'email'
+   and identity.identity_data ->> 'sub' = demo.user_id::text
+   and lower(identity.identity_data ->> 'email') = demo.email
+   and identity.identity_data ->> 'email_verified' = 'true';
+
+  select count(*) into v_profile_count
+  from demo_users as demo
+  join public.profiles as profile on profile.id = demo.user_id;
+
+  if v_auth_count <> 40 or v_identity_count <> 40 or v_profile_count <> 40 then
+    raise exception
+      'Demo Auth bootstrap incomplete: users %, email identities %, profiles % (expected 40 each).',
+      v_auth_count, v_identity_count, v_profile_count;
+  end if;
+end;
+$$;
 
 insert into public.organisations (
   name, slug, short_name, description, website, contact_email, status,
@@ -833,7 +1139,7 @@ $$;
 commit;
 
 -- Expected stable top-level result after a successful run:
---   40 demo Auth users/profiles (created by the separate helper)
+--   40 confirmed demo Auth users, email identities, and profiles
 --   2 organisations, 4 clubs, 43 active club memberships
 --   5 seasons, 13 competitions, 20 club submissions
 --   1 published division layout and 1 saved draft layout
