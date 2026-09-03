@@ -195,6 +195,20 @@ are always drafts. Publishing is a deliberate one-way transition and requires
 complete scoring values plus one chronological, in-season deadline for every
 configured round.
 
+## Club competition entries
+
+Run the complete
+[`database/competition-entries.sql`](database/competition-entries.sql) file
+after the profile, organisation, organisation staff, clubs and memberships,
+league seasons, and competition rounds SQL listed above. The file is safe to
+rerun and creates no example entries.
+
+It creates the club submission, entrant-unit, and participant tables; strict
+RLS and Data API grants; club-owner/official mutation and roster RPCs; safe
+member-facing competition reads; and the deduplicated MY ORGANISATIONS read
+model. Entry mutations use database time and require a published competition,
+an open parent season, and the configured inclusive entry window.
+
 ## Club roles and membership approval
 
 Run the complete [`database/clubs-and-memberships.sql`](database/clubs-and-memberships.sql)
