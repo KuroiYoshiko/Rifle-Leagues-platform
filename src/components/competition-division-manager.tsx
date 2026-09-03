@@ -125,11 +125,12 @@ function DivisionBucket({
     data: { bucketKey },
     disabled: !editable,
   });
+  const isUnassigned = bucketKey === UNASSIGNED;
 
   return (
     <section
       ref={ref}
-      className={`min-w-0 rounded-2xl border bg-surface-muted p-3 transition sm:p-4 ${
+      className={`min-w-0 self-start rounded-2xl border bg-surface-muted p-3 transition sm:p-4 ${
         isDropTarget ? "border-brand bg-brand-subtle" : "border-border"
       }`}
     >
@@ -140,13 +141,19 @@ function DivisionBucket({
           </h3>
           <p className="mt-1 text-xs text-muted-foreground">
             {entrants.length} entrant{entrants.length === 1 ? "" : "s"}
-            {bucketKey === UNASSIGNED ? "" : ` · target ${targetSize}`}
+            {isUnassigned ? "" : ` · target ${targetSize}`}
           </p>
         </div>
         {controls}
       </div>
 
-      <div className="mt-3 space-y-2">
+      <div
+        className={`mt-3 space-y-2 overflow-y-auto overscroll-contain pr-1 ${
+          isUnassigned
+            ? "max-h-[min(62vh,44rem)]"
+            : "max-h-[32rem]"
+        }`}
+      >
         {entrants.map((entrant) => (
           <DraggableEntrantCard
             key={entrant.id}
@@ -220,6 +227,8 @@ export function CompetitionDivisionManager({
   }, [assignments, data.entrants, divisions]);
 
   const unassignedCount = entrantsByBucket[UNASSIGNED]?.length ?? 0;
+  const showUnassigned = editable || unassignedCount > 0;
+  const publishedIntegrityProblem = !editable && unassignedCount > 0;
 
   function markChanged() {
     setDirty(true);
@@ -439,6 +448,17 @@ export function CompetitionDivisionManager({
         </Card>
       )}
 
+      {publishedIntegrityProblem ? (
+        <div
+          className="mt-6 rounded-2xl border border-danger/20 bg-danger-subtle px-5 py-4 text-sm leading-6 text-danger"
+          role="alert"
+        >
+          <strong className="font-semibold">Published allocation problem.</strong>{" "}
+          {unassignedCount} eligible entrant{unassignedCount === 1 ? " is" : "s are"}{" "}
+          unexpectedly unassigned. Return the allocation to draft and review it.
+        </div>
+      ) : null}
+
       <DragDropProvider
         onDragEnd={(event) => {
           if (event.canceled) return;
@@ -449,39 +469,52 @@ export function CompetitionDivisionManager({
           }
         }}
       >
-        <div className="mt-6 grid min-w-0 gap-4 lg:grid-cols-2 2xl:grid-cols-3">
-          <DivisionBucket
-            bucketKey={UNASSIGNED}
-            title="Unassigned"
-            entrants={entrantsByBucket[UNASSIGNED] ?? []}
-            divisions={divisions}
-            assignments={assignments}
-            editable={editable}
-            targetSize={targetSize}
-            onMove={moveEntrant}
-          />
-          {divisions.map((division, index) => (
-            <DivisionBucket
-              key={division.key}
-              bucketKey={division.key}
-              title={division.name || "Unnamed division"}
-              entrants={entrantsByBucket[division.key] ?? []}
-              divisions={divisions}
-              assignments={assignments}
-              editable={editable}
-              targetSize={targetSize}
-              onMove={moveEntrant}
-              controls={
-                editable ? (
-                  <div className="flex shrink-0 gap-1">
-                    <button type="button" onClick={() => reorderDivision(index, -1)} disabled={index === 0} aria-label={`Move ${division.name} earlier`} className="grid size-8 place-items-center rounded-lg border border-border bg-surface text-xs disabled:opacity-35">↑</button>
-                    <button type="button" onClick={() => reorderDivision(index, 1)} disabled={index === divisions.length - 1} aria-label={`Move ${division.name} later`} className="grid size-8 place-items-center rounded-lg border border-border bg-surface text-xs disabled:opacity-35">↓</button>
-                    <button type="button" onClick={() => removeDivision(division.key)} aria-label={`Remove ${division.name}`} className="grid size-8 place-items-center rounded-lg border border-danger/20 bg-danger-subtle text-xs text-danger">×</button>
-                  </div>
-                ) : undefined
-              }
-            />
-          ))}
+        <div
+          className={`mt-6 grid min-w-0 gap-5 ${
+            showUnassigned
+              ? "lg:grid-cols-[minmax(18rem,22rem)_minmax(0,1fr)] lg:items-start"
+              : "grid-cols-1"
+          }`}
+        >
+          {showUnassigned ? (
+            <div className="min-w-0 lg:sticky lg:top-6">
+              <DivisionBucket
+                bucketKey={UNASSIGNED}
+                title="Unassigned"
+                entrants={entrantsByBucket[UNASSIGNED] ?? []}
+                divisions={divisions}
+                assignments={assignments}
+                editable={editable}
+                targetSize={targetSize}
+                onMove={moveEntrant}
+              />
+            </div>
+          ) : null}
+
+          <div className="grid min-w-0 items-start gap-4 sm:grid-cols-2 2xl:grid-cols-3">
+            {divisions.map((division, index) => (
+              <DivisionBucket
+                key={division.key}
+                bucketKey={division.key}
+                title={division.name || "Unnamed division"}
+                entrants={entrantsByBucket[division.key] ?? []}
+                divisions={divisions}
+                assignments={assignments}
+                editable={editable}
+                targetSize={targetSize}
+                onMove={moveEntrant}
+                controls={
+                  editable ? (
+                    <div className="flex shrink-0 gap-1">
+                      <button type="button" onClick={() => reorderDivision(index, -1)} disabled={index === 0} aria-label={`Move ${division.name} earlier`} className="grid size-8 place-items-center rounded-lg border border-border bg-surface text-xs disabled:opacity-35">↑</button>
+                      <button type="button" onClick={() => reorderDivision(index, 1)} disabled={index === divisions.length - 1} aria-label={`Move ${division.name} later`} className="grid size-8 place-items-center rounded-lg border border-border bg-surface text-xs disabled:opacity-35">↓</button>
+                      <button type="button" onClick={() => removeDivision(division.key)} aria-label={`Remove ${division.name}`} className="grid size-8 place-items-center rounded-lg border border-danger/20 bg-danger-subtle text-xs text-danger">×</button>
+                    </div>
+                  ) : undefined
+                }
+              />
+            ))}
+          </div>
         </div>
       </DragDropProvider>
 

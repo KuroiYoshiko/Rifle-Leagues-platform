@@ -260,58 +260,6 @@ export default async function CompetitionDetailPage({
         basePath={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}`}
       />
 
-      {divisionManagement ? (
-        <section className="mt-10" aria-labelledby="competition-management-heading">
-          <SectionHeader
-            title="Competition management"
-            description="Review submitted entries and organise entrant units"
-          />
-          <Card className="p-5 sm:p-6">
-            <h3 id="competition-management-heading" className="sr-only">
-              Competition entry and division management
-            </h3>
-            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-center">
-              <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                  Entries
-                </p>
-                <p className="mt-2 text-sm font-semibold text-foreground">
-                  {divisionManagement.entrant_count} entrant{divisionManagement.entrant_count === 1 ? "" : "s"}
-                  {` · ${divisionManagement.club_count} club${divisionManagement.club_count === 1 ? "" : "s"}`}
-                </p>
-              </div>
-              <div className="min-w-0">
-                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
-                  Divisions
-                </p>
-                <div className="mt-2 flex flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-foreground">
-                    {divisionManagement.config
-                      ? `${divisionManagement.divisions.length} division${divisionManagement.divisions.length === 1 ? "" : "s"}`
-                      : "Not configured"}
-                  </span>
-                  {divisionManagement.config ? (
-                    <Badge tone={divisionManagement.config.status === "published" ? "positive" : "warning"}>
-                      {divisionManagement.config.status === "published" ? "Published" : "Draft"}
-                    </Badge>
-                  ) : null}
-                </div>
-              </div>
-              <Link
-                href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/divisions`}
-                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep"
-              >
-                Manage divisions
-              </Link>
-            </div>
-          </Card>
-        </section>
-      ) : null}
-
-      {publishedDivisions ? (
-        <PublishedCompetitionDivisionsView data={publishedDivisions} />
-      ) : null}
-
       <section className="mt-10" aria-labelledby="round-schedule-heading">
         <SectionHeader
           title="Round schedule"
@@ -355,6 +303,67 @@ export default async function CompetitionDetailPage({
           </Card>
         )}
       </section>
+
+      {divisionManagement ? (
+        <section className="mt-10" aria-labelledby="competition-management-heading">
+          <SectionHeader
+            title="Competition management"
+            description="Review submitted entries and organise entrant units"
+          />
+          <Card className="p-5 sm:p-6">
+            <h3 id="competition-management-heading" className="sr-only">
+              Competition entry and division management
+            </h3>
+            <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-center">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                  Entries
+                </p>
+                <p className="mt-2 text-sm font-semibold text-foreground">
+                  {divisionManagement.entrant_count} entrant
+                  {divisionManagement.entrant_count === 1 ? "" : "s"}
+                  {` · ${divisionManagement.club_count} club${divisionManagement.club_count === 1 ? "" : "s"}`}
+                </p>
+              </div>
+              <div className="min-w-0">
+                <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">
+                  Divisions
+                </p>
+                <div className="mt-2 flex flex-wrap items-center gap-2">
+                  <span className="text-sm font-semibold text-foreground">
+                    {divisionManagement.config
+                      ? `${divisionManagement.divisions.length} division${divisionManagement.divisions.length === 1 ? "" : "s"}`
+                      : "Not configured"}
+                  </span>
+                  {divisionManagement.config ? (
+                    <Badge
+                      tone={
+                        divisionManagement.config.status === "published"
+                          ? "positive"
+                          : "warning"
+                      }
+                    >
+                      {divisionManagement.config.status === "published"
+                        ? "Published"
+                        : "Draft"}
+                    </Badge>
+                  ) : null}
+                </div>
+              </div>
+              <Link
+                href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/divisions`}
+                className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep"
+              >
+                Manage divisions
+              </Link>
+            </div>
+          </Card>
+        </section>
+      ) : null}
+
+      {publishedDivisions ? (
+        <PublishedCompetitionDivisionsView data={publishedDivisions} />
+      ) : null}
     </OrganisationPageFrame>
   );
 }
