@@ -733,13 +733,13 @@ export function CompetitionForm({
             private draft.
           </div>
         ) : (
-          <div className="grid min-w-0 gap-3 sm:grid-cols-2">
+          <div className="grid min-w-0 grid-cols-1 gap-px overflow-hidden rounded-xl border border-border bg-border min-[360px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-5 2xl:grid-cols-10">
             {roundDeadlines.map((deadline, index) => (
               <label
                 key={index}
-                className="grid min-w-0 grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-3 rounded-xl border border-border bg-surface px-4 py-3"
+                className="min-w-0 bg-surface px-1 py-2"
               >
-                <span className="text-sm font-semibold text-brand-deep">
+                <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-strong">
                   R{index + 1}
                 </span>
                 <input
@@ -758,7 +758,7 @@ export function CompetitionForm({
                   }}
                   aria-label={`Round ${index + 1} deadline`}
                   disabled={pending}
-                  className="min-h-10 min-w-0 rounded-lg border border-border bg-surface px-3 text-sm text-foreground outline-none focus:border-brand focus:ring-4 focus:ring-brand/10"
+                  className="mt-1 min-h-9 w-full min-w-0 rounded-md border border-border bg-surface px-0.5 text-[10px] text-foreground outline-none focus:border-brand focus:ring-4 focus:ring-brand/10 disabled:cursor-not-allowed disabled:bg-surface-muted"
                 />
               </label>
             ))}

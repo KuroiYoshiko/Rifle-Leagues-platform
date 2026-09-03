@@ -5,7 +5,6 @@ import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { Badge, Card, SectionHeader } from "@/components/ui";
 import {
   formatCompetitionEntryFee,
-  formatCompetitionRoundDate,
   getCompetitionBySlug,
   getCompetitionEntryFormatLabel,
   getCompetitionRounds,
@@ -21,6 +20,51 @@ import {
 export const metadata: Metadata = {
   title: "Competition",
 };
+
+const compactMonthLabels = [
+  "Jan",
+  "Feb",
+  "Mar",
+  "Apr",
+  "May",
+  "Jun",
+  "Jul",
+  "Aug",
+  "Sep",
+  "Oct",
+  "Nov",
+  "Dec",
+] as const;
+
+const accessibleRoundDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+function getCompactRoundDateLabels(rounds: Array<{ deadline: string }>) {
+  const years = new Set(rounds.map((round) => round.deadline.slice(0, 4)));
+  const crossesCalendarYear = years.size > 1;
+  let previousYear: string | null = null;
+
+  return rounds.map((round) => {
+    const year = round.deadline.slice(0, 4);
+    const [, month, day] = round.deadline.split("-").map(Number);
+    const date = new Date(`${round.deadline}T00:00:00Z`);
+    const compactDate = `${day} ${compactMonthLabels[month - 1]}`;
+    const label =
+      crossesCalendarYear && previousYear !== null && year !== previousYear
+        ? `${compactDate} ’${year.slice(-2)}`
+        : compactDate;
+
+    previousYear = year;
+    return {
+      compact: label,
+      accessible: accessibleRoundDateFormatter.format(date),
+    };
+  });
+}
 
 export default async function CompetitionDetailPage({
   params,
@@ -58,6 +102,7 @@ export default async function CompetitionDetailPage({
   }
 
   const rounds = await getCompetitionRounds(competition.id);
+  const roundDateLabels = getCompactRoundDateLabels(rounds);
   const isOwner = managementContext?.access.role === "owner";
   const creationSucceeded = Array.isArray(created)
     ? created[0] === "1"
@@ -203,24 +248,26 @@ export default async function CompetitionDetailPage({
             </p>
           </Card>
         ) : (
-          <Card className="overflow-hidden">
+          <Card className="overflow-hidden bg-border">
             <h3 id="round-schedule-heading" className="sr-only">
               Round deadlines
             </h3>
-            <ol className="grid min-w-0 sm:grid-cols-2">
-              {rounds.map((round) => (
+            <ol className="grid min-w-0 grid-cols-1 gap-px min-[360px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-5 2xl:grid-cols-10">
+              {rounds.map((round, index) => (
                 <li
                   key={round.id}
-                  className="grid min-w-0 grid-cols-[3rem_minmax(0,1fr)] gap-3 border-b border-border px-5 py-4 last:border-b-0 sm:[&:nth-last-child(2):nth-child(odd)]:border-b-0 sm:[&:nth-child(odd)]:border-r"
+                  className="min-w-0 bg-surface px-3 py-2.5"
                 >
-                  <span className="font-semibold text-brand-deep">
+                  <span className="block text-[10px] font-semibold uppercase tracking-[0.08em] text-brand-strong">
                     R{round.round_number}
                   </span>
                   <time
                     dateTime={round.deadline}
-                    className="min-w-0 text-sm font-medium text-foreground"
+                    title={roundDateLabels[index].accessible}
+                    aria-label={roundDateLabels[index].accessible}
+                    className="mt-0.5 block min-w-0 whitespace-nowrap text-sm font-semibold text-foreground"
                   >
-                    {formatCompetitionRoundDate(round.deadline)}
+                    {roundDateLabels[index].compact}
                   </time>
                 </li>
               ))}
