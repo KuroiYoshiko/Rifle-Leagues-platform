@@ -23,7 +23,7 @@ export function PublishedCompetitionDivisionsView({
         description={
           yourDivision
             ? `Your division: ${yourDivision.name}`
-            : "Published allocation for your participating club"
+            : "Complete published competition allocation"
         }
       />
       <div className="grid min-w-0 gap-4 lg:grid-cols-2">

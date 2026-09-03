@@ -120,7 +120,7 @@ export default async function CompetitionDetailPage({
           competition.id,
         )
       : Promise.resolve(null),
-    competition.status === "published" && !managementContext
+    competition.status === "published"
       ? getPublishedCompetitionDivisions(competition.id)
       : Promise.resolve(null),
   ]);
@@ -304,6 +304,10 @@ export default async function CompetitionDetailPage({
         )}
       </section>
 
+      {publishedDivisions ? (
+        <PublishedCompetitionDivisionsView data={publishedDivisions} />
+      ) : null}
+
       {divisionManagement ? (
         <section className="mt-10" aria-labelledby="competition-management-heading">
           <SectionHeader
@@ -361,9 +365,6 @@ export default async function CompetitionDetailPage({
         </section>
       ) : null}
 
-      {publishedDivisions ? (
-        <PublishedCompetitionDivisionsView data={publishedDivisions} />
-      ) : null}
     </OrganisationPageFrame>
   );
 }

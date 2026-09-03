@@ -816,8 +816,9 @@ begin
 end;
 $$;
 
--- Returns only published allocations for active members of participating clubs.
--- Organisation managers use the richer management RPC above.
+-- Returns the complete published allocation to authenticated viewers of the
+-- published competition. Draft allocation remains available only through the
+-- separately authorised management RPC above.
 create or replace function public.get_published_competition_divisions(
   p_competition_id bigint
 )
@@ -837,27 +838,17 @@ begin
   if not exists (
     select 1
     from public.competition_division_configs as config
-    join public.club_competition_entries as entry
-      on entry.competition_id = config.competition_id
-     and entry.status = 'submitted'
-    join public.clubs as club
-      on club.id = entry.club_id
-     and club.status = 'active'
-    join public.club_memberships as membership
-      on membership.club_id = entry.club_id
-     and membership.user_id = v_actor_id
-     and membership.status = 'active'
+    join public.competitions as competition
+      on competition.id = config.competition_id
+    join public.league_seasons as season
+      on season.id = competition.league_season_id
+    join public.organisations as organisation
+      on organisation.id = season.organisation_id
     where config.competition_id = p_competition_id
       and config.status = 'published'
-      and (
-        membership.role in ('owner', 'official')
-        or exists (
-          select 1
-          from public.competition_entrant_participants as participant
-          where participant.club_competition_entry_id = entry.id
-            and participant.club_membership_id = membership.id
-        )
-      )
+      and competition.status = 'published'
+      and season.status in ('open', 'active', 'completed')
+      and organisation.status = 'active'
   ) then
     return null;
   end if;
@@ -909,22 +900,6 @@ begin
             join public.clubs as club on club.id = entry.club_id
             where assignment.competition_division_id = division.id
               and assignment.competition_id = p_competition_id
-              and exists (
-                select 1
-                from public.club_memberships as viewer_membership
-                where viewer_membership.club_id = entry.club_id
-                  and viewer_membership.user_id = v_actor_id
-                  and viewer_membership.status = 'active'
-                  and (
-                    viewer_membership.role in ('owner', 'official')
-                    or exists (
-                      select 1
-                      from public.competition_entrant_participants as viewer_participant
-                      where viewer_participant.competition_entrant_id = entrant.id
-                        and viewer_participant.club_membership_id = viewer_membership.id
-                    )
-                  )
-              )
           ), '[]'::jsonb)
         ) order by division.position, division.id
       )
@@ -951,7 +926,7 @@ comment on function public.edit_competition_divisions(bigint, bigint, bigint) is
 comment on function public.save_and_publish_competition_divisions(bigint, bigint, bigint, integer, jsonb) is
   'Atomically saves and publishes one complete division allocation; failed publication validation rolls back the supplied draft.';
 comment on function public.get_published_competition_divisions(bigint) is
-  'Returns published division allocations only for the caller active participating clubs, exposing names but no contact data.';
+  'Returns the complete published competition allocation to authenticated viewers of a visible published competition, exposing entrant names and clubs but no contact data.';
 
 revoke execute on function public.get_competition_division_management(bigint, bigint, bigint)
   from public, anon, authenticated;
