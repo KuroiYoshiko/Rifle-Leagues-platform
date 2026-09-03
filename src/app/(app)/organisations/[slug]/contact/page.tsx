@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { OrganisationContactDetails } from "@/components/organisation-contact-details";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
-import { Card } from "@/components/ui";
 import {
   getActiveOrganisationBySlug,
   getOrganisationManagementContextBySlug,
@@ -29,7 +28,7 @@ export default async function OrganisationContactPage({
 
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="contact">
-      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(280px,0.7fr)]">
+      <div className="max-w-4xl">
         <OrganisationContactDetails
           key={organisation.updated_at}
           organisationId={organisation.id}
@@ -43,22 +42,6 @@ export default async function OrganisationContactPage({
           }}
           isOwner={managementContext?.access.role === "owner"}
         />
-
-        <Card className="bg-surface-muted p-6 sm:p-8">
-          <span
-            className="grid size-12 place-items-center rounded-2xl bg-brand-subtle text-sm font-bold text-brand-deep"
-            aria-hidden="true"
-          >
-            C
-          </span>
-          <h2 className="mt-5 font-semibold text-foreground">
-            Contact form planned for later
-          </h2>
-          <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Direct contact details are shown now. A message form can be added when
-            a real email delivery service and handling workflow exist.
-          </p>
-        </Card>
       </div>
     </OrganisationPageFrame>
   );
