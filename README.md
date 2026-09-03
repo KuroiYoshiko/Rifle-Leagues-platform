@@ -172,6 +172,12 @@ seasons are always drafts. Status can remain unchanged or move one step forward
 through `draft`, `open`, `active`, and `completed`. Season route slugs are unique
 within an organisation and remain stable after a rename.
 
+For an existing populated installation that already has the season schema, run
+the focused additive [`database/season-description.sql`](database/season-description.sql)
+migration once. It adds the nullable, 2,000-character plain-text description
+column and backward-compatible RPC overloads without resetting or reseeding any
+season data. The migration is safe to rerun.
+
 ## Competition and round configuration
 
 Run the complete

@@ -409,19 +409,19 @@ export default async function ClubCompetitionsPage({
             <CompetitionSection
               id="ongoing-competitions-heading"
               title="Ongoing competitions"
-              description="Submitted entries in league seasons currently in progress"
+              description="Submitted entries in seasons currently in progress"
               entries={ongoingEntries}
             />
             <CompetitionSection
               id="upcoming-competitions-heading"
               title="Upcoming competitions"
-              description="Submitted entries in league seasons scheduled to start"
+              description="Submitted entries in seasons scheduled to start"
               entries={upcomingEntries}
             />
             <CompetitionSection
               id="past-competitions-heading"
               title="Past competitions"
-              description="Submitted entries from completed league seasons"
+              description="Submitted entries from completed seasons"
               entries={visiblePastEntries}
               compact
             >

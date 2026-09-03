@@ -6,13 +6,13 @@ export default function LeagueSeasonNotFound() {
     <div className="mx-auto max-w-3xl">
       <Card className="p-7 sm:p-9">
         <span className="grid size-12 place-items-center rounded-2xl bg-brand-subtle text-sm font-bold text-brand-deep">
-          L
+          S
         </span>
         <h1 className="mt-5 text-2xl font-semibold tracking-[-0.035em] text-foreground">
-          League season not found
+          Season not found
         </h1>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          This league season does not exist or is not published for your account.
+          This season does not exist or is not published for your account.
         </p>
         <Link
           href="/organisations"

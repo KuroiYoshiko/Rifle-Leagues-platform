@@ -335,11 +335,11 @@ function mutationErrorMessage(
   }
 
   if (code === "P0002") {
-    return "That competition, league season, or active organisation is no longer available. Refresh and try again.";
+    return "That competition, season, or active organisation is no longer available. Refresh and try again.";
   }
 
   if (code === "23505") {
-    return "A competition with this name already exists in this league season.";
+    return "A competition with this name already exists in this season.";
   }
 
   if ((code === "22023" || code === "23514") && databaseMessage) {
@@ -404,7 +404,7 @@ export async function createCompetition(
   if (!organisationId || !leagueSeasonId) {
     return {
       status: "error",
-      message: "The league season could not be identified. Refresh and try again.",
+      message: "The season could not be identified. Refresh and try again.",
       values,
     };
   }
@@ -435,7 +435,7 @@ export async function createCompetition(
   if (!season) {
     return {
       status: "error",
-      message: "The league season could not be loaded. Refresh and try again.",
+      message: "The season could not be loaded. Refresh and try again.",
       values,
     };
   }
@@ -477,7 +477,7 @@ export async function createCompetition(
     return {
       status: "error",
       message:
-        "The competition was created, but its page could not be opened automatically. Return to the league season to find it.",
+        "The competition was created, but its page could not be opened automatically. Return to the season to find it.",
       values,
     };
   }
@@ -541,7 +541,7 @@ export async function updateCompetition(
   if (!season) {
     return {
       status: "error",
-      message: "The league season could not be loaded. Refresh and try again.",
+      message: "The season could not be loaded. Refresh and try again.",
       values,
     };
   }
@@ -598,7 +598,7 @@ export async function updateCompetition(
     return {
       status: "error",
       message:
-        "The competition was saved, but the refreshed details could not be verified. Return to the league season and open it again.",
+        "The competition was saved, but the refreshed details could not be verified. Return to the season and open it again.",
       values,
     };
   }

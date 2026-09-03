@@ -152,7 +152,7 @@ export default async function CompetitionDetailPage({
             {publishSucceeded ? "Competition published." : "Draft saved."}
           </strong>{" "}
           {publishSucceeded
-            ? "It is visible whenever the parent league season is public."
+            ? "It is visible whenever the parent season is public."
             : "Only the active organisation owner can see it until it is published."}
         </div>
       ) : null}

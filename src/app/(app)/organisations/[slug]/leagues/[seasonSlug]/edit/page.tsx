@@ -7,7 +7,7 @@ import { getLeagueSeasonBySlug } from "@/lib/league-seasons";
 import { getOrganisationManagementContextBySlug } from "@/lib/organisations";
 
 export const metadata: Metadata = {
-  title: "Edit league",
+  title: "Edit season",
 };
 
 export default async function EditLeagueSeasonPage({
@@ -35,7 +35,7 @@ export default async function EditLeagueSeasonPage({
     >
       <section aria-labelledby="edit-league-heading">
         <SectionHeader
-          title="Edit league"
+          title="Edit season"
           description="Update dates, name, or move the season forward"
         />
         <Card className="p-6 sm:p-8">

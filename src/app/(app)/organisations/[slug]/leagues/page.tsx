@@ -20,7 +20,7 @@ import {
 } from "@/lib/organisations";
 
 export const metadata: Metadata = {
-  title: "Organisation leagues",
+  title: "Organisation seasons",
 };
 
 const statusSections: Array<{
@@ -131,11 +131,11 @@ export default async function OrganisationLeaguesPage({
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="leagues">
       <SectionHeader
-        title="Leagues"
+        title="Seasons"
         description={
           isOwner
-            ? `${seasons.length} league season${seasons.length === 1 ? "" : "s"}`
-            : "Published league seasons"
+            ? `${seasons.length} season${seasons.length === 1 ? "" : "s"}`
+            : "Published seasons"
         }
         action={
           isOwner ? (
@@ -143,7 +143,7 @@ export default async function OrganisationLeaguesPage({
               href={`/organisations/${organisation.slug}/leagues/new`}
               className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep"
             >
-              + Create league
+              + Create season
             </Link>
           ) : null
         }
@@ -152,12 +152,12 @@ export default async function OrganisationLeaguesPage({
       {seasons.length === 0 ? (
         <Card className="p-6 sm:p-8">
           <OrganisationEmptyState
-            mark="L"
-            title={isOwner ? "Create the first league season" : "No published leagues yet"}
+            mark="S"
+            title={isOwner ? "Create the first season" : "No published seasons yet"}
             description={
               isOwner
-                ? "League seasons are the containers that will later hold competitions. Your first season will begin as a private draft."
-                : "This organisation has not published an open, active, or completed league season yet."
+                ? "Seasons contain this organisation’s competitions. Your first season will begin as a private draft."
+                : "This organisation has not published an open, active, or completed season yet."
             }
           />
           {isOwner ? (
@@ -165,7 +165,7 @@ export default async function OrganisationLeaguesPage({
               href={`/organisations/${organisation.slug}/leagues/new`}
               className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep"
             >
-              Create league
+              Create season
             </Link>
           ) : null}
         </Card>
