@@ -948,13 +948,15 @@ begin
 end;
 $$;
 
-create or replace function public.get_club_competition_entries(
+drop function if exists public.get_club_competition_entries(bigint);
+create function public.get_club_competition_entries(
   p_club_id bigint
 )
 returns table (
   entry_id bigint,
   entry_status text,
   submitted_at timestamptz,
+  entry_updated_at timestamptz,
   competition_id bigint,
   competition_name text,
   competition_slug text,
@@ -962,6 +964,8 @@ returns table (
   team_size integer,
   league_season_name text,
   league_season_slug text,
+  league_season_starts_at date,
+  league_season_ends_at date,
   organisation_name text,
   organisation_slug text,
   entrant_count bigint,
@@ -999,6 +1003,7 @@ begin
     entry.id,
     entry.status,
     entry.submitted_at,
+    entry.updated_at,
     competition.id,
     competition.name,
     competition.slug,
@@ -1006,6 +1011,8 @@ begin
     competition.team_size,
     season.name,
     season.slug,
+    season.starts_at,
+    season.ends_at,
     organisation.name,
     organisation.slug,
     (select count(*) from public.competition_entrants as entrant
@@ -1038,6 +1045,7 @@ begin
   join public.organisations as organisation on organisation.id = season.organisation_id
   where entry.club_id = p_club_id
     and organisation.status = 'active'
+    and entry.status <> 'withdrawn'
     and (
       v_role in ('owner', 'official')
       or entry.status = 'submitted'
@@ -1282,7 +1290,7 @@ comment on function public.withdraw_club_competition_entry(bigint) is
 comment on function public.get_competition_club_entry_context(bigint) is
   'Returns safe competition entry context for the caller active clubs without exposing another club roster.';
 comment on function public.get_club_competition_entries(bigint) is
-  'Returns safe club competition cards: submitted to active members, all lifecycle states to active club management.';
+  'Returns safe active club competition cards: submitted to active members and submitted or draft to active club management; withdrawn rows remain stored but are omitted.';
 comment on function public.get_club_competition_entry_management(bigint) is
   'Returns the roster and exact competition configuration only to an active owner or official of the entry club.';
 comment on function public.search_club_competition_entry_members(bigint, text, integer) is

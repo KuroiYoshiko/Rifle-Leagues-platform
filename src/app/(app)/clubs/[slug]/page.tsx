@@ -107,24 +107,6 @@ export default async function ClubOverviewPage({
         </Card>
       </section>
 
-      <section className="mt-10" aria-labelledby="competition-activity-heading">
-        <SectionHeader
-          title="Competition activity"
-          description="Competition and league activity associated with this club"
-        />
-        <Card className="p-6 sm:p-8">
-          <h2
-            id="competition-activity-heading"
-            className="font-semibold text-foreground"
-          >
-            No real competition data has been added yet
-          </h2>
-          <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-            Competitions and league entries connected to this club will appear here
-            once real competition data exists.
-          </p>
-        </Card>
-      </section>
     </ClubPageFrame>
   );
 }

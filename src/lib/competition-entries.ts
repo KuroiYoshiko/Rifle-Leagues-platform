@@ -30,6 +30,7 @@ export type ClubCompetitionEntryCard = {
   entry_id: number;
   entry_status: ClubCompetitionEntryStatus;
   submitted_at: string | null;
+  entry_updated_at: string;
   competition_id: number;
   competition_name: string;
   competition_slug: string;
@@ -37,6 +38,8 @@ export type ClubCompetitionEntryCard = {
   team_size: number;
   league_season_name: string;
   league_season_slug: string;
+  league_season_starts_at: string | null;
+  league_season_ends_at: string | null;
   organisation_name: string;
   organisation_slug: string;
   entrant_count: number;
