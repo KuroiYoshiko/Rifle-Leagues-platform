@@ -110,8 +110,7 @@ function ClubCompetitionCard({
   const competitionPath = `/organisations/${entry.organisation_slug}/leagues/${entry.league_season_slug}/competitions/${entry.competition_slug}`;
   const managementPath = `${competitionPath}/entry?entry=${entry.entry_id}`;
   const format = getCompetitionEntryFormatLabel(entry.entry_format);
-  const individualSubmitted =
-    entry.entry_format === "individual" &&
+  const scoreableSubmitted =
     entry.competition_status === "published" &&
     entry.entry_status === "submitted" &&
     entry.can_manage;
@@ -125,7 +124,7 @@ function ClubCompetitionCard({
   const viewScoreRound = entry.score_rounds.at(-1);
   const scoreRound = editableScoreRound ?? viewScoreRound;
   const scoreAction =
-    individualSubmitted &&
+    scoreableSubmitted &&
     entry.local_scoring_enabled &&
     competitionStarted &&
     scoreRound
@@ -207,11 +206,11 @@ function ClubCompetitionCard({
           ) : null}
         </div>
       </div>
-      {individualSubmitted && !entry.local_scoring_enabled ? (
+      {scoreableSubmitted && !entry.local_scoring_enabled ? (
         <p className="mt-4 border-t border-border pt-4 text-xs leading-5 text-muted-foreground">
           Scores for this Competition are entered by the organisation.
         </p>
-      ) : individualSubmitted && !competitionStarted ? (
+      ) : scoreableSubmitted && !competitionStarted ? (
         <p className="mt-4 border-t border-border pt-4 text-xs leading-5 text-muted-foreground">
           Club score entry opens when the Competition starts.
         </p>

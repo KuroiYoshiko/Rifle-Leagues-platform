@@ -1,19 +1,20 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { IndividualScoreEntryEditor } from "@/components/individual-score-entry-editor";
+import { CompetitionScoreEntryEditor } from "@/components/competition-score-entry-editor";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { Badge, Card } from "@/components/ui";
 import {
   getCompetitionBySlug,
+  getCompetitionEntryFormatLabel,
   getCompetitionRounds,
 } from "@/lib/competitions";
-import { getIndividualCompetitionScoreEntry } from "@/lib/competition-scores";
+import { getCompetitionScoreEntry } from "@/lib/competition-scores";
 import { getLeagueSeasonBySlug } from "@/lib/league-seasons";
 import { getActiveOrganisationBySlug } from "@/lib/organisations";
 
 export const metadata: Metadata = {
-  title: "Manage Competition scores",
+  title: "Competition scores",
 };
 
 function positiveInteger(value: string | string[] | undefined) {
@@ -46,11 +47,7 @@ export default async function CompetitionScoresPage({
   if (!season) notFound();
 
   const competition = await getCompetitionBySlug(season.id, competitionSlug);
-  if (
-    !competition ||
-    competition.status !== "published" ||
-    competition.entry_format !== "individual"
-  ) {
+  if (!competition || competition.status !== "published") {
     notFound();
   }
 
@@ -84,7 +81,7 @@ export default async function CompetitionScoresPage({
     );
   }
 
-  const data = await getIndividualCompetitionScoreEntry(
+  const data = await getCompetitionScoreEntry(
     organisation.id,
     season.id,
     competition.id,
@@ -108,23 +105,26 @@ export default async function CompetitionScoresPage({
       <Card className="mt-5 p-6 sm:p-8">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div>
-            <Badge tone="positive">Individual Competition</Badge>
+            <Badge tone="positive">
+              {getCompetitionEntryFormatLabel(competition.entry_format)} Competition
+            </Badge>
             <h1 className="mt-3 text-2xl font-semibold tracking-[-0.035em] text-foreground sm:text-3xl">
-              Manage scores
+              {data.can_edit ? "Manage scores" : "View scores"}
             </h1>
             <p className="mt-2 text-base font-semibold text-brand-deep">
               {competition.name}
             </p>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Enter one selected Round for every submitted shooter. Blank fields
-              remain unrecorded; they are not converted to zero or NSR.
+              {data.can_edit
+                ? "Enter one selected Round for every participant in each submitted entrant. Blank fields remain unrecorded; they are not converted to zero or NSR."
+                : "Review participant source scores for the selected Round. Read-only fields cannot be changed in this scoring scope."}
             </p>
           </div>
         </div>
       </Card>
 
       <div className="mt-6">
-        <IndividualScoreEntryEditor
+        <CompetitionScoreEntryEditor
           key={`${selectedRound.id}-${clubId ?? "organisation"}`}
           data={data}
           rounds={rounds}

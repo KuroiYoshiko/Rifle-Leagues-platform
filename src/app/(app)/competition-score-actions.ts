@@ -98,7 +98,7 @@ function scoreError(
   };
 }
 
-export async function saveIndividualCompetitionRoundScores(
+export async function saveCompetitionRoundScores(
   input: CompetitionScoreBatchInput,
 ): Promise<CompetitionScoreActionState> {
   if (!validBatch(input)) {

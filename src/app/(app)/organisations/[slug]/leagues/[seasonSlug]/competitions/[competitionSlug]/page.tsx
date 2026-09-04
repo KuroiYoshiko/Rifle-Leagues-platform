@@ -367,12 +367,11 @@ export default async function CompetitionDetailPage({
       />
 
       {managementContext &&
-      competition.status === "published" &&
-      competition.entry_format === "individual" ? (
+      competition.status === "published" ? (
         <section className="mt-10" aria-labelledby="score-management-heading">
           <SectionHeader
             title="Score management"
-            description="Enter source scores for submitted Individual entrants"
+            description="Enter participant source scores for submitted entrants"
           />
           <Card className="p-5 sm:p-6">
             <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -384,7 +383,7 @@ export default async function CompetitionDetailPage({
                   Round score entry
                 </h3>
                 <p className="mt-1 text-sm leading-6 text-muted-foreground">
-                  Organisation owners and managers can score submitted shooters
+                  Organisation owners and managers can score every participant
                   after the Competition starts, including after club cutoffs.
                 </p>
               </div>

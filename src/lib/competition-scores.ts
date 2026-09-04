@@ -1,24 +1,27 @@
 import { cache } from "react";
-import type { CompetitionScoringMethod } from "@/lib/competitions";
+import type {
+  CompetitionEntryFormat,
+  CompetitionScoringMethod,
+} from "@/lib/competitions";
 import { createClient } from "@/lib/supabase/server";
 
 export type ScoreEntryAccessScope = "club" | "organisation";
 
-export type IndividualScoreEntryComponent = {
+export type CompetitionScoreEntryComponent = {
   position: number;
   short_label: string | null;
   maximum_score: number;
   score_method: CompetitionScoringMethod;
 };
 
-export type IndividualScoreEntryValue = {
+export type CompetitionScoreEntryValue = {
   set_number: number;
   component_position: number;
   entered_score: number | null;
   x_count: number | null;
 };
 
-export type IndividualScoreEntryParticipant = {
+export type CompetitionScoreEntryParticipant = {
   participant_id: number;
   entrant_id: number;
   entrant_position: number;
@@ -26,17 +29,17 @@ export type IndividualScoreEntryParticipant = {
   club_name: string;
   first_name: string | null;
   last_name: string | null;
-  values: IndividualScoreEntryValue[];
+  values: CompetitionScoreEntryValue[];
 };
 
-export type IndividualCompetitionScoreEntry = {
+export type CompetitionScoreEntry = {
   access_scope: ScoreEntryAccessScope;
   database_today: string;
   can_edit: boolean;
   competition: {
     id: number;
     name: string;
-    entry_format: "individual";
+    entry_format: CompetitionEntryFormat;
     uses_x_score: boolean;
     sets_per_round: number;
     shots_per_round: number | null;
@@ -52,11 +55,11 @@ export type IndividualCompetitionScoreEntry = {
     local_cutoff: string;
     local_cutoff_passed: boolean;
   };
-  components: IndividualScoreEntryComponent[];
-  participants: IndividualScoreEntryParticipant[];
+  components: CompetitionScoreEntryComponent[];
+  participants: CompetitionScoreEntryParticipant[];
 };
 
-export const getIndividualCompetitionScoreEntry = cache(
+export const getCompetitionScoreEntry = cache(
   async (
     organisationId: number,
     leagueSeasonId: number,
@@ -80,6 +83,6 @@ export const getIndividualCompetitionScoreEntry = cache(
       return null;
     }
 
-    return data as IndividualCompetitionScoreEntry;
+    return data as CompetitionScoreEntry;
   },
 );
