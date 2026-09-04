@@ -109,16 +109,33 @@ function ClubCompetitionCard({
 }) {
   const competitionPath = `/organisations/${entry.organisation_slug}/leagues/${entry.league_season_slug}/competitions/${entry.competition_slug}`;
   const managementPath = `${competitionPath}/entry?entry=${entry.entry_id}`;
-  const scoreManagementPath = `${competitionPath}/scores?club=${entry.club_id}`;
   const format = getCompetitionEntryFormatLabel(entry.entry_format);
   const individualSubmitted =
     entry.entry_format === "individual" &&
+    entry.competition_status === "published" &&
     entry.entry_status === "submitted" &&
     entry.can_manage;
   const competitionStarted = Boolean(
     entry.competition_effective_starts_at &&
       today >= entry.competition_effective_starts_at,
   );
+  const editableScoreRound = entry.score_rounds.find(
+    (round) => today <= (round.shoot_by_date ?? round.deadline),
+  );
+  const viewScoreRound = entry.score_rounds.at(-1);
+  const scoreRound = editableScoreRound ?? viewScoreRound;
+  const scoreAction =
+    individualSubmitted &&
+    entry.local_scoring_enabled &&
+    competitionStarted &&
+    scoreRound
+      ? editableScoreRound
+        ? "manage"
+        : "view"
+      : null;
+  const scoreManagementPath = scoreRound
+    ? `${competitionPath}/scores?club=${entry.club_id}&round=${scoreRound.id}`
+    : null;
 
   return (
     <Card className={compact ? "p-5 sm:p-6" : "p-6 sm:p-7"}>
@@ -180,14 +197,12 @@ function ClubCompetitionCard({
                 : "View entry"}
             </Link>
           ) : null}
-          {individualSubmitted &&
-          entry.local_scoring_enabled &&
-          competitionStarted ? (
+          {scoreAction && scoreManagementPath ? (
             <Link
               href={scoreManagementPath}
               className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep sm:w-auto"
             >
-              Manage scores
+              {scoreAction === "manage" ? "Manage scores" : "View scores"}
             </Link>
           ) : null}
         </div>

@@ -11,6 +11,13 @@ export type ClubCompetitionEntryStatus =
   (typeof CLUB_COMPETITION_ENTRY_STATUSES)[number];
 export type CompetitionEntryWindowState = "upcoming" | "open" | "closed";
 
+export type ClubCompetitionScoreRound = {
+  id: number;
+  round_number: number;
+  deadline: string;
+  shoot_by_date: string | null;
+};
+
 export type CompetitionClubEntryContext = {
   club_id: number;
   club_name: string;
@@ -33,6 +40,7 @@ export type ClubCompetitionEntryCard = {
   submitted_at: string | null;
   entry_updated_at: string;
   competition_id: number;
+  competition_status: "draft" | "published";
   competition_name: string;
   competition_slug: string;
   entry_format: "individual" | "pairs" | "team";
@@ -50,6 +58,7 @@ export type ClubCompetitionEntryCard = {
   can_manage: boolean;
   entry_window_state: CompetitionEntryWindowState;
   local_scoring_enabled: boolean;
+  score_rounds: ClubCompetitionScoreRound[];
 };
 
 export type EntryParticipant = {
@@ -150,7 +159,11 @@ export const getClubCompetitionEntries = cache(async (clubId: number) => {
   const entries = (data ?? []) as Array<
     Omit<
       ClubCompetitionEntryCard,
-      "club_id" | "competition_effective_starts_at" | "local_scoring_enabled"
+      | "club_id"
+      | "competition_effective_starts_at"
+      | "competition_status"
+      | "local_scoring_enabled"
+      | "score_rounds"
     >
   >;
   const competitionIds = [
@@ -159,34 +172,61 @@ export const getClubCompetitionEntries = cache(async (clubId: number) => {
 
   if (competitionIds.length === 0) return [];
 
-  const { data: competitions, error: competitionsError } = await supabase
-    .from("competitions")
-    .select(
-      "id, local_scoring_enabled, start_date_mode, custom_starts_at",
-    )
-    .in("id", competitionIds);
+  const [competitionResult, roundResult] = await Promise.all([
+    supabase
+      .from("competitions")
+      .select(
+        "id, status, local_scoring_enabled, start_date_mode, custom_starts_at",
+      )
+      .in("id", competitionIds),
+    supabase
+      .from("competition_rounds")
+      .select("id, competition_id, round_number, deadline, shoot_by_date")
+      .in("competition_id", competitionIds)
+      .order("competition_id", { ascending: true })
+      .order("round_number", { ascending: true }),
+  ]);
 
-  if (competitionsError) {
+  if (competitionResult.error || roundResult.error) {
     throw new Error("Competition score-entry access could not be loaded.");
   }
 
   const scoreEntrySettingsByCompetition = new Map(
-    (competitions ?? []).map((competition) => [
+    (competitionResult.data ?? []).map((competition) => [
       competition.id,
       competition,
     ]),
   );
+  const scoreRoundsByCompetition = new Map<
+    number,
+    ClubCompetitionScoreRound[]
+  >();
+
+  for (const round of roundResult.data ?? []) {
+    const rounds = scoreRoundsByCompetition.get(round.competition_id);
+    const scoreRound = {
+      id: round.id,
+      round_number: round.round_number,
+      deadline: round.deadline,
+      shoot_by_date: round.shoot_by_date,
+    };
+
+    if (rounds) rounds.push(scoreRound);
+    else scoreRoundsByCompetition.set(round.competition_id, [scoreRound]);
+  }
 
   return entries.map((entry) => {
     const settings = scoreEntrySettingsByCompetition.get(entry.competition_id);
     return {
       ...entry,
       club_id: clubId,
+      competition_status: settings?.status ?? "draft",
       competition_effective_starts_at:
         settings?.start_date_mode === "custom"
           ? settings.custom_starts_at
           : entry.league_season_starts_at,
       local_scoring_enabled: settings?.local_scoring_enabled ?? false,
+      score_rounds: scoreRoundsByCompetition.get(entry.competition_id) ?? [],
     };
   }) satisfies ClubCompetitionEntryCard[];
 });
