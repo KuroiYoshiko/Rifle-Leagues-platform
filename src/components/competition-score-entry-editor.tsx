@@ -11,6 +11,7 @@ import type {
   CompetitionEntryFormat,
   CompetitionRound,
 } from "@/lib/competitions";
+import { isCompetitionRoundWithinLocalCutoff } from "@/lib/competition-score-dates";
 import type { CompetitionScoreEntry } from "@/lib/competition-scores";
 
 type EditableScoreValue = {
@@ -165,6 +166,27 @@ export function CompetitionScoreEntryEditor({
       ),
     [data.components],
   );
+  const usesClubRoundGroups =
+    data.access_scope === "club" &&
+    data.competition.started &&
+    data.competition.local_scoring_enabled;
+  const locallyEditableRounds = usesClubRoundGroups
+    ? rounds.filter((round) =>
+        isCompetitionRoundWithinLocalCutoff(round, data.database_today),
+      )
+    : [];
+  const locallyClosedRounds = usesClubRoundGroups
+    ? rounds.filter(
+        (round) =>
+          !isCompetitionRoundWithinLocalCutoff(round, data.database_today),
+      )
+    : [];
+  const selectedRoundIsLocallyEditable = locallyEditableRounds.some(
+    (round) => round.id === data.round.id,
+  );
+  const selectedRoundIsLocallyClosed = locallyClosedRounds.some(
+    (round) => round.id === data.round.id,
+  );
   const clubsWithEntrants = useMemo(() => {
     const groups = new Map<
       number,
@@ -267,21 +289,98 @@ export function CompetitionScoreEntryEditor({
     <>
       <Card className="p-5 sm:p-6">
         <div className="grid gap-5 lg:grid-cols-[minmax(0,28rem)_minmax(0,1fr)] lg:items-end">
-          <label className="text-sm font-medium text-foreground">
-            Round
-            <select
-              value={data.round.id}
-              onChange={(event) => selectRound(Number(event.target.value))}
-              disabled={isPending}
-              className="mt-2 min-h-12 w-full rounded-xl border border-border bg-surface px-4 text-sm text-foreground outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10 disabled:cursor-wait disabled:opacity-60"
-            >
-              {rounds.map((round) => (
-                <option key={round.id} value={round.id}>
-                  R{round.round_number} — {dateContext(round)}
-                </option>
-              ))}
-            </select>
-          </label>
+          {usesClubRoundGroups ? (
+            <div className="min-w-0">
+              {locallyEditableRounds.length > 0 ? (
+                <label className="text-sm font-medium text-foreground">
+                  Available for scoring
+                  <select
+                    value={
+                      selectedRoundIsLocallyEditable ? data.round.id : ""
+                    }
+                    onChange={(event) =>
+                      selectRound(Number(event.target.value))
+                    }
+                    disabled={isPending}
+                    className="mt-2 min-h-12 w-full rounded-xl border border-border bg-surface px-4 text-sm text-foreground outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10 disabled:cursor-wait disabled:opacity-60"
+                  >
+                    {!selectedRoundIsLocallyEditable ? (
+                      <option value="" disabled>
+                        Choose an editable Round
+                      </option>
+                    ) : null}
+                    {locallyEditableRounds.map((round) => (
+                      <option key={round.id} value={round.id}>
+                        R{round.round_number} — {dateContext(round)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              ) : (
+                <div className="rounded-xl border border-border bg-surface-muted px-4 py-3">
+                  <p className="text-sm font-semibold text-foreground">
+                    No Rounds remain open for club scoring
+                  </p>
+                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                    Previously submitted source scores remain available below.
+                  </p>
+                </div>
+              )}
+
+              {locallyClosedRounds.length > 0 ? (
+                <details
+                  open={
+                    selectedRoundIsLocallyClosed ||
+                    locallyEditableRounds.length === 0
+                  }
+                  className="mt-3 rounded-xl border border-border bg-surface-muted"
+                >
+                  <summary className="cursor-pointer px-4 py-3 text-sm font-semibold text-brand-deep">
+                    View closed Rounds ({locallyClosedRounds.length})
+                  </summary>
+                  <div className="flex flex-wrap gap-2 border-t border-border px-3 py-3">
+                    {locallyClosedRounds.map((round) => (
+                      <button
+                        key={round.id}
+                        type="button"
+                        onClick={() => selectRound(round.id)}
+                        disabled={isPending}
+                        aria-current={
+                          round.id === data.round.id ? "page" : undefined
+                        }
+                        className={`rounded-lg border px-3 py-2 text-left text-xs leading-5 transition disabled:cursor-wait disabled:opacity-60 ${
+                          round.id === data.round.id
+                            ? "border-brand bg-brand-subtle font-semibold text-brand-deep"
+                            : "border-border bg-surface text-muted-foreground hover:bg-brand-subtle hover:text-brand-deep"
+                        }`}
+                      >
+                        <span className="block font-semibold text-foreground">
+                          R{round.round_number}
+                        </span>
+                        <span>{dateContext(round)}</span>
+                      </button>
+                    ))}
+                  </div>
+                </details>
+              ) : null}
+            </div>
+          ) : (
+            <label className="text-sm font-medium text-foreground">
+              Round
+              <select
+                value={data.round.id}
+                onChange={(event) => selectRound(Number(event.target.value))}
+                disabled={isPending}
+                className="mt-2 min-h-12 w-full rounded-xl border border-border bg-surface px-4 text-sm text-foreground outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10 disabled:cursor-wait disabled:opacity-60"
+              >
+                {rounds.map((round) => (
+                  <option key={round.id} value={round.id}>
+                    R{round.round_number} — {dateContext(round)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
           <dl className="grid gap-2 sm:grid-cols-2">
             <div className="rounded-xl bg-surface-muted p-3">
               <dt className="text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground">

@@ -13,6 +13,7 @@ import {
 } from "@/lib/competition-entries";
 import { getClubPageContextBySlug, isClubManager } from "@/lib/clubs";
 import { getCompetitionEntryFormatLabel } from "@/lib/competitions";
+import { isCompetitionRoundWithinLocalCutoff } from "@/lib/competition-score-dates";
 import {
   getLeagueSeasonPresentationPhase,
   getLeagueToday,
@@ -119,7 +120,7 @@ function ClubCompetitionCard({
       today >= entry.competition_effective_starts_at,
   );
   const editableScoreRound = entry.score_rounds.find(
-    (round) => today <= (round.shoot_by_date ?? round.deadline),
+    (round) => isCompetitionRoundWithinLocalCutoff(round, today),
   );
   const viewScoreRound = entry.score_rounds.at(-1);
   const scoreRound = editableScoreRound ?? viewScoreRound;

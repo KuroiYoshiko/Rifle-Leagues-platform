@@ -9,6 +9,9 @@ import {
   getCompetitionEntryFormatLabel,
   getCompetitionRounds,
 } from "@/lib/competitions";
+import {
+  isCompetitionRoundWithinLocalCutoff,
+} from "@/lib/competition-score-dates";
 import { getCompetitionScoreEntry } from "@/lib/competition-scores";
 import { getLeagueSeasonBySlug } from "@/lib/league-seasons";
 import { getActiveOrganisationBySlug } from "@/lib/organisations";
@@ -53,9 +56,12 @@ export default async function CompetitionScoresPage({
 
   const rounds = await getCompetitionRounds(competition.id);
   const requestedRoundId = positiveInteger(query.round);
-  const selectedRound =
-    rounds.find((round) => round.id === requestedRoundId) ?? rounds[0];
   const clubId = positiveInteger(query.club);
+  let selectedRound = requestedRoundId
+    ? rounds.find((round) => round.id === requestedRoundId)
+    : rounds[0];
+
+  if (requestedRoundId && !selectedRound) notFound();
 
   if (!selectedRound) {
     return (
@@ -81,7 +87,7 @@ export default async function CompetitionScoresPage({
     );
   }
 
-  const data = await getCompetitionScoreEntry(
+  let data = await getCompetitionScoreEntry(
     organisation.id,
     season.id,
     competition.id,
@@ -89,6 +95,29 @@ export default async function CompetitionScoresPage({
     clubId,
   );
   if (!data) notFound();
+  const databaseToday = data.database_today;
+
+  // Club navigation normally includes a Round. For a direct score-page URL,
+  // choose the earliest Round whose local cutoff remains open; if every Round
+  // is closed, show the latest closed Round. Previous Rounds are never gates.
+  if (clubId !== null && requestedRoundId === null) {
+    const defaultClubRound =
+      rounds.find((round) =>
+        isCompetitionRoundWithinLocalCutoff(round, databaseToday),
+      ) ?? rounds.at(-1);
+
+    if (defaultClubRound && defaultClubRound.id !== selectedRound.id) {
+      selectedRound = defaultClubRound;
+      data = await getCompetitionScoreEntry(
+        organisation.id,
+        season.id,
+        competition.id,
+        selectedRound.id,
+        clubId,
+      );
+      if (!data) notFound();
+    }
+  }
 
   return (
     <OrganisationPageFrame
