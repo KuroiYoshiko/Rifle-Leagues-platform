@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import {
   createCompetition,
   updateCompetition,
@@ -34,6 +34,21 @@ const rankingDescriptions: Record<CompetitionRankingMethod, string> = {
   best_n_average: "Standings are based on shooting averages. Once enough rounds have been completed, only each entrant's best N rounds count towards the final average.",
   round_robin: "Entrants compete head-to-head against another entrant in their division each round. A win earns 2 points, a draw 1 and a loss 0.",
   gun_score: "Entrants are ranked directly by their recorded gun scores. No separate ranking points are awarded for finishing position.",
+};
+const fieldFocusIds: Partial<Record<CompetitionField, string>> = {
+  name: "competition-name",
+  description: "competition-description",
+  teamSize: "competition-team-size",
+  entryWindow: "custom-entry-opens-at",
+  competitionStart: "custom-starts-at",
+  setsPerRound: "sets-per-round",
+  scoreComponents: "component-maximum-0",
+  shotsPerRound: "shots-per-round",
+  numberOfRounds: "number-of-rounds",
+  entryFee: "competition-entry-fee",
+  rankingMethod: "ranking-method",
+  bestRoundsCount: "best-rounds-count",
+  roundSchedule: "round-deadline-0",
 };
 const dateFormatter = new Intl.DateTimeFormat("en-GB", {
   day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
@@ -122,7 +137,15 @@ export function CompetitionForm({
     editing ? updateCompetition : createCompetition,
     initialState,
   );
+  const formRef = useRef<HTMLFormElement>(null);
+  const submitErrorRef = useRef<HTMLDivElement>(null);
+  const dirtyRef = useRef(false);
+  const submittingRef = useRef(false);
   const submitted = state.values;
+  const validationMessages = Array.from(new Set([
+    ...Object.values(state.fieldErrors ?? {}).filter((message): message is string => Boolean(message)),
+    ...(state.publishErrors ?? []),
+  ]));
   const [entryFormat, setEntryFormat] = useState<CompetitionEntryFormat>(
     (submitted?.entryFormat as CompetitionEntryFormat | undefined) ?? competition?.entry_format ?? "individual",
   );
@@ -194,6 +217,54 @@ export function CompetitionForm({
   const [repeatUnit, setRepeatUnit] = useState<"days" | "weeks">("weeks");
   const [generatorError, setGeneratorError] = useState<string | null>(null);
 
+  useEffect(() => {
+    submittingRef.current = pending;
+  }, [pending]);
+
+  useEffect(() => {
+    function handleBeforeUnload(event: BeforeUnloadEvent) {
+      if (!dirtyRef.current || submittingRef.current) return;
+      event.preventDefault();
+      event.returnValue = "";
+    }
+
+    function handleDocumentClick(event: MouseEvent) {
+      if (!dirtyRef.current || submittingRef.current || event.defaultPrevented || event.button !== 0 ||
+        event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      if (!(event.target instanceof Element)) return;
+      const link = event.target.closest<HTMLAnchorElement>("a[href]");
+      if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
+      const destination = new URL(link.href, window.location.href);
+      if (destination.href === window.location.href) return;
+      if (!window.confirm("You have unsaved Competition changes. Leave without saving?")) {
+        event.preventDefault();
+        event.stopImmediatePropagation();
+        return;
+      }
+      dirtyRef.current = false;
+    }
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    document.addEventListener("click", handleDocumentClick, true);
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      document.removeEventListener("click", handleDocumentClick, true);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (state.status !== "error") return;
+    submittingRef.current = false;
+    const firstField = Object.keys(state.fieldErrors ?? {})[0] as CompetitionField | undefined;
+    const fieldId = firstField ? fieldFocusIds[firstField] : undefined;
+    const field = fieldId ? document.getElementById(fieldId) : null;
+    const target = field instanceof HTMLElement ? field : submitErrorRef.current;
+    window.requestAnimationFrame(() => {
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+      target?.focus({ preventScroll: true });
+    });
+  }, [state]);
+
   const detailPath = competition
     ? `/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}`
     : `/organisations/${organisation.slug}/leagues/${season.slug}`;
@@ -221,6 +292,9 @@ export function CompetitionForm({
   const roundRobinDateError = rankingMethod === "round_robin" && effectiveEntryClose && effectiveStart && effectiveEntryClose >= effectiveStart
     ? "Round Robin requires time to finalise divisions after entries close. Competition Start must be after the Entry Close date."
     : null;
+  const scheduleGridClassName = useShootByDates
+    ? "grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)]"
+    : "grid-cols-[3rem_minmax(0,1fr)]";
   const scheduleErrors = useMemo(() => {
     const errors: string[] = [];
     let previous: string | null = null;
@@ -246,6 +320,7 @@ export function CompetitionForm({
   }
 
   function generateSchedule() {
+    dirtyRef.current = true;
     setGeneratorError(null);
     const interval = Number(repeatEvery);
     const maximum = repeatUnit === "days" ? 365 : 52;
@@ -273,14 +348,21 @@ export function CompetitionForm({
     if (value === "best_n_average") setUsesXScore(false);
   }
 
-  return <form action={formAction} className="space-y-7" noValidate>
+  return <form
+    ref={formRef}
+    action={formAction}
+    className="space-y-7"
+    noValidate
+    onChangeCapture={() => { dirtyRef.current = true; }}
+    onSubmitCapture={() => { submittingRef.current = true; }}
+  >
     <input type="hidden" name="organisation_id" value={organisation.id} />
     <input type="hidden" name="league_season_id" value={season.id} />
     {competition ? <><input type="hidden" name="competition_id" value={competition.id} /><input type="hidden" name="current_status" value={competition.status} /></> : null}
 
     {state.message ? <div className={`rounded-xl px-4 py-3 text-sm ${state.status === "error" ? "bg-danger-subtle text-danger" : "bg-success-subtle text-success"}`} role={state.status === "error" ? "alert" : "status"}>
       <p className="font-semibold">{state.message}</p>
-      {state.publishErrors?.length ? <ul className="mt-2 list-disc space-y-1 pl-5">{state.publishErrors.map((error) => <li key={error}>{error}</li>)}</ul> : null}
+      {validationMessages.length ? <ul className="mt-2 list-disc space-y-1 pl-5">{validationMessages.map((error) => <li key={error}>{error}</li>)}</ul> : null}
     </div> : null}
 
     <section className={sectionClassName} aria-labelledby="competition-details-title">
@@ -300,7 +382,7 @@ export function CompetitionForm({
         <RadioCard name="entry_window_mode" value="season_default" checked={entryWindowMode === "season_default"} onChange={() => setEntryWindowMode("season_default")} title="Use Season default" detail={`${formatDate(season.entry_opens_at)} – ${formatDate(season.entry_closes_at)}`} disabled={pending} />
         <RadioCard name="entry_window_mode" value="custom" checked={entryWindowMode === "custom"} onChange={() => setEntryWindowMode("custom")} title="Set custom dates" detail="Override the default for this Competition only." disabled={pending} />
       </div></fieldset>
-      {entryWindowMode === "custom" ? <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium text-foreground">Entries open<input name="custom_entry_opens_at" type="date" value={customEntryOpensAt} onChange={(event) => setCustomEntryOpensAt(event.target.value)} disabled={pending} className={inputClassName} /></label><label className="text-sm font-medium text-foreground">Entries close<input name="custom_entry_closes_at" type="date" value={customEntryClosesAt} onChange={(event) => setCustomEntryClosesAt(event.target.value)} disabled={pending} className={inputClassName} /></label></div> : null}
+      {entryWindowMode === "custom" ? <div className="grid gap-4 sm:grid-cols-2"><label className="text-sm font-medium text-foreground">Entries open<input id="custom-entry-opens-at" name="custom_entry_opens_at" type="date" value={customEntryOpensAt} onChange={(event) => setCustomEntryOpensAt(event.target.value)} disabled={pending} className={inputClassName} /></label><label className="text-sm font-medium text-foreground">Entries close<input id="custom-entry-closes-at" name="custom_entry_closes_at" type="date" value={customEntryClosesAt} onChange={(event) => setCustomEntryClosesAt(event.target.value)} disabled={pending} className={inputClassName} /></label></div> : null}
       <FieldError field="entryWindow" message={state.fieldErrors?.entryWindow} />
     </section>
 
@@ -310,7 +392,7 @@ export function CompetitionForm({
         <RadioCard name="start_date_mode" value="season_default" checked={startDateMode === "season_default"} onChange={() => setStartDateMode("season_default")} title="Use Season start" detail={formatDate(season.starts_at)} disabled={pending} />
         <RadioCard name="start_date_mode" value="custom" checked={startDateMode === "custom"} onChange={() => setStartDateMode("custom")} title="Set custom date" detail="Override the Season start for this Competition." disabled={pending} />
       </div></fieldset>
-      {startDateMode === "custom" ? <label className="block max-w-xs text-sm font-medium text-foreground">Competition Start<input name="custom_starts_at" type="date" value={customStartsAt} onChange={(event) => setCustomStartsAt(event.target.value)} disabled={pending} className={inputClassName} /></label> : null}
+      {startDateMode === "custom" ? <label className="block max-w-xs text-sm font-medium text-foreground">Competition Start<input id="custom-starts-at" name="custom_starts_at" type="date" value={customStartsAt} onChange={(event) => setCustomStartsAt(event.target.value)} disabled={pending} className={inputClassName} /></label> : null}
       <FieldError field="competitionStart" message={state.fieldErrors?.competitionStart} />
     </section>
 
@@ -350,10 +432,10 @@ export function CompetitionForm({
       {roundDeadlines.length === 0 ? <p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">No schedule generated yet. A draft can be saved without one.</p> : <div className="space-y-3">
         <label className="inline-flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-foreground"><input type="checkbox" checked={useShootByDates} onChange={(event) => setUseShootByDates(event.target.checked)} disabled={pending} className="size-4 accent-primary" />Use Shoot-by dates</label>
         <div className="max-w-3xl overflow-hidden rounded-xl border border-border bg-surface">
-          <div className={`grid items-center gap-2 border-b border-border bg-surface-muted px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground ${useShootByDates ? "grid-cols-[2rem_minmax(0,1fr)_minmax(0,1fr)]" : "grid-cols-[2rem_minmax(0,1fr)]"}`}><span className="sr-only">Round</span><span>Round End</span>{useShootByDates ? <span>Shoot-by</span> : null}</div>
-          <div className="divide-y divide-border">{roundDeadlines.map((deadline, index) => <div key={index} className={`grid items-center gap-2 px-3 py-2 ${useShootByDates ? "grid-cols-[2rem_minmax(0,1fr)_minmax(0,1fr)]" : "grid-cols-[2rem_minmax(0,1fr)]"}`}>
+          <div className={`grid items-center gap-2 border-b border-border bg-surface-muted px-3 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground ${scheduleGridClassName}`}><span className="whitespace-nowrap">Round</span><span className="whitespace-nowrap">Round End</span>{useShootByDates ? <span className="whitespace-nowrap">Shoot-by</span> : null}</div>
+          <div className="divide-y divide-border">{roundDeadlines.map((deadline, index) => <div key={index} className={`grid items-center gap-2 px-3 py-2 ${scheduleGridClassName}`}>
             <span className="text-xs font-semibold text-brand-strong">R{index + 1}</span>
-            <label className="min-w-0"><span className="sr-only">Round {index + 1} End</span><input name="round_deadline" type="date" value={deadline} onChange={(event) => setRoundDeadlines((current) => current.map((value, roundIndex) => roundIndex === index ? event.target.value : value))} disabled={pending} className={compactDateClassName} /></label>
+            <label className="min-w-0"><span className="sr-only">Round {index + 1} End</span><input id={`round-deadline-${index}`} name="round_deadline" type="date" value={deadline} onChange={(event) => setRoundDeadlines((current) => current.map((value, roundIndex) => roundIndex === index ? event.target.value : value))} disabled={pending} className={compactDateClassName} /></label>
             {useShootByDates ? <label className="min-w-0"><span className="sr-only">Round {index + 1} Shoot-by (optional)</span><input name="round_shoot_by_date" type="date" value={shootByDates[index] ?? ""} onChange={(event) => setShootByDates((current) => Array.from({ length: roundDeadlines.length }, (_, roundIndex) => roundIndex === index ? event.target.value : current[roundIndex] ?? ""))} disabled={pending} className={compactDateClassName} /></label> : null}
           </div>)}</div>
         </div>
@@ -363,6 +445,13 @@ export function CompetitionForm({
       <FieldError field="roundSchedule" message={state.fieldErrors?.roundSchedule} />
     </section>
 
-    <div className="flex flex-col-reverse gap-3 border-t border-border pt-6 sm:flex-row sm:justify-end"><Link href={detailPath} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-6 text-sm font-semibold text-neutral-strong">Cancel</Link>{competition?.status === "draft" ? <button type="submit" name="intent" value="publish" disabled={pending || Boolean(bestRoundsError) || Boolean(scoresPerSetError)} className="min-h-11 rounded-xl border border-brand px-6 text-sm font-semibold text-brand-deep disabled:opacity-50">{pending ? "Saving…" : "Publish competition"}</button> : null}<button type="submit" name="intent" value="save" disabled={pending || Boolean(bestRoundsError) || Boolean(scoresPerSetError)} className="min-h-11 rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "Saving…" : competition?.status === "published" ? "Save changes" : "Save draft"}</button></div>
+    <div className="space-y-4 border-t border-border pt-6">
+      {state.status === "error" && state.message ? <div ref={submitErrorRef} tabIndex={-1} className="rounded-xl border border-danger/20 bg-danger-subtle px-4 py-3 text-sm leading-6 text-danger outline-none focus:ring-4 focus:ring-danger/10">
+        <p className="font-semibold">Could not save this Competition.</p>
+        <p>{state.message}</p>
+        {validationMessages.length ? <ul className="mt-2 list-disc space-y-1 pl-5">{validationMessages.map((error) => <li key={error}>{error}</li>)}</ul> : null}
+      </div> : null}
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Link href={detailPath} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-6 text-sm font-semibold text-neutral-strong">Cancel</Link>{competition?.status === "draft" ? <button type="submit" name="intent" value="publish" disabled={pending || Boolean(bestRoundsError) || Boolean(scoresPerSetError)} className="min-h-11 rounded-xl border border-brand px-6 text-sm font-semibold text-brand-deep disabled:opacity-50">{pending ? "Saving…" : "Publish competition"}</button> : null}<button type="submit" name="intent" value="save" disabled={pending || Boolean(bestRoundsError) || Boolean(scoresPerSetError)} className="min-h-11 rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "Saving…" : competition?.status === "published" ? "Save changes" : "Save draft"}</button></div>
+    </div>
   </form>;
 }

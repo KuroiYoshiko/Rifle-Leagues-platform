@@ -894,6 +894,7 @@ create trigger validate_competition_round
 create or replace function private.validate_final_competition_schedule()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 declare
@@ -901,10 +902,11 @@ declare
   v_number_of_rounds integer;
   v_effective_starts_at date;
 begin
-  v_competition_id := case
-    when tg_table_name = 'competitions' then coalesce(new.id, old.id)
-    else coalesce(new.competition_id, old.competition_id)
-  end;
+  if tg_table_name = 'competitions' then
+    v_competition_id := coalesce(new.id, old.id);
+  else
+    v_competition_id := coalesce(new.competition_id, old.competition_id);
+  end if;
 
   select competition.number_of_rounds, effective.effective_starts_at
   into v_number_of_rounds, v_effective_starts_at

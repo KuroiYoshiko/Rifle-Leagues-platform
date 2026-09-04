@@ -92,10 +92,11 @@ export default async function CompetitionDetailPage({
   searchParams: Promise<{
     created?: string | string[];
     published?: string | string[];
+    saved?: string | string[];
   }>;
 }) {
   const { slug, seasonSlug, competitionSlug } = await params;
-  const { created, published } = await searchParams;
+  const { created, published, saved } = await searchParams;
   const [organisation, managementContext] = await Promise.all([
     getActiveOrganisationBySlug(slug),
     getOrganisationManagementContextBySlug(slug),
@@ -140,6 +141,9 @@ export default async function CompetitionDetailPage({
   const publishSucceeded = Array.isArray(published)
     ? published[0] === "1"
     : published === "1";
+  const saveSucceeded = Array.isArray(saved)
+    ? saved[0] === "1"
+    : saved === "1";
   const fee = formatCompetitionEntryFee(competition.entry_fee);
   const entryFormat = getCompetitionEntryFormatLabel(
     competition.entry_format,
@@ -161,17 +165,23 @@ export default async function CompetitionDetailPage({
 
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="leagues">
-      {creationSucceeded || publishSucceeded ? (
+      {creationSucceeded || publishSucceeded || saveSucceeded ? (
         <div
           className="mb-6 rounded-2xl border border-success/20 bg-success-subtle px-5 py-4 text-sm leading-6 text-success"
           role="status"
         >
           <strong className="font-semibold">
-            {publishSucceeded ? "Competition published." : "Draft saved."}
+            {publishSucceeded
+              ? "Competition published."
+              : saveSucceeded
+                ? "Competition changes saved."
+                : "Draft saved."}
           </strong>{" "}
           {publishSucceeded
             ? "It is visible whenever the parent season is public."
-            : "Only the active organisation owner can see it until it is published."}
+            : competition.status === "draft"
+              ? "Only the active organisation owner can see it until it is published."
+              : "The published Competition remains visible."}
         </div>
       ) : null}
 
