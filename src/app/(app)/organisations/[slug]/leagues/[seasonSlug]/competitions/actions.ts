@@ -62,12 +62,21 @@ export type CompetitionFormState = {
   publishErrors?: string[];
 };
 
+export type CompetitionLifecycleActionState = {
+  status?: "error";
+  message?: string;
+};
+
 type CompetitionRpcResult = {
   id: number;
   organisation_slug: string;
   season_slug: string;
   competition_slug: string;
   status: CompetitionStatus;
+};
+
+type CompetitionLifecycleRpcResult = Omit<CompetitionRpcResult, "status"> & {
+  status?: CompetitionStatus;
 };
 
 type SeasonBoundaryContext = {
@@ -323,6 +332,29 @@ function readRpcResult(value: unknown): CompetitionRpcResult | null {
   return item as CompetitionRpcResult;
 }
 
+function readLifecycleRpcResult(
+  value: unknown,
+): CompetitionLifecycleRpcResult | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const item = value as Record<string, unknown>;
+  const id = Number(item.id);
+  if (
+    !Number.isSafeInteger(id) ||
+    id <= 0 ||
+    typeof item.organisation_slug !== "string" ||
+    typeof item.season_slug !== "string" ||
+    typeof item.competition_slug !== "string" ||
+    !routeSafeSlugPattern.test(item.organisation_slug) ||
+    !routeSafeSlugPattern.test(item.season_slug) ||
+    !routeSafeSlugPattern.test(item.competition_slug) ||
+    (item.status !== undefined &&
+      !COMPETITION_STATUSES.includes(item.status as CompetitionStatus))
+  ) {
+    return null;
+  }
+  return item as CompetitionLifecycleRpcResult;
+}
+
 async function authenticatedClient() {
   const supabase = await createClient();
   const { data, error } = await supabase.auth.getClaims();
@@ -437,6 +469,77 @@ function revalidateCompetitionRoutes(result: CompetitionRpcResult) {
   revalidatePath("/clubs", "layout");
 }
 
+function lifecycleErrorMessage(
+  error: CompetitionMutationError,
+  fallback: string,
+) {
+  if (
+    error.code === "42501" &&
+    error.message ===
+      "Only this organisation owner can manage this Competition lifecycle."
+  ) {
+    return "Only this organisation’s active owner can manage this Competition lifecycle.";
+  }
+  if (error.code === "42501" && error.message === "Authentication is required.") {
+    return "Sign in again before continuing.";
+  }
+  if (error.code === "P0002") {
+    return "That Competition, Season, or organisation is no longer available. Refresh and try again.";
+  }
+  if ((error.code === "22023" || error.code === "23514") && error.message) {
+    return error.message;
+  }
+  return fallback;
+}
+
+async function prepareLifecycleMutation(formData: FormData) {
+  const organisationId = readPositiveInteger(formData.get("organisation_id"));
+  const leagueSeasonId = readPositiveInteger(formData.get("league_season_id"));
+  const competitionId = readPositiveInteger(formData.get("competition_id"));
+  if (!organisationId || !leagueSeasonId || !competitionId) {
+    return {
+      error: "The Competition could not be identified. Refresh and try again.",
+    } as const;
+  }
+
+  const { supabase, authenticated } = await authenticatedClient();
+  if (!authenticated) {
+    return { error: "Sign in again before continuing." } as const;
+  }
+
+  return {
+    organisationId,
+    leagueSeasonId,
+    competitionId,
+    supabase,
+  } as const;
+}
+
+function reportLifecycleError(
+  operation: "publish" | "return-to-draft" | "delete",
+  error: CompetitionMutationError,
+) {
+  if (process.env.NODE_ENV === "production") return;
+  console.error(`[competition:${operation}] lifecycle RPC failed`, {
+    code: error.code,
+    message: error.message,
+    details: error.details,
+    hint: error.hint,
+  });
+}
+
+function revalidateLifecycleResult(result: CompetitionLifecycleRpcResult) {
+  const organisationPath = `/organisations/${result.organisation_slug}`;
+  const seasonPath = `${organisationPath}/leagues/${result.season_slug}`;
+  const competitionPath = `${seasonPath}/competitions/${result.competition_slug}`;
+  revalidatePath(organisationPath);
+  revalidatePath(`${organisationPath}/leagues`);
+  revalidatePath(seasonPath);
+  revalidatePath(competitionPath);
+  revalidatePath(`${competitionPath}/edit`);
+  revalidatePath("/clubs", "layout");
+}
+
 async function prepare(formData: FormData) {
   const organisationId = readPositiveInteger(formData.get("organisation_id"));
   const leagueSeasonId = readPositiveInteger(formData.get("league_season_id"));
@@ -503,4 +606,109 @@ export async function updateCompetition(_previousState: CompetitionFormState, fo
   revalidateCompetitionRoutes(result);
   const successQuery = intent === "publish" ? "published=1" : "saved=1";
   redirect(`/organisations/${result.organisation_slug}/leagues/${result.season_slug}/competitions/${result.competition_slug}?${successQuery}`);
+}
+
+export async function publishCompetitionFromDetail(
+  _previousState: CompetitionLifecycleActionState,
+  formData: FormData,
+): Promise<CompetitionLifecycleActionState> {
+  const prepared = await prepareLifecycleMutation(formData);
+  if ("error" in prepared) return { status: "error", message: prepared.error };
+  const { organisationId, leagueSeasonId, competitionId, supabase } = prepared;
+  const { data, error } = await supabase.rpc("publish_competition", {
+    p_organisation_id: organisationId,
+    p_league_season_id: leagueSeasonId,
+    p_competition_id: competitionId,
+  });
+  if (error) {
+    reportLifecycleError("publish", error);
+    return {
+      status: "error",
+      message: lifecycleErrorMessage(
+        error,
+        "The Competition could not be published. Please try again.",
+      ),
+    };
+  }
+  const result = readLifecycleRpcResult(data);
+  if (!result || result.status !== "published") {
+    return {
+      status: "error",
+      message: "The Competition was published, but its refreshed details could not be verified.",
+    };
+  }
+  revalidateLifecycleResult(result);
+  redirect(
+    `/organisations/${result.organisation_slug}/leagues/${result.season_slug}/competitions/${result.competition_slug}?published=1`,
+  );
+}
+
+export async function returnCompetitionToDraft(
+  _previousState: CompetitionLifecycleActionState,
+  formData: FormData,
+): Promise<CompetitionLifecycleActionState> {
+  const prepared = await prepareLifecycleMutation(formData);
+  if ("error" in prepared) return { status: "error", message: prepared.error };
+  const { organisationId, leagueSeasonId, competitionId, supabase } = prepared;
+  const { data, error } = await supabase.rpc("return_competition_to_draft", {
+    p_organisation_id: organisationId,
+    p_league_season_id: leagueSeasonId,
+    p_competition_id: competitionId,
+  });
+  if (error) {
+    reportLifecycleError("return-to-draft", error);
+    return {
+      status: "error",
+      message: lifecycleErrorMessage(
+        error,
+        "The Competition could not be returned to draft. Please try again.",
+      ),
+    };
+  }
+  const result = readLifecycleRpcResult(data);
+  if (!result || result.status !== "draft") {
+    return {
+      status: "error",
+      message: "The Competition changed, but its refreshed details could not be verified.",
+    };
+  }
+  revalidateLifecycleResult(result);
+  redirect(
+    `/organisations/${result.organisation_slug}/leagues/${result.season_slug}/competitions/${result.competition_slug}?drafted=1`,
+  );
+}
+
+export async function deleteCompetitionFromDetail(
+  _previousState: CompetitionLifecycleActionState,
+  formData: FormData,
+): Promise<CompetitionLifecycleActionState> {
+  const prepared = await prepareLifecycleMutation(formData);
+  if ("error" in prepared) return { status: "error", message: prepared.error };
+  const { organisationId, leagueSeasonId, competitionId, supabase } = prepared;
+  const { data, error } = await supabase.rpc("delete_competition", {
+    p_organisation_id: organisationId,
+    p_league_season_id: leagueSeasonId,
+    p_competition_id: competitionId,
+  });
+  if (error) {
+    reportLifecycleError("delete", error);
+    return {
+      status: "error",
+      message: lifecycleErrorMessage(
+        error,
+        "The Competition could not be deleted. Please try again.",
+      ),
+    };
+  }
+  const result = readLifecycleRpcResult(data);
+  if (!result) {
+    return {
+      status: "error",
+      message: "The Competition was deleted, but the Season page could not be opened automatically.",
+    };
+  }
+  revalidateLifecycleResult(result);
+  redirect(
+    `/organisations/${result.organisation_slug}/leagues/${result.season_slug}?competitionDeleted=1`,
+  );
 }

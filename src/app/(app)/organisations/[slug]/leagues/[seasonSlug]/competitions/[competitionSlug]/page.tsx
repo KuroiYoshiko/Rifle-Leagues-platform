@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CompetitionEntryControls } from "@/components/competition-entry-controls";
+import { CompetitionLifecycleActions } from "@/components/competition-lifecycle-actions";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { PublishedCompetitionDivisionsView } from "@/components/published-competition-divisions";
 import { Badge, Card, SectionHeader } from "@/components/ui";
@@ -14,6 +15,7 @@ import {
   getCompetitionMaximumPerRound,
   getCompetitionBySlug,
   getCompetitionEntryFormatLabel,
+  getCompetitionLifecycleState,
   getCompetitionRankingMethodLabel,
   getCompetitionRounds,
   getCompetitionScoreComponents,
@@ -91,12 +93,13 @@ export default async function CompetitionDetailPage({
   }>;
   searchParams: Promise<{
     created?: string | string[];
+    drafted?: string | string[];
     published?: string | string[];
     saved?: string | string[];
   }>;
 }) {
   const { slug, seasonSlug, competitionSlug } = await params;
-  const { created, published, saved } = await searchParams;
+  const { created, drafted, published, saved } = await searchParams;
   const [organisation, managementContext] = await Promise.all([
     getActiveOrganisationBySlug(slug),
     getOrganisationManagementContextBySlug(slug),
@@ -116,7 +119,8 @@ export default async function CompetitionDetailPage({
     notFound();
   }
 
-  const [rounds, scoreComponents, entryContexts, divisionManagement, publishedDivisions] = await Promise.all([
+  const isOwner = managementContext?.access.role === "owner";
+  const [rounds, scoreComponents, entryContexts, divisionManagement, publishedDivisions, lifecycleState] = await Promise.all([
     getCompetitionRounds(competition.id),
     getCompetitionScoreComponents(competition.id),
     competition.status === "published"
@@ -132,9 +136,15 @@ export default async function CompetitionDetailPage({
     competition.status === "published"
       ? getPublishedCompetitionDivisions(competition.id)
       : Promise.resolve(null),
+    isOwner
+      ? getCompetitionLifecycleState(
+          organisation.id,
+          season.id,
+          competition.id,
+        )
+      : Promise.resolve(null),
   ]);
   const roundDateLabels = getCompactRoundDateLabels(rounds);
-  const isOwner = managementContext?.access.role === "owner";
   const creationSucceeded = Array.isArray(created)
     ? created[0] === "1"
     : created === "1";
@@ -144,6 +154,9 @@ export default async function CompetitionDetailPage({
   const saveSucceeded = Array.isArray(saved)
     ? saved[0] === "1"
     : saved === "1";
+  const returnToDraftSucceeded = Array.isArray(drafted)
+    ? drafted[0] === "1"
+    : drafted === "1";
   const fee = formatCompetitionEntryFee(competition.entry_fee);
   const entryFormat = getCompetitionEntryFormatLabel(
     competition.entry_format,
@@ -165,7 +178,7 @@ export default async function CompetitionDetailPage({
 
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="leagues">
-      {creationSucceeded || publishSucceeded || saveSucceeded ? (
+      {creationSucceeded || publishSucceeded || saveSucceeded || returnToDraftSucceeded ? (
         <div
           className="mb-6 rounded-2xl border border-success/20 bg-success-subtle px-5 py-4 text-sm leading-6 text-success"
           role="status"
@@ -173,6 +186,8 @@ export default async function CompetitionDetailPage({
           <strong className="font-semibold">
             {publishSucceeded
               ? "Competition published."
+              : returnToDraftSucceeded
+                ? "Competition returned to draft."
               : saveSucceeded
                 ? "Competition changes saved."
                 : "Draft saved."}
@@ -214,13 +229,17 @@ export default async function CompetitionDetailPage({
               </p>
             ) : null}
           </div>
-          {isOwner ? (
-            <Link
-              href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/edit`}
-              className="inline-flex min-h-11 shrink-0 items-center justify-center self-start rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
-            >
-              Edit competition
-            </Link>
+          {isOwner && lifecycleState ? (
+            <CompetitionLifecycleActions
+              organisationId={organisation.id}
+              leagueSeasonId={season.id}
+              competitionId={competition.id}
+              competitionName={competition.name}
+              status={competition.status}
+              canReturnToDraft={lifecycleState.can_return_to_draft}
+              canDelete={lifecycleState.can_delete}
+              editHref={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/edit`}
+            />
           ) : null}
         </div>
 

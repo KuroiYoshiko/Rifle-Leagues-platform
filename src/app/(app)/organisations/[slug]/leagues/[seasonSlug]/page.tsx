@@ -105,10 +105,13 @@ export default async function LeagueSeasonDetailPage({
   searchParams,
 }: {
   params: Promise<{ slug: string; seasonSlug: string }>;
-  searchParams: Promise<{ created?: string | string[] }>;
+  searchParams: Promise<{
+    competitionDeleted?: string | string[];
+    created?: string | string[];
+  }>;
 }) {
   const { slug, seasonSlug } = await params;
-  const { created } = await searchParams;
+  const { competitionDeleted, created } = await searchParams;
   const [organisation, managementContext] = await Promise.all([
     getActiveOrganisationBySlug(slug),
     getOrganisationManagementContextBySlug(slug),
@@ -129,6 +132,9 @@ export default async function LeagueSeasonDetailPage({
   const creationSucceeded = Array.isArray(created)
     ? created[0] === "1"
     : created === "1";
+  const competitionDeletionSucceeded = Array.isArray(competitionDeleted)
+    ? competitionDeleted[0] === "1"
+    : competitionDeleted === "1";
   const entryWindowDates = getLeagueEntryWindowDateDisplay(
     season.entry_opens_at,
     season.entry_closes_at,
@@ -151,6 +157,15 @@ export default async function LeagueSeasonDetailPage({
         >
           <strong className="font-semibold">Season created.</strong> It is a
           private draft until you move it to Open.
+        </div>
+      ) : null}
+      {competitionDeletionSucceeded ? (
+        <div
+          className="mb-6 rounded-2xl border border-success/20 bg-success-subtle px-5 py-4 text-sm leading-6 text-success"
+          role="status"
+        >
+          <strong className="font-semibold">Competition deleted.</strong>{" "}
+          Its configuration has been permanently removed.
         </div>
       ) : null}
 

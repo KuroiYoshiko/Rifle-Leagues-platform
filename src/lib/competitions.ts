@@ -93,6 +93,13 @@ export type CompetitionEffectiveDates = {
   effective_starts_at: string | null;
 };
 
+export type CompetitionLifecycleState = {
+  status: CompetitionStatus;
+  has_participation: boolean;
+  can_return_to_draft: boolean;
+  can_delete: boolean;
+};
+
 const competitionColumns =
   "id, league_season_id, name, slug, description, status, entry_format, team_size, scoring_method, maximum_score_per_round, shots_per_round, uses_x_score, number_of_rounds, entry_fee, entry_window_mode, custom_entry_opens_at, custom_entry_closes_at, start_date_mode, custom_starts_at, sets_per_round, ranking_method, best_rounds_count, local_scoring_enabled, created_at, updated_at";
 const competitionRoundColumns =
@@ -196,6 +203,44 @@ export const getCompetitionScoreComponents = cache(
     }
 
     return (data ?? []) as CompetitionScoreComponent[];
+  },
+);
+
+export const getCompetitionLifecycleState = cache(
+  async (
+    organisationId: number,
+    leagueSeasonId: number,
+    competitionId: number,
+  ) => {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc(
+      "get_competition_lifecycle_state",
+      {
+        p_organisation_id: organisationId,
+        p_league_season_id: leagueSeasonId,
+        p_competition_id: competitionId,
+      },
+    );
+
+    if (error) {
+      throw new Error("Competition lifecycle actions could not be loaded.");
+    }
+
+    if (!data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("Competition lifecycle actions returned an invalid state.");
+    }
+
+    const value = data as Record<string, unknown>;
+    if (
+      !COMPETITION_STATUSES.includes(value.status as CompetitionStatus) ||
+      typeof value.has_participation !== "boolean" ||
+      typeof value.can_return_to_draft !== "boolean" ||
+      typeof value.can_delete !== "boolean"
+    ) {
+      throw new Error("Competition lifecycle actions returned an invalid state.");
+    }
+
+    return value as CompetitionLifecycleState;
   },
 );
 

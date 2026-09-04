@@ -197,7 +197,7 @@ remain revoked.
 The authenticated `create_competition` and `update_competition` RPCs verify the
 active organisation, exact season, exact competition, and active owner before
 atomically saving configuration and the round schedule. New competitions are
-always drafts, and publishing remains a deliberate one-way transition.
+always drafts, and publishing remains a deliberate validated transition.
 
 For an existing populated installation, then run the complete focused additive
 [`database/competition-configuration-refactor.sql`](database/competition-configuration-refactor.sql)
@@ -209,6 +209,15 @@ backfills existing one-score Competitions without replacing any Competition,
 Round, Entry, Entrant, Participant, Division, or assignment row. No reset or
 reseed is required. The historical baseline SQL files should be run before this
 focused upgrade; rerun the upgrade last if a baseline file is reapplied.
+
+Then run
+[`database/competition-lifecycle-management.sql`](database/competition-lifecycle-management.sql)
+after the Competition configuration refactor and Division SQL. It adds narrowly
+scoped owner-only publish, return-to-draft, and safe-delete RPCs. Return to draft
+and deletion are blocked atomically when any club entry, entrant, participant,
+division configuration, division, or assignment exists. Safe deletion removes
+only the Competition and its configuration-owned rounds and Course of Fire rows;
+no database reset or reseed is required.
 
 ## Club competition entries
 
