@@ -13,6 +13,7 @@ import {
 } from "@/lib/competition-entries";
 import { getClubPageContextBySlug, isClubManager } from "@/lib/clubs";
 import { getCompetitionEntryFormatLabel } from "@/lib/competitions";
+import { isCompetitionRoundWithinLocalCutoff } from "@/lib/competition-score-dates";
 import {
   getLeagueSeasonPresentationPhase,
   getLeagueToday,
@@ -100,14 +101,41 @@ function paginationItems(currentPage: number, totalPages: number) {
 
 function ClubCompetitionCard({
   entry,
+  today,
   compact = false,
 }: {
   entry: ClubCompetitionEntryCard;
+  today: string;
   compact?: boolean;
 }) {
   const competitionPath = `/organisations/${entry.organisation_slug}/leagues/${entry.league_season_slug}/competitions/${entry.competition_slug}`;
   const managementPath = `${competitionPath}/entry?entry=${entry.entry_id}`;
   const format = getCompetitionEntryFormatLabel(entry.entry_format);
+  const scoreableSubmitted =
+    entry.competition_status === "published" &&
+    entry.entry_status === "submitted" &&
+    entry.can_manage;
+  const competitionStarted = Boolean(
+    entry.competition_effective_starts_at &&
+      today >= entry.competition_effective_starts_at,
+  );
+  const editableScoreRound = entry.score_rounds.find(
+    (round) => isCompetitionRoundWithinLocalCutoff(round, today),
+  );
+  const viewScoreRound = entry.score_rounds.at(-1);
+  const scoreRound = editableScoreRound ?? viewScoreRound;
+  const scoreAction =
+    scoreableSubmitted &&
+    entry.local_scoring_enabled &&
+    competitionStarted &&
+    scoreRound
+      ? editableScoreRound
+        ? "manage"
+        : "view"
+      : null;
+  const scoreManagementPath = scoreRound
+    ? `${competitionPath}/scores?club=${entry.club_id}&round=${scoreRound.id}`
+    : null;
 
   return (
     <Card className={compact ? "p-5 sm:p-6" : "p-6 sm:p-7"}>
@@ -169,8 +197,25 @@ function ClubCompetitionCard({
                 : "View entry"}
             </Link>
           ) : null}
+          {scoreAction && scoreManagementPath ? (
+            <Link
+              href={scoreManagementPath}
+              className="inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep sm:w-auto"
+            >
+              {scoreAction === "manage" ? "Manage scores" : "View scores"}
+            </Link>
+          ) : null}
         </div>
       </div>
+      {scoreableSubmitted && !entry.local_scoring_enabled ? (
+        <p className="mt-4 border-t border-border pt-4 text-xs leading-5 text-muted-foreground">
+          Scores for this Competition are entered by the organisation.
+        </p>
+      ) : scoreableSubmitted && !competitionStarted ? (
+        <p className="mt-4 border-t border-border pt-4 text-xs leading-5 text-muted-foreground">
+          Club score entry opens when the Competition starts.
+        </p>
+      ) : null}
     </Card>
   );
 }
@@ -180,6 +225,7 @@ function CompetitionSection({
   title,
   description,
   entries,
+  today,
   compact = false,
   children,
 }: {
@@ -187,6 +233,7 @@ function CompetitionSection({
   title: string;
   description: string;
   entries: ClubCompetitionEntryCard[];
+  today: string;
   compact?: boolean;
   children?: React.ReactNode;
 }) {
@@ -210,6 +257,7 @@ function CompetitionSection({
           <ClubCompetitionCard
             key={entry.entry_id}
             entry={entry}
+            today={today}
             compact={compact}
           />
         ))}
@@ -404,6 +452,7 @@ export default async function ClubCompetitionsPage({
                 title="Entry drafts"
                 description="Private entries still being prepared by club management"
                 entries={draftEntries}
+                today={today}
               />
             ) : null}
             <CompetitionSection
@@ -411,18 +460,21 @@ export default async function ClubCompetitionsPage({
               title="Ongoing competitions"
               description="Submitted entries in competitions currently in progress"
               entries={ongoingEntries}
+              today={today}
             />
             <CompetitionSection
               id="upcoming-competitions-heading"
               title="Upcoming competitions"
               description="Submitted entries in competitions scheduled to start"
               entries={upcomingEntries}
+              today={today}
             />
             <CompetitionSection
               id="past-competitions-heading"
               title="Past competitions"
               description="Submitted entries from completed seasons"
               entries={visiblePastEntries}
+              today={today}
               compact
             >
               <PastCompetitionPagination

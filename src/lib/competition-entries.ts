@@ -11,6 +11,13 @@ export type ClubCompetitionEntryStatus =
   (typeof CLUB_COMPETITION_ENTRY_STATUSES)[number];
 export type CompetitionEntryWindowState = "upcoming" | "open" | "closed";
 
+export type ClubCompetitionScoreRound = {
+  id: number;
+  round_number: number;
+  deadline: string;
+  shoot_by_date: string | null;
+};
+
 export type CompetitionClubEntryContext = {
   club_id: number;
   club_name: string;
@@ -27,11 +34,13 @@ export type CompetitionClubEntryContext = {
 };
 
 export type ClubCompetitionEntryCard = {
+  club_id: number;
   entry_id: number;
   entry_status: ClubCompetitionEntryStatus;
   submitted_at: string | null;
   entry_updated_at: string;
   competition_id: number;
+  competition_status: "draft" | "published";
   competition_name: string;
   competition_slug: string;
   entry_format: "individual" | "pairs" | "team";
@@ -40,6 +49,7 @@ export type ClubCompetitionEntryCard = {
   league_season_slug: string;
   league_season_starts_at: string | null;
   league_season_ends_at: string | null;
+  competition_effective_starts_at: string | null;
   organisation_name: string;
   organisation_slug: string;
   entrant_count: number;
@@ -47,6 +57,8 @@ export type ClubCompetitionEntryCard = {
   is_user_entered: boolean;
   can_manage: boolean;
   entry_window_state: CompetitionEntryWindowState;
+  local_scoring_enabled: boolean;
+  score_rounds: ClubCompetitionScoreRound[];
 };
 
 export type EntryParticipant = {
@@ -144,7 +156,79 @@ export const getClubCompetitionEntries = cache(async (clubId: number) => {
     throw new Error("Club competition entries could not be loaded.");
   }
 
-  return (data ?? []) as ClubCompetitionEntryCard[];
+  const entries = (data ?? []) as Array<
+    Omit<
+      ClubCompetitionEntryCard,
+      | "club_id"
+      | "competition_effective_starts_at"
+      | "competition_status"
+      | "local_scoring_enabled"
+      | "score_rounds"
+    >
+  >;
+  const competitionIds = [
+    ...new Set(entries.map((entry) => entry.competition_id)),
+  ];
+
+  if (competitionIds.length === 0) return [];
+
+  const [competitionResult, roundResult] = await Promise.all([
+    supabase
+      .from("competitions")
+      .select(
+        "id, status, local_scoring_enabled, start_date_mode, custom_starts_at",
+      )
+      .in("id", competitionIds),
+    supabase
+      .from("competition_rounds")
+      .select("id, competition_id, round_number, deadline, shoot_by_date")
+      .in("competition_id", competitionIds)
+      .order("competition_id", { ascending: true })
+      .order("round_number", { ascending: true }),
+  ]);
+
+  if (competitionResult.error || roundResult.error) {
+    throw new Error("Competition score-entry access could not be loaded.");
+  }
+
+  const scoreEntrySettingsByCompetition = new Map(
+    (competitionResult.data ?? []).map((competition) => [
+      competition.id,
+      competition,
+    ]),
+  );
+  const scoreRoundsByCompetition = new Map<
+    number,
+    ClubCompetitionScoreRound[]
+  >();
+
+  for (const round of roundResult.data ?? []) {
+    const rounds = scoreRoundsByCompetition.get(round.competition_id);
+    const scoreRound = {
+      id: round.id,
+      round_number: round.round_number,
+      deadline: round.deadline,
+      shoot_by_date: round.shoot_by_date,
+    };
+
+    if (rounds) rounds.push(scoreRound);
+    else scoreRoundsByCompetition.set(round.competition_id, [scoreRound]);
+  }
+
+  return entries.map((entry) => {
+    const settings = scoreEntrySettingsByCompetition.get(entry.competition_id);
+    return {
+      ...entry,
+      club_id: clubId,
+      competition_status: settings?.status ?? "draft",
+      competition_effective_starts_at:
+        settings?.start_date_mode === "custom"
+          ? settings.custom_starts_at
+          : entry.league_season_starts_at,
+      local_scoring_enabled: settings?.local_scoring_enabled ?? false,
+      score_rounds: scoreRoundsByCompetition.get(entry.competition_id) ?? [],
+    };
+  }) satisfies ClubCompetitionEntryCard[];
 });
 
 export const getClubCompetitionEntryManagement = cache(
