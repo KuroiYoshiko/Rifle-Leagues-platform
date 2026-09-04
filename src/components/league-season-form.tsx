@@ -90,7 +90,7 @@ export function LeagueSeasonForm({
           htmlFor="league-season-name"
           className="text-sm font-semibold text-foreground"
         >
-          League name <span aria-hidden="true">*</span>
+          Season name <span aria-hidden="true">*</span>
         </label>
         <input
           id="league-season-name"
@@ -105,7 +105,7 @@ export function LeagueSeasonForm({
             state.fieldErrors?.name ? "league-season-name-error" : undefined
           }
           disabled={pending}
-          placeholder="Summer League 2026"
+          placeholder="Summer 2026"
           className={inputClassName}
         />
         <FieldError
@@ -114,17 +114,52 @@ export function LeagueSeasonForm({
         />
         {editing ? (
           <p className="mt-2 text-xs leading-5 text-muted-foreground">
-            Renaming the league does not change its web address.
+            Renaming the season does not change its web address.
           </p>
         ) : null}
       </div>
 
+      <div>
+        <label
+          htmlFor="league-season-description"
+          className="text-sm font-semibold text-foreground"
+        >
+          Season description <span className="font-normal text-muted-foreground">(optional)</span>
+        </label>
+        <textarea
+          id="league-season-description"
+          name="description"
+          rows={5}
+          maxLength={2000}
+          defaultValue={values?.description ?? season?.description ?? ""}
+          aria-invalid={Boolean(state.fieldErrors?.description)}
+          aria-describedby={
+            state.fieldErrors?.description
+              ? "league-season-description-help league-season-description-error"
+              : "league-season-description-help"
+          }
+          disabled={pending}
+          placeholder="A short plain-text overview of this season."
+          className={`${inputClassName} py-3`}
+        />
+        <p
+          id="league-season-description-help"
+          className="mt-2 text-xs leading-5 text-muted-foreground"
+        >
+          Plain text, up to 2,000 characters.
+        </p>
+        <FieldError
+          id="league-season-description-error"
+          message={state.fieldErrors?.description}
+        />
+      </div>
+
       <fieldset>
         <legend className="text-sm font-semibold text-foreground">
-          Entry window
+          Default entry window
         </legend>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Optional dates for when entry is intended to open and close.
+          Optional default dates for competitions in this season.
         </p>
         <div className="mt-3 grid gap-5 sm:grid-cols-2">
           <div>
@@ -132,7 +167,7 @@ export function LeagueSeasonForm({
               htmlFor="league-entry-opens"
               className="text-sm font-medium text-foreground"
             >
-              Entry opens
+              Entries open
             </label>
             <input
               id="league-entry-opens"
@@ -160,7 +195,7 @@ export function LeagueSeasonForm({
               htmlFor="league-entry-closes"
               className="text-sm font-medium text-foreground"
             >
-              Entry closes
+              Entries close
             </label>
             <input
               id="league-entry-closes"
@@ -191,7 +226,7 @@ export function LeagueSeasonForm({
           Season dates
         </legend>
         <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          Optional dates for the planned start and end of the league.
+          Optional dates for the planned start and end of the season.
         </p>
         <div className="mt-3 grid gap-5 sm:grid-cols-2">
           <div>
@@ -199,7 +234,7 @@ export function LeagueSeasonForm({
               htmlFor="league-starts"
               className="text-sm font-medium text-foreground"
             >
-              Starts
+              Season starts
             </label>
             <input
               id="league-starts"
@@ -225,7 +260,7 @@ export function LeagueSeasonForm({
               htmlFor="league-ends"
               className="text-sm font-medium text-foreground"
             >
-              Ends
+              Season ends
             </label>
             <input
               id="league-ends"
@@ -289,9 +324,9 @@ export function LeagueSeasonForm({
         <p id="league-status-help" className="mt-2 text-xs leading-5 text-muted-foreground">
           {editing
             ? nextStatus
-              ? `You can keep this league ${statusLabels[season!.status].toLowerCase()} or move it forward to ${statusLabels[nextStatus].toLowerCase()}.`
+              ? `You can keep this season ${statusLabels[season!.status].toLowerCase()} or move it forward to ${statusLabels[nextStatus].toLowerCase()}.`
               : "Completed is the final status and cannot be moved backward."
-            : "New leagues are private drafts. Publish the league from its edit page when it is ready."}
+            : "New seasons are private drafts. Publish the season from its edit page when it is ready."}
         </p>
         <FieldError
           id="league-status-error"
@@ -317,7 +352,7 @@ export function LeagueSeasonForm({
               : "Creating…"
             : editing
               ? "Save changes"
-              : "Create league"}
+              : "Create season"}
         </button>
       </div>
     </form>

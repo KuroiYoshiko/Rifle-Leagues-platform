@@ -27,6 +27,7 @@ export type CompetitionDivisionManagement = {
   team_size: number;
   database_today: string;
   entry_closes_at: string | null;
+  effective_entry_closes_at: string | null;
   entry_window_closed: boolean;
   entrant_count: number;
   club_count: number;

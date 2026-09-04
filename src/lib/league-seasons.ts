@@ -19,6 +19,7 @@ export type LeagueSeason = {
   id: number;
   organisation_id: number;
   name: string;
+  description: string | null;
   slug: string;
   status: LeagueSeasonStatus;
   entry_opens_at: string | null;
@@ -30,7 +31,7 @@ export type LeagueSeason = {
 };
 
 const leagueSeasonColumns =
-  "id, organisation_id, name, slug, status, entry_opens_at, entry_closes_at, starts_at, ends_at, created_at, updated_at";
+  "id, organisation_id, name, description, slug, status, entry_opens_at, entry_closes_at, starts_at, ends_at, created_at, updated_at";
 const routeSafeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const statusLabels: Record<LeagueSeasonStatus, string> = {
@@ -70,7 +71,7 @@ export const getLeagueSeasons = cache(async (organisationId: number) => {
     .order("created_at", { ascending: false });
 
   if (error) {
-    throw new Error("League seasons could not be loaded.");
+    throw new Error("Seasons could not be loaded.");
   }
 
   return (data ?? []) as LeagueSeason[];
@@ -94,7 +95,7 @@ export const getLeagueSeasonBySlug = cache(
       .maybeSingle();
 
     if (error) {
-      throw new Error("The league season could not be loaded.");
+      throw new Error("The season could not be loaded.");
     }
 
     return data as LeagueSeason | null;
@@ -221,11 +222,11 @@ export function getLeagueEntryWindowDateDisplay(
   }
 
   if (entryOpensAt) {
-    return `Opens ${formatRequiredLeagueSeasonDate(entryOpensAt)}`;
+    return `Entries open ${formatRequiredLeagueSeasonDate(entryOpensAt)}`;
   }
 
   if (entryClosesAt) {
-    return `Closes ${formatRequiredLeagueSeasonDate(entryClosesAt)}`;
+    return `Entries close ${formatRequiredLeagueSeasonDate(entryClosesAt)}`;
   }
 
   return null;
@@ -239,8 +240,8 @@ export function getLeagueSeasonDateDisplay(
     return formatLeagueSeasonDateRange(startsAt, endsAt);
   }
 
-  if (startsAt) return `Starts ${formatRequiredLeagueSeasonDate(startsAt)}`;
-  if (endsAt) return `Ends ${formatRequiredLeagueSeasonDate(endsAt)}`;
+  if (startsAt) return `Season starts ${formatRequiredLeagueSeasonDate(startsAt)}`;
+  if (endsAt) return `Season ends ${formatRequiredLeagueSeasonDate(endsAt)}`;
   return null;
 }
 

@@ -10,6 +10,7 @@ create table if not exists public.league_seasons (
   organisation_id bigint not null
     references public.organisations (id) on delete cascade,
   name text not null,
+  description text,
   slug text not null,
   status text not null default 'draft',
   entry_opens_at date,
@@ -47,6 +48,35 @@ create table if not exists public.league_seasons (
   )
 );
 
+-- Existing installations gain one nullable column without rewriting or
+-- backfilling any season row. A missing description remains NULL.
+alter table public.league_seasons
+  add column if not exists description text;
+
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_catalog.pg_constraint
+    where conname = 'league_seasons_description_length'
+      and conrelid = 'public.league_seasons'::regclass
+  ) then
+    alter table public.league_seasons
+      add constraint league_seasons_description_length
+      check (
+        description is null
+        or (
+          char_length(description) <= 2000
+          and description = btrim(description)
+        )
+      ) not valid;
+  end if;
+end;
+$$;
+
+alter table public.league_seasons
+  validate constraint league_seasons_description_length;
+
 comment on table public.league_seasons is
   'Organisation-owned league season containers. Competitions, entries, scores, and standings are separate future entities.';
 
@@ -55,6 +85,9 @@ comment on column public.league_seasons.slug is
 
 comment on column public.league_seasons.status is
   'Manual lifecycle: draft, open, active, completed. Only the next forward status is accepted by the update RPC.';
+
+comment on column public.league_seasons.description is
+  'Optional plain-text season description, limited to 2,000 characters.';
 
 -- Supports grouped organisation listings and Overview lookups. PostgreSQL does
 -- not automatically index the nullable profile foreign keys.
@@ -86,6 +119,7 @@ grant select (
   id,
   organisation_id,
   name,
+  description,
   slug,
   status,
   entry_opens_at,
@@ -471,6 +505,161 @@ grant execute on function public.update_league_season(
   date,
   date,
   date,
+  text
+) to authenticated;
+
+-- Backward-compatible overloads add description support while retaining the
+-- original RPC signatures for existing clients. Legacy updates leave any
+-- existing description unchanged.
+create or replace function public.create_league_season(
+  p_organisation_id bigint,
+  p_name text,
+  p_entry_opens_at date,
+  p_entry_closes_at date,
+  p_starts_at date,
+  p_ends_at date,
+  p_description text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_description text := nullif(btrim(coalesce(p_description, '')), '');
+  v_result jsonb;
+begin
+  if char_length(v_description) > 2000 then
+    raise exception 'Season description must contain 2,000 characters or fewer.'
+      using errcode = '22023';
+  end if;
+
+  v_result := public.create_league_season(
+    p_organisation_id,
+    p_name,
+    p_entry_opens_at,
+    p_entry_closes_at,
+    p_starts_at,
+    p_ends_at
+  );
+
+  update public.league_seasons as season
+  set description = v_description
+  where season.id = (v_result ->> 'id')::bigint
+    and season.organisation_id = p_organisation_id;
+
+  return v_result;
+end;
+$$;
+
+comment on function public.create_league_season(
+  bigint,
+  text,
+  date,
+  date,
+  date,
+  date,
+  text
+) is
+  'Creates one draft season with an optional plain-text description; preserves the original RPC signature as a compatibility overload.';
+
+revoke execute on function public.create_league_season(
+  bigint,
+  text,
+  date,
+  date,
+  date,
+  date,
+  text
+) from public, anon, authenticated;
+grant execute on function public.create_league_season(
+  bigint,
+  text,
+  date,
+  date,
+  date,
+  date,
+  text
+) to authenticated;
+
+create or replace function public.update_league_season(
+  p_organisation_id bigint,
+  p_league_season_id bigint,
+  p_name text,
+  p_entry_opens_at date,
+  p_entry_closes_at date,
+  p_starts_at date,
+  p_ends_at date,
+  p_status text,
+  p_description text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_description text := nullif(btrim(coalesce(p_description, '')), '');
+  v_result jsonb;
+begin
+  if char_length(v_description) > 2000 then
+    raise exception 'Season description must contain 2,000 characters or fewer.'
+      using errcode = '22023';
+  end if;
+
+  v_result := public.update_league_season(
+    p_organisation_id,
+    p_league_season_id,
+    p_name,
+    p_entry_opens_at,
+    p_entry_closes_at,
+    p_starts_at,
+    p_ends_at,
+    p_status
+  );
+
+  update public.league_seasons as season
+  set description = v_description
+  where season.id = p_league_season_id
+    and season.organisation_id = p_organisation_id;
+
+  return v_result;
+end;
+$$;
+
+comment on function public.update_league_season(
+  bigint,
+  bigint,
+  text,
+  date,
+  date,
+  date,
+  date,
+  text,
+  text
+) is
+  'Updates mutable season fields including an optional plain-text description; preserves the original RPC signature as a compatibility overload.';
+
+revoke execute on function public.update_league_season(
+  bigint,
+  bigint,
+  text,
+  date,
+  date,
+  date,
+  date,
+  text,
+  text
+) from public, anon, authenticated;
+grant execute on function public.update_league_season(
+  bigint,
+  bigint,
+  text,
+  date,
+  date,
+  date,
+  date,
+  text,
   text
 ) to authenticated;
 

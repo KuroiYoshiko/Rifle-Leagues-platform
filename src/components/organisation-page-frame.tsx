@@ -19,7 +19,7 @@ const sectionItems: Array<{
   suffix: string;
 }> = [
   { id: "overview", label: "Overview", suffix: "" },
-  { id: "leagues", label: "Leagues", suffix: "/leagues" },
+  { id: "leagues", label: "Seasons", suffix: "/leagues" },
   { id: "results", label: "Results", suffix: "/results" },
   { id: "information", label: "Information", suffix: "/information" },
   { id: "contact", label: "Contact", suffix: "/contact" },

@@ -59,8 +59,9 @@ export default async function CompetitionEntryPage({
   const initialMembers = await searchClubCompetitionEntryMembers(entryId);
   const formatLabel = getCompetitionEntryFormatLabel(competition.entry_format);
   const entryWindow =
-    season.entry_opens_at && season.entry_closes_at
-      ? `${formatLeagueSeasonDate(season.entry_opens_at)} – ${formatLeagueSeasonDate(season.entry_closes_at)}`
+    data.competition.effective_entry_opens_at &&
+    data.competition.effective_entry_closes_at
+      ? `${formatLeagueSeasonDate(data.competition.effective_entry_opens_at)} – ${formatLeagueSeasonDate(data.competition.effective_entry_closes_at)}`
       : "Entry dates not configured";
 
   return (
@@ -90,7 +91,7 @@ export default async function CompetitionEntryPage({
 
       <Card className="mt-6 grid gap-4 p-5 sm:grid-cols-2 sm:p-6">
         <div>
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">League season</p>
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Season</p>
           <p className="mt-2 text-sm font-semibold text-foreground">{season.name}</p>
         </div>
         <div>

@@ -119,9 +119,9 @@ export default async function OrganisationOverviewPage({
         isOwner={managementContext?.access.role === "owner"}
       />
 
-      <section className="mt-10" aria-label="Ongoing leagues">
+      <section className="mt-10" aria-label="Ongoing seasons">
         <SectionHeader
-          title="Ongoing leagues"
+          title="Ongoing seasons"
           description="Published seasons currently in progress"
         />
         {ongoingSeasons.length > 0 ? (
@@ -139,7 +139,7 @@ export default async function OrganisationOverviewPage({
         ) : (
           <Card className="p-6 sm:p-8">
             <h2 className="font-semibold text-foreground">
-              No ongoing league seasons
+              No ongoing seasons
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
               Published seasons appear here while today falls within their
@@ -149,9 +149,9 @@ export default async function OrganisationOverviewPage({
         )}
       </section>
 
-      <section className="mt-10" aria-label="Upcoming leagues">
+      <section className="mt-10" aria-label="Upcoming seasons">
         <SectionHeader
-          title="Upcoming leagues"
+          title="Upcoming seasons"
           description="Published seasons scheduled to start in the future"
         />
         {upcomingSeasons.length > 0 ? (
@@ -169,7 +169,7 @@ export default async function OrganisationOverviewPage({
         ) : (
           <Card className="p-6 sm:p-8">
             <h2 className="font-semibold text-foreground">
-              No upcoming league seasons
+              No upcoming seasons
             </h2>
             <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
               Published seasons with a future start date will appear here.

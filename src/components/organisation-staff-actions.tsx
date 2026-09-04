@@ -222,7 +222,7 @@ export function OrganisationManagerActions({
         ref={transferDialogRef}
         aria-labelledby={`transfer-organisation-${staffId}`}
         aria-describedby={`transfer-organisation-description-${staffId}`}
-        className="m-auto w-[min(92vw,32rem)] rounded-2xl border border-border bg-surface p-0 text-foreground shadow-2xl backdrop:bg-hero-background/70 backdrop:backdrop-blur-sm"
+        className="m-auto w-[min(92vw,34rem)] rounded-2xl border border-border bg-surface p-0 text-left text-foreground shadow-2xl backdrop:bg-hero-background/70 backdrop:backdrop-blur-sm"
       >
         <form action={transferAction} className="p-6 sm:p-7">
           <input
@@ -244,20 +244,23 @@ export function OrganisationManagerActions({
           </h2>
           <div
             id={`transfer-organisation-description-${staffId}`}
-            className="mt-3 space-y-2 text-sm leading-6 text-muted-foreground"
+            className="mt-4 space-y-3 text-sm leading-6 text-muted-foreground"
           >
             <p>
-              {staffName} will become the owner of {organisation.name}.
+              <strong className="font-semibold text-foreground">{staffName}</strong>{" "}
+              will become the owner of{" "}
+              <strong className="font-semibold text-foreground">
+                {organisation.name}
+              </strong>
+              {"."} You will remain an organisation manager, but you will lose
+              owner-only controls.
             </p>
             <p>
-              You will remain an organisation manager but will lose owner-only
-              controls.
+              The new owner will be able to manage staff and transfer ownership
+              again.
             </p>
-            <p>
-              {staffName} will be able to manage staff and transfer ownership again.
-            </p>
-            <p className="font-semibold text-danger">
-              This changes who controls the organisation.
+            <p className="rounded-xl border border-danger/20 bg-danger-subtle px-4 py-3 font-semibold text-danger">
+              This immediately changes who controls the organisation.
             </p>
           </div>
           <ActionMessage state={transferState} />

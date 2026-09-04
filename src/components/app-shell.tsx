@@ -69,7 +69,7 @@ const pageDetails: Record<string, { eyebrow: string; title: string }> = {
 };
 
 const organisationPageTitles: Record<string, string> = {
-  leagues: "Leagues",
+  leagues: "Seasons",
   results: "Results",
   information: "Information",
   contact: "Contact",
@@ -380,7 +380,7 @@ function Navigation({
       mark: "O",
       items: [
         { label: "Overview", href: basePath },
-        { label: "Leagues", href: `${basePath}/leagues` },
+        { label: "Seasons", href: `${basePath}/leagues` },
         { label: "Results", href: `${basePath}/results` },
         { label: "Information", href: `${basePath}/information` },
         { label: "Contact", href: `${basePath}/contact` },

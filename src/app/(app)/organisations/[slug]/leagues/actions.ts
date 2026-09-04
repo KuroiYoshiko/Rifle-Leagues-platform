@@ -10,6 +10,7 @@ import { createClient } from "@/lib/supabase/server";
 
 type LeagueSeasonField =
   | "name"
+  | "description"
   | "entryOpensAt"
   | "entryClosesAt"
   | "startsAt"
@@ -49,6 +50,7 @@ function readPositiveInteger(value: FormDataEntryValue | null) {
 function readValues(formData: FormData): LeagueSeasonFormValues {
   return {
     name: String(formData.get("name") ?? "").trim(),
+    description: String(formData.get("description") ?? "").trim(),
     entryOpensAt: String(formData.get("entry_opens_at") ?? "").trim(),
     entryClosesAt: String(formData.get("entry_closes_at") ?? "").trim(),
     startsAt: String(formData.get("starts_at") ?? "").trim(),
@@ -74,13 +76,17 @@ function validateValues(values: LeagueSeasonFormValues, editing: boolean) {
   const fieldErrors: LeagueSeasonFormState["fieldErrors"] = {};
   const nameLength = [...values.name].length;
 
-  if (!values.name) fieldErrors.name = "Enter the league name.";
+  if (!values.name) fieldErrors.name = "Enter the season name.";
   else if (nameLength < 2 || nameLength > 160) {
     fieldErrors.name = "Use between 2 and 160 characters.";
   }
 
+  if ([...values.description].length > 2000) {
+    fieldErrors.description = "Use 2,000 characters or fewer.";
+  }
+
   const dateFields: Array<
-    [Exclude<LeagueSeasonField, "name" | "status">, string]
+    [Exclude<LeagueSeasonField, "name" | "description" | "status">, string]
   > = [
     ["entryOpensAt", "Entry opens"],
     ["entryClosesAt", "Entry closes"],
@@ -119,7 +125,7 @@ function validateValues(values: LeagueSeasonFormValues, editing: boolean) {
     editing &&
     !LEAGUE_SEASON_STATUSES.includes(values.status as LeagueSeasonStatus)
   ) {
-    fieldErrors.status = "Select an available league status.";
+    fieldErrors.status = "Select an available season status.";
   }
 
   return fieldErrors;
@@ -169,19 +175,19 @@ async function createAuthenticatedClient() {
 
 function mutationErrorMessage(code: string | undefined, fallback: string) {
   if (code === "42501") {
-    return "Only this organisation’s active owner can manage league seasons.";
+    return "Only this organisation’s active owner can manage seasons.";
   }
 
   if (code === "P0002") {
-    return "That league or active organisation is no longer available. Refresh and try again.";
+    return "That season or active organisation is no longer available. Refresh and try again.";
   }
 
   if (code === "23505") {
-    return "A league season with this name already exists in this organisation.";
+    return "A season with this name already exists in this organisation.";
   }
 
   if (code === "22023" || code === "23514") {
-    return "Some league details were not accepted. Review the form and status transition.";
+    return "Some season details were not accepted. Review the form and status transition.";
   }
 
   return fallback;
@@ -217,7 +223,7 @@ export async function createLeagueSeason(
   if (Object.keys(fieldErrors).length > 0) {
     return {
       status: "error",
-      message: "Review the highlighted league details and try again.",
+      message: "Review the highlighted season details and try again.",
       fieldErrors,
       values,
     };
@@ -227,7 +233,7 @@ export async function createLeagueSeason(
   if (!authenticated) {
     return {
       status: "error",
-      message: "Sign in again before creating the league.",
+      message: "Sign in again before creating the season.",
       values,
     };
   }
@@ -235,6 +241,7 @@ export async function createLeagueSeason(
   const { data, error } = await supabase.rpc("create_league_season", {
     p_organisation_id: organisationId,
     p_name: values.name,
+    p_description: values.description || null,
     p_entry_opens_at: values.entryOpensAt || null,
     p_entry_closes_at: values.entryClosesAt || null,
     p_starts_at: values.startsAt || null,
@@ -246,7 +253,7 @@ export async function createLeagueSeason(
       status: "error",
       message: mutationErrorMessage(
         error.code,
-        "The league season could not be created. Check that the latest league season SQL has been run, then try again.",
+        "The season could not be created. Check that the latest season SQL has been run, then try again.",
       ),
       values,
     };
@@ -257,7 +264,7 @@ export async function createLeagueSeason(
     return {
       status: "error",
       message:
-        "The league was created, but its page could not be opened automatically. Return to the organisation Leagues page to find it.",
+        "The season was created, but its page could not be opened automatically. Return to the organisation Seasons page to find it.",
       values,
     };
   }
@@ -280,7 +287,7 @@ export async function updateLeagueSeason(
   if (!organisationId || !leagueSeasonId) {
     return {
       status: "error",
-      message: "The league season could not be identified. Refresh and try again.",
+      message: "The season could not be identified. Refresh and try again.",
       values,
     };
   }
@@ -288,7 +295,7 @@ export async function updateLeagueSeason(
   if (Object.keys(fieldErrors).length > 0) {
     return {
       status: "error",
-      message: "Review the highlighted league details and try again.",
+      message: "Review the highlighted season details and try again.",
       fieldErrors,
       values,
     };
@@ -298,7 +305,7 @@ export async function updateLeagueSeason(
   if (!authenticated) {
     return {
       status: "error",
-      message: "Sign in again before saving the league.",
+      message: "Sign in again before saving the season.",
       values,
     };
   }
@@ -307,6 +314,7 @@ export async function updateLeagueSeason(
     p_organisation_id: organisationId,
     p_league_season_id: leagueSeasonId,
     p_name: values.name,
+    p_description: values.description || null,
     p_entry_opens_at: values.entryOpensAt || null,
     p_entry_closes_at: values.entryClosesAt || null,
     p_starts_at: values.startsAt || null,
@@ -319,7 +327,7 @@ export async function updateLeagueSeason(
       status: "error",
       message: mutationErrorMessage(
         error.code,
-        "The league season could not be saved. Please try again.",
+        "The season could not be saved. Please try again.",
       ),
       values,
     };
@@ -330,7 +338,7 @@ export async function updateLeagueSeason(
     return {
       status: "error",
       message:
-        "The league was saved, but the refreshed details could not be verified. Return to the Leagues page and open it again.",
+        "The season was saved, but the refreshed details could not be verified. Return to the Seasons page and open it again.",
       values,
     };
   }
@@ -338,7 +346,7 @@ export async function updateLeagueSeason(
   revalidateLeagueRoutes(result);
   return {
     status: "success",
-    message: "League season saved.",
+    message: "Season saved.",
     values,
   };
 }

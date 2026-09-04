@@ -76,6 +76,10 @@ export type ClubCompetitionEntryManagement = {
     slug: string;
     entry_format: "individual" | "pairs" | "team";
     team_size: number;
+    entry_window_mode: "season_default" | "custom";
+    effective_entry_opens_at: string | null;
+    effective_entry_closes_at: string | null;
+    effective_starts_at: string | null;
   };
   season: {
     id: number;

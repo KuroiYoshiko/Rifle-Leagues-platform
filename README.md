@@ -172,6 +172,12 @@ seasons are always drafts. Status can remain unchanged or move one step forward
 through `draft`, `open`, `active`, and `completed`. Season route slugs are unique
 within an organisation and remain stable after a rename.
 
+For an existing populated installation that already has the season schema, run
+the focused additive [`database/season-description.sql`](database/season-description.sql)
+migration once. It adds the nullable, 2,000-character plain-text description
+column and backward-compatible RPC overloads without resetting or reseeding any
+season data. The migration is safe to rerun.
+
 ## Competition and round configuration
 
 Run the complete
@@ -190,10 +196,28 @@ remain revoked.
 
 The authenticated `create_competition` and `update_competition` RPCs verify the
 active organisation, exact season, exact competition, and active owner before
-atomically saving configuration and explicit round deadlines. New competitions
-are always drafts. Publishing is a deliberate one-way transition and requires
-complete scoring values plus one chronological, in-season deadline for every
-configured round.
+atomically saving configuration and the round schedule. New competitions are
+always drafts, and publishing remains a deliberate validated transition.
+
+For an existing populated installation, then run the complete focused additive
+[`database/competition-configuration-refactor.sql`](database/competition-configuration-refactor.sql)
+file after `database/season-description.sql`, `database/competition-rounds.sql`,
+`database/competition-entries.sql`, and `database/competition-divisions.sql`.
+It adds Competition date inheritance, optional Shoot-by dates, ranking and
+scoring-access configuration, and the relational Course of Fire table. It
+backfills existing one-score Competitions without replacing any Competition,
+Round, Entry, Entrant, Participant, Division, or assignment row. No reset or
+reseed is required. The historical baseline SQL files should be run before this
+focused upgrade; rerun the upgrade last if a baseline file is reapplied.
+
+Then run
+[`database/competition-lifecycle-management.sql`](database/competition-lifecycle-management.sql)
+after the Competition configuration refactor and Division SQL. It adds narrowly
+scoped owner-only publish, return-to-draft, and safe-delete RPCs. Return to draft
+and deletion are blocked atomically when any club entry, entrant, participant,
+division configuration, division, or assignment exists. Safe deletion removes
+only the Competition and its configuration-owned rounds and Course of Fire rows;
+no database reset or reseed is required.
 
 ## Club competition entries
 
