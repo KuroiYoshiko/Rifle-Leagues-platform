@@ -219,6 +219,31 @@ division configuration, division, or assignment exists. Safe deletion removes
 only the Competition and its configuration-owned rounds and Course of Fire rows;
 no database reset or reseed is required.
 
+## Competition source scores and derived Round results
+
+After the Competition configuration and entry foundations above, run these
+focused additive files in this order:
+
+1. [`database/competition-configuration-save-fix.sql`](database/competition-configuration-save-fix.sql)
+2. [`database/competition-configuration-owner-save-fix.sql`](database/competition-configuration-owner-save-fix.sql)
+3. [`database/competition-scores.sql`](database/competition-scores.sql)
+4. [`database/competition-scores-deferred-trigger-security.sql`](database/competition-scores-deferred-trigger-security.sql)
+5. [`database/competition-scores-participant-formats.sql`](database/competition-scores-participant-formats.sql)
+6. [`database/competition-results.sql`](database/competition-results.sql)
+
+The score files create participant-owned physical source scores and link them
+to exact Competition participant/Round slots without copying the canonical
+achieved value. The final results file adds an authenticated live read model for
+Individual, Pair, and Team Round results. It stores no entrant totals. Required
+slots are derived from `sets_per_round × score components`; missing rows remain
+incomplete, X totals are exposed only for X-enabled Competitions, and a single
+legacy display score is withheld for mixed scoring methods.
+
+Organisation owners/managers can inspect all submitted entrant results from the
+Competition page. A participating club owner/official can inspect only that
+club's results through the club-scoped score workflow. No public result or
+ranking visibility is added by this foundation.
+
 ## Club competition entries
 
 Run the complete

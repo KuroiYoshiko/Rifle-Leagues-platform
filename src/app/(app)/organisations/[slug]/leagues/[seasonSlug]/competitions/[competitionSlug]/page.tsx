@@ -387,12 +387,20 @@ export default async function CompetitionDetailPage({
                   after the Competition starts, including after club cutoffs.
                 </p>
               </div>
-              <Link
-                href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/scores`}
-                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep"
-              >
-                Manage scores
-              </Link>
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <Link
+                  href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/results`}
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
+                >
+                  Preview results
+                </Link>
+                <Link
+                  href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/scores`}
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep"
+                >
+                  Manage scores
+                </Link>
+              </div>
             </div>
           </Card>
         </section>
