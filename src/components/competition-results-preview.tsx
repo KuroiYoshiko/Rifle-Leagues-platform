@@ -3,6 +3,7 @@ import type {
   CompetitionEntrantRoundResult,
   CompetitionParticipantRoundResult,
   CompetitionResultDisplayMode,
+  CompetitionResultValue,
   CompetitionRoundResult,
   CompetitionRoundResults,
 } from "@/lib/competition-results";
@@ -45,14 +46,44 @@ function displayModeLabel(mode: CompetitionResultDisplayMode) {
   return "Mixed scoring methods";
 }
 
+function resultPresentation(
+  achievedScore: number | null,
+  displayScore: number | null,
+  displayMode: CompetitionResultDisplayMode,
+) {
+  if (displayMode === "mixed") {
+    return { primaryScore: null, canonicalAchievedScore: achievedScore };
+  }
+
+  if (displayMode === "points_dropped") {
+    return {
+      primaryScore:
+        achievedScore === null ? null : Number(achievedScore),
+      canonicalAchievedScore:
+        displayScore === null ? null : Number(displayScore),
+    };
+  }
+
+  return {
+    primaryScore: achievedScore === null ? null : Number(achievedScore),
+    canonicalAchievedScore:
+      displayScore === null ? achievedScore : Number(displayScore),
+  };
+}
+
 function participantBreakdown(participant: CompetitionParticipantRoundResult) {
   const sets = new Map<number, string[]>();
 
   for (const value of participant.component_values) {
     const setValues = sets.get(value.set_number) ?? [];
+    const presentation = resultPresentation(
+      value.achieved_score,
+      value.display_score,
+      value.score_method,
+    );
     setValues.push(
-      value.is_present && value.display_score !== null
-        ? formatScore(value.display_score)
+      value.is_present && presentation.primaryScore !== null
+        ? formatScore(presentation.primaryScore)
         : "—",
     );
     sets.set(value.set_number, setValues);
@@ -64,6 +95,45 @@ function participantBreakdown(participant: CompetitionParticipantRoundResult) {
       value: values.join(" + "),
     }))
     .sort((left, right) => left.setNumber - right.setNumber);
+}
+
+function MixedComponentResult({
+  value,
+  usesX,
+}: {
+  value: CompetitionResultValue;
+  usesX: boolean;
+}) {
+  const presentation = resultPresentation(
+    value.achieved_score,
+    value.display_score,
+    value.score_method,
+  );
+
+  return (
+    <div className="rounded-lg bg-surface-muted px-3 py-2 text-left">
+      <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+        Set {value.set_number} ·{" "}
+        {value.short_label || `Score ${value.component_position}`}
+      </p>
+      <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">
+        {!value.is_present || presentation.primaryScore === null
+          ? "Missing"
+          : value.score_method === "points_dropped"
+            ? `${formatScore(presentation.primaryScore)} dropped`
+            : formatScore(presentation.primaryScore)}
+      </p>
+      {value.is_present && presentation.canonicalAchievedScore !== null ? (
+        <p className="mt-0.5 text-[11px] text-muted-foreground">
+          {formatScore(presentation.canonicalAchievedScore)} /{" "}
+          {formatScore(value.maximum_possible_score)} achieved
+          {usesX && value.x_count !== null && value.x_count !== undefined
+            ? ` · X ${formatScore(value.x_count)}`
+            : ""}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 function ResultTotal({
@@ -92,19 +162,28 @@ function ResultTotal({
     );
   }
 
+  const presentation = resultPresentation(
+    result.achieved_score,
+    result.display_score,
+    result.display_scoring_mode,
+  );
+
   return (
     <div className="text-left sm:text-right">
-      {result.display_score !== null ? (
+      {presentation.primaryScore !== null ? (
         <p className="text-2xl font-semibold tabular-nums tracking-[-0.03em] text-foreground">
-          {formatScore(result.display_score)}
+          {formatScore(presentation.primaryScore)}
+          {result.display_scoring_mode === "points_dropped" ? (
+            <span className="ml-1 text-base tracking-normal">dropped</span>
+          ) : null}
         </p>
       ) : (
         <Badge tone="neutral">Mixed Course of Fire</Badge>
       )}
       <p className="mt-1 text-xs text-muted-foreground">
-        {result.achieved_score === null
+        {presentation.canonicalAchievedScore === null
           ? "Canonical total unavailable"
-          : `${formatScore(result.achieved_score)} / ${formatScore(result.maximum_possible_score)} achieved`}
+          : `${formatScore(presentation.canonicalAchievedScore)} / ${formatScore(result.maximum_possible_score)} achieved`}
       </p>
       <div className="mt-1 flex flex-wrap gap-x-3 gap-y-1 text-xs font-medium text-brand-deep sm:justify-end">
         <span>{displayModeLabel(result.display_scoring_mode)}</span>
@@ -128,6 +207,11 @@ function ParticipantResult({
   usesX: boolean;
 }) {
   const breakdown = participantBreakdown(participant);
+  const presentation = resultPresentation(
+    participant.achieved_score,
+    participant.display_score,
+    participant.display_scoring_mode,
+  );
 
   return (
     <div className="grid gap-3 px-4 py-4 sm:grid-cols-[minmax(10rem,14rem)_minmax(0,1fr)] sm:px-5">
@@ -145,52 +229,68 @@ function ParticipantResult({
         {participant.display_scoring_mode === "mixed" ? (
           <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
             {participant.component_values.map((value) => (
-              <div
+              <MixedComponentResult
                 key={`${value.set_number}-${value.component_position}`}
-                className="rounded-lg bg-surface-muted px-3 py-2 text-left"
-              >
-                <p className="text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-                  Set {value.set_number} · {value.short_label || `Score ${value.component_position}`}
-                </p>
-                <p className="mt-1 text-sm font-semibold tabular-nums text-foreground">
-                  {value.is_present && value.achieved_score !== null
-                    ? `${formatScore(value.achieved_score)} / ${formatScore(value.maximum_possible_score)} achieved`
-                    : "Missing"}
-                </p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  {displayModeLabel(value.score_method)}
-                  {usesX && value.x_count !== null && value.x_count !== undefined
-                    ? ` · X ${formatScore(value.x_count)}`
-                    : ""}
-                </p>
-              </div>
+                value={value}
+                usesX={usesX}
+              />
             ))}
           </div>
         ) : (
           <div>
-            <div className="flex flex-wrap gap-x-4 gap-y-1 sm:justify-end">
-              {breakdown.map((set) => (
-                <span
-                  key={set.setNumber}
-                  className="text-sm font-semibold tabular-nums text-foreground"
-                >
-                  {breakdown.length > 1 ? `Set ${set.setNumber}: ` : ""}
-                  {set.value}
-                </span>
-              ))}
-            </div>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {participant.completeness === "incomplete"
-                ? "Incomplete"
-                : participant.display_score === null
-                  ? "Display total unavailable"
-                  : `${formatScore(participant.display_score)} ${participant.display_scoring_mode === "points_dropped" ? "dropped" : "scored"}`}
-              {usesX && participant.completeness === "complete"
-                ? participant.x_total === null || participant.x_total === undefined
-                  ? " · X not recorded"
-                  : ` · X ${formatScore(participant.x_total)}`
-                : ""}
-            </p>
+            {participant.completeness === "incomplete" ? (
+              <>
+                <div className="flex flex-wrap gap-x-4 gap-y-1 sm:justify-end">
+                  {breakdown.map((set) => (
+                    <span
+                      key={set.setNumber}
+                      className="text-sm font-semibold tabular-nums text-foreground"
+                    >
+                      {breakdown.length > 1 ? `Set ${set.setNumber}: ` : ""}
+                      {set.value}
+                    </span>
+                  ))}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  Incomplete
+                </p>
+              </>
+            ) : (
+              <>
+                <p className="text-lg font-semibold tabular-nums text-foreground">
+                  {presentation.primaryScore === null
+                    ? "Display total unavailable"
+                    : formatScore(presentation.primaryScore)}
+                  {presentation.primaryScore !== null &&
+                  participant.display_scoring_mode === "points_dropped" ? (
+                    <span className="ml-1 text-sm">dropped</span>
+                  ) : null}
+                </p>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {presentation.canonicalAchievedScore === null
+                    ? "Canonical total unavailable"
+                    : `${formatScore(presentation.canonicalAchievedScore)} / ${formatScore(participant.maximum_possible_score)} achieved`}
+                  {usesX
+                    ? participant.x_total === null ||
+                      participant.x_total === undefined
+                      ? " · X not recorded"
+                      : ` · X ${formatScore(participant.x_total)}`
+                    : ""}
+                </p>
+                {participant.component_values.length > 1 ? (
+                  <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-xs text-brand-deep sm:justify-end">
+                    {breakdown.map((set) => (
+                      <span key={set.setNumber}>
+                        {breakdown.length > 1
+                          ? `Set ${set.setNumber}: `
+                          : "Components: "}
+                        {set.value}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </>
+            )}
           </div>
         )}
       </div>
