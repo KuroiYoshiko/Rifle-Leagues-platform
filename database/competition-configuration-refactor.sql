@@ -21,6 +21,30 @@ alter table public.competitions
 alter table public.competition_rounds
   add column if not exists shoot_by_date date;
 
+-- A previous run may already have the deferred configuration trigger. It is
+-- recreated later in this same transaction; dropping it here prevents the two
+-- narrow ranking backfills from unnecessarily revalidating legacy schedules.
+drop trigger if exists validate_final_competition_configuration_schedule
+  on public.competitions;
+
+-- X ranking semantics are intentionally undefined for Best N Average. Existing
+-- configuration rows are normalised without changing Competition identity or
+-- any entry, entrant, round, or division relationship.
+update public.competitions
+set uses_x_score = false
+where ranking_method = 'best_n_average'
+  and uses_x_score = true;
+
+-- Older drafts could select Best N before supplying the count. Preserve those
+-- drafts with the least surprising valid meaning: all configured rounds count.
+update public.competitions
+set best_rounds_count = number_of_rounds
+where ranking_method = 'best_n_average'
+  and best_rounds_count is null;
+
+alter table public.competitions
+  drop constraint if exists competitions_best_rounds_count_value;
+
 -- Existing databases used a 52-round bound. The new bound is deliberately
 -- still defensive while allowing longer postal programmes.
 alter table public.competitions
@@ -49,6 +73,17 @@ begin
     alter table public.competitions
       add constraint competitions_entry_window_mode_value check (
         entry_window_mode in ('season_default', 'custom')
+      ) not valid;
+  end if;
+
+  if not exists (
+    select 1 from pg_catalog.pg_constraint
+    where conrelid = 'public.competitions'::regclass
+      and conname = 'competitions_best_n_x_value'
+  ) then
+    alter table public.competitions
+      add constraint competitions_best_n_x_value check (
+        ranking_method <> 'best_n_average' or uses_x_score = false
       ) not valid;
   end if;
 
@@ -141,10 +176,7 @@ begin
       add constraint competitions_best_rounds_count_value check (
         (
           ranking_method = 'best_n_average'
-          and (
-            best_rounds_count is null
-            or best_rounds_count between 1 and number_of_rounds
-          )
+          and best_rounds_count between 1 and number_of_rounds
         )
         or (
           ranking_method <> 'best_n_average'
@@ -666,6 +698,8 @@ alter table public.competitions
   validate constraint competitions_ranking_method_value;
 alter table public.competitions
   validate constraint competitions_best_rounds_count_value;
+alter table public.competitions
+  validate constraint competitions_best_n_x_value;
 alter table public.competition_rounds
   validate constraint competition_rounds_shoot_by_value;
 
@@ -820,7 +854,15 @@ begin
       using errcode = '22023';
   end if;
 
-  if v_effective_starts_at is not null and new.deadline < v_effective_starts_at then
+  if v_effective_starts_at is not null
+    and (
+      (new.round_number = 1 and new.deadline <= v_effective_starts_at)
+      or (new.round_number > 1 and new.deadline < v_effective_starts_at)
+    ) then
+    if new.round_number = 1 then
+      raise exception 'Round 1 End must be after the effective Competition Start.'
+        using errcode = '22023';
+    end if;
     raise exception 'Round End cannot fall before the effective Competition Start.'
       using errcode = '22023';
   end if;
@@ -885,7 +927,13 @@ begin
     ) as schedule
     where schedule.round_number > v_number_of_rounds
       or (schedule.previous_deadline is not null and schedule.deadline < schedule.previous_deadline)
-      or (v_effective_starts_at is not null and schedule.deadline < v_effective_starts_at)
+      or (
+        v_effective_starts_at is not null
+        and (
+          (schedule.round_number = 1 and schedule.deadline <= v_effective_starts_at)
+          or (schedule.round_number > 1 and schedule.deadline < v_effective_starts_at)
+        )
+      )
   ) then
     raise exception 'The final round schedule is outside the Competition bounds or moves backwards.'
       using errcode = '22023';
@@ -1162,9 +1210,13 @@ begin
   end if;
 
   if p_ranking_method = 'best_n_average' then
-    if p_best_rounds_count is not null
-      and p_best_rounds_count not between 1 and p_number_of_rounds then
+    if p_best_rounds_count is null
+      or p_best_rounds_count not between 1 and p_number_of_rounds then
       raise exception 'Best rounds count must be between 1 and the number of rounds.'
+        using errcode = '22023';
+    end if;
+    if p_uses_x_score then
+      raise exception 'X-based ranking is not currently defined for Best N Average competitions.'
         using errcode = '22023';
     end if;
   elsif p_best_rounds_count is not null then
@@ -1211,7 +1263,14 @@ begin
       end if;
 
       if p_effective_starts_at is not null
-        and v_round_deadlines[v_round_number] < p_effective_starts_at then
+        and (
+          (v_round_number = 1 and v_round_deadlines[v_round_number] <= p_effective_starts_at)
+          or (v_round_number > 1 and v_round_deadlines[v_round_number] < p_effective_starts_at)
+        ) then
+        if v_round_number = 1 then
+          raise exception 'Round 1 End must be after the effective Competition Start.'
+            using errcode = '22023';
+        end if;
         raise exception 'Round % must end on or after the effective Competition Start.', v_round_number
           using errcode = '22023';
       end if;
@@ -1250,6 +1309,11 @@ begin
     end if;
     if p_effective_starts_at is null then
       raise exception 'Set an effective Competition Start before publishing.'
+        using errcode = '22023';
+    end if;
+    if p_ranking_method = 'round_robin'
+      and p_effective_entry_closes_at >= p_effective_starts_at then
+      raise exception 'Round Robin requires time to finalise divisions after entries close. Competition Start must be after the Entry Close date.'
         using errcode = '22023';
     end if;
     if jsonb_array_length(p_score_components) = 0 then
@@ -2054,6 +2118,27 @@ begin
     end if;
   end if;
 
+  v_invalid_competition_name := null;
+  select competition.name into v_invalid_competition_name
+  from public.competitions as competition
+  where competition.league_season_id = new.id
+    and competition.status = 'published'
+    and competition.ranking_method = 'round_robin'
+    and (
+      case when competition.entry_window_mode = 'custom'
+        then competition.custom_entry_closes_at else new.entry_closes_at end
+    ) >= (
+      case when competition.start_date_mode = 'custom'
+        then competition.custom_starts_at else new.starts_at end
+    )
+  order by competition.id
+  limit 1;
+
+  if v_invalid_competition_name is not null then
+    raise exception 'Round Robin Competition "%" requires Competition Start to remain after Entry Close.',
+      v_invalid_competition_name using errcode = '22023';
+  end if;
+
   select competition_round.round_number into v_invalid_round_number
   from public.competitions as competition
   join public.competition_rounds as competition_round
@@ -2063,7 +2148,10 @@ begin
       (
         competition.start_date_mode = 'season_default'
         and new.starts_at is not null
-        and competition_round.deadline < new.starts_at
+        and (
+          (competition_round.round_number = 1 and competition_round.deadline <= new.starts_at)
+          or (competition_round.round_number > 1 and competition_round.deadline < new.starts_at)
+        )
       )
       or (new.ends_at is not null and competition_round.deadline > new.ends_at)
     )

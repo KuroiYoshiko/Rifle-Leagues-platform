@@ -220,8 +220,11 @@ function validateStructuralValues(values: CompetitionFormValues, season: SeasonB
     errors.rankingMethod = "Select a ranking method.";
   }
   const best = values.bestRoundsCount ? readPositiveInteger(values.bestRoundsCount) : null;
-  if (values.rankingMethod === "best_n_average" && values.bestRoundsCount && (!best || (rounds !== null && best > rounds))) {
-    errors.bestRoundsCount = "Best rounds must be between 1 and the number of rounds.";
+  if (values.rankingMethod === "best_n_average" && (!best || rounds === null || best > rounds)) {
+    errors.bestRoundsCount = `Must be between 1 and ${rounds ?? 100}.`;
+  }
+  if (values.rankingMethod === "best_n_average" && values.usesXScore) {
+    errors.xScoring = "X-based ranking is not currently defined for Best N Average competitions.";
   }
 
   if ((values.roundDeadlines.length > 0 && values.roundDeadlines.length !== rounds) ||
@@ -241,8 +244,10 @@ function validateStructuralValues(values: CompetitionFormValues, season: SeasonB
       errors.roundSchedule = `Round ${index + 1} cannot end before an earlier round.`;
       break;
     }
-    if (end && resolved.starts && end < resolved.starts) {
-      errors.roundSchedule = `Round ${index + 1} cannot end before the effective Competition Start (${formatLeagueSeasonDate(resolved.starts)}).`;
+    if (end && resolved.starts && ((index === 0 && end <= resolved.starts) || (index > 0 && end < resolved.starts))) {
+      errors.roundSchedule = index === 0
+        ? `Round 1 End must be after the effective Competition Start (${formatLeagueSeasonDate(resolved.starts)}).`
+        : `Round ${index + 1} cannot end before the effective Competition Start (${formatLeagueSeasonDate(resolved.starts)}).`;
       break;
     }
     if (end && season.ends_at && end > season.ends_at) {
@@ -265,8 +270,11 @@ function getPublishErrors(values: CompetitionFormValues, season: SeasonBoundaryC
   if (!resolved.entryOpens || !resolved.entryCloses) errors.push("Set a complete effective Competition entry window.");
   if (resolved.entryOpens && resolved.entryCloses && resolved.entryCloses < resolved.entryOpens) errors.push("Entries close must be on or after Entries open.");
   if (!resolved.starts) errors.push("Set an effective Competition Start date.");
+  if (values.rankingMethod === "round_robin" && resolved.entryCloses && resolved.starts && resolved.entryCloses >= resolved.starts) {
+    errors.push("Round Robin requires time to finalise divisions after entries close. Competition Start must be after the Entry Close date.");
+  }
   if (values.scoreComponents.length === 0) errors.push("Add at least one Course of Fire score component.");
-  if (values.rankingMethod === "best_n_average" && !values.bestRoundsCount) errors.push("Set how many rounds count for Best N rounds average.");
+  if (values.rankingMethod === "best_n_average" && values.usesXScore) errors.push("Turn off X scoring for Best N rounds average.");
   if (rounds && (values.roundDeadlines.length !== rounds || values.roundDeadlines.some((date) => !date))) {
     errors.push(`Set a Round End for all ${rounds} rounds.`);
   }
