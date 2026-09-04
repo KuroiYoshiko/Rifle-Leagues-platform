@@ -366,6 +366,39 @@ export default async function CompetitionDetailPage({
         basePath={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}`}
       />
 
+      {managementContext &&
+      competition.status === "published" &&
+      competition.entry_format === "individual" ? (
+        <section className="mt-10" aria-labelledby="score-management-heading">
+          <SectionHeader
+            title="Score management"
+            description="Enter source scores for submitted Individual entrants"
+          />
+          <Card className="p-5 sm:p-6">
+            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <h3
+                  id="score-management-heading"
+                  className="font-semibold text-foreground"
+                >
+                  Round score entry
+                </h3>
+                <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                  Organisation owners and managers can score submitted shooters
+                  after the Competition starts, including after club cutoffs.
+                </p>
+              </div>
+              <Link
+                href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/scores`}
+                className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep"
+              >
+                Manage scores
+              </Link>
+            </div>
+          </Card>
+        </section>
+      ) : null}
+
       <section className="mt-10" aria-labelledby="round-schedule-heading">
         <SectionHeader
           title="Round schedule"
