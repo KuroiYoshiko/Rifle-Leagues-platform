@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test, before, after, beforeEach, afterEach } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
+import { renderAggregateResultsRoute } from "./helpers/aggregate-ui-path.mjs";
 
 // Disposable PostgreSQL only: no credentials, network, or application data.
 // Minimal source-schema fixture; the production derivation and standings SQL
@@ -102,6 +103,216 @@ async function read(organisation = 1, season = 1, competition = 1) {
 }
 const entrants = (data) => data.groups.flatMap((group) => group.entrants);
 const firstPoints = (data) => entrants(data).map((entrant) => entrant.rounds[0].ranking_points);
+const renderedEntrantRows = (html) => [...html.matchAll(/<tr data-entrant-row="(\d+)">([\s\S]*?)<\/tr>/g)]
+  .map((match) => ({ entrantId: Number(match[1]), html: match[0] }));
+
+// Exact Summer Pairs topology: two entrant rows, one Ex 200 component per
+// participant. Contrast with the multi-component calculation fixtures below.
+async function summerPairsRuntimeFixture() {
+  await fixture({ format: "pairs", size: 2, mode: "points_dropped" });
+  await db.exec(`
+    update competitions set name='Summer Pairs 200', slug='summer-pairs-200';
+    delete from competition_division_assignments where competition_entrant_id > 2;
+    delete from competition_entrant_participants where competition_entrant_id > 2;
+    delete from competition_entrants where id > 2;
+    update competition_score_components set maximum_score=200;
+    update shooting_score_values set achieved_score=case shooting_score_source_id
+      when 111 then 199 when 121 then 198 when 211 then 198 when 221 then 198
+      else 200 end;
+  `);
+}
+
+test("actual Results route -> Supabase SSR RPC -> SQL -> rendered cells: Summer Pairs 200", async () => {
+  await summerPairsRuntimeFixture();
+  const competition = (await db.query("select * from competitions where id=1")).rows[0];
+  const { html, call } = await renderAggregateResultsRoute({ competition, readRpc: async parameters =>
+    read(parameters.p_organisation_id, parameters.p_league_season_id, parameters.p_competition_id) });
+  assert.deepEqual(entrants(call.payload).map(e => ({
+    label: e.entrant_label, achieved: e.achieved_total, maximum: e.maximum_total,
+    gun: e.rounds[0].gun_score, points: e.rounds[0].ranking_points, position: e.position,
+  })), [
+    { label: "Pair 1", achieved: 397, maximum: 400, gun: 3, points: 2, position: 1 },
+    { label: "Pair 2", achieved: 396, maximum: 400, gun: 4, points: 1, position: 2 },
+  ]);
+  const renderedRows = renderedEntrantRows(html).map((row) => row.html);
+  assert.equal(renderedRows.length, 2);
+  for (const [index, row] of renderedRows.entries()) {
+    assert.ok(row.includes(`Pair ${index + 1}`));
+    assert.match(row, new RegExp(`>${index + 3}<span class="sr-only"> gun result`));
+    assert.match(row, new RegExp(`data-total-cell="true"[\\s\\S]*?>${index + 3}<span class="sr-only"> total gun result`));
+    assert.match(row, new RegExp(`>${2 - index} <span aria-hidden="true">pts</span><span class="sr-only">total aggregate ranking points`));
+    assert.ok(!row.includes("397") && !row.includes("396"), "Must not render achieved totals");
+    assert.match(row, />Pending</);
+  }
+});
+
+test("points-scored Total renders gun_total first and total_points in the Round-style badge", async () => {
+  await maximum400Fixture("team", 4, "points_scored");
+  const competition = (await db.query("select * from competitions where id=1")).rows[0];
+  const { html, call } = await renderAggregateResultsRoute({ competition, readRpc: parameters =>
+    read(parameters.p_organisation_id, parameters.p_league_season_id, parameters.p_competition_id) });
+  const first = renderedEntrantRows(html)[0].html;
+  const gunTotal = first.indexOf('>397<span class="sr-only"> total gun result');
+  const rankingTotal = first.indexOf('>5 <span aria-hidden="true">pts</span><span class="sr-only">total aggregate ranking points');
+  assert.ok(gunTotal >= 0 && rankingTotal > gunTotal, "Total must render achieved gun_total above total_points");
+  assert.ok(!first.includes("Gun 397"));
+  const winningTeam = entrants(call.payload)[0];
+  assert.deepEqual(winningTeam.participants.map(participant => participant.gun_total), [97, 100, 100, 100]);
+  const firstParticipant = html.match(/<tr data-participant-row="1">([\s\S]*?)<\/tr>/)[0];
+  assert.match(firstParticipant, /data-participant-round="1"[\s\S]*?>97</);
+  assert.match(firstParticipant, /data-participant-total="true"[\s\S]*?>97</);
+});
+
+test("live source totals reproduce 397/396 through the UI; corrected achieved totals yield 3/4", async () => {
+  await summerPairsRuntimeFixture();
+  const competition = (await db.query("select * from competitions where id=1")).rows[0];
+  // The live diagnostic confirms stored achieved SUMS of 3 and 4. Use a
+  // synthetic participant split (1+2 and 2+2), not copied personal data or a
+  // fabricated RPC response. Every layer below consumes real canonical rows.
+  await db.exec(`update shooting_score_values set achieved_score=case shooting_score_source_id
+    when 111 then 1 when 121 then 2 when 211 then 2 when 221 then 2 end
+    where shooting_score_source_id in (111,121,211,221)`);
+  const readRpc = parameters => read(parameters.p_organisation_id, parameters.p_league_season_id, parameters.p_competition_id);
+  const before = await renderAggregateResultsRoute({ competition, readRpc });
+  assert.deepEqual(entrants(before.call.payload).map(e => [e.entrant_label, e.achieved_total, e.rounds[0].gun_score, e.total_points]), [
+    ["Pair 2", 4, 396, 2], ["Pair 1", 3, 397, 1],
+  ]);
+  const rows = renderedEntrantRows(before.html).map((row) => row.html);
+  assert.ok(rows[0].includes("Pair 2") && rows[0].includes('>396<span class="sr-only"> total gun result'));
+  assert.ok(rows[1].includes("Pair 1") && rows[1].includes('>397<span class="sr-only"> total gun result'));
+
+  // Model the canonical outcome of verified dropped-point entry: 1+2 dropped
+  // becomes 199+198 achieved; 2+2 dropped becomes 198+198 achieved. This only
+  // corrects fixture source data; no ranking implementation changes or caches.
+  await db.exec(`update shooting_score_values set achieved_score=case shooting_score_source_id
+    when 111 then 199 when 121 then 198 when 211 then 198 when 221 then 198 end
+    where shooting_score_source_id in (111,121,211,221)`);
+  const after = await renderAggregateResultsRoute({ competition, readRpc });
+  assert.deepEqual(entrants(after.call.payload).map(e => [e.entrant_label, e.achieved_total, e.rounds[0].gun_score, e.total_points]), [
+    ["Pair 1", 397, 3, 2], ["Pair 2", 396, 4, 1],
+  ]);
+  const correctedRows = renderedEntrantRows(after.html).map((row) => row.html);
+  assert.ok(correctedRows[0].includes("Pair 1") && correctedRows[0].includes('>3<span class="sr-only"> total gun result'));
+  assert.ok(correctedRows[1].includes("Pair 2") && correctedRows[1].includes('>4<span class="sr-only"> total gun result'));
+  assert.ok(entrants(after.call.payload).every(e => e.rounds.slice(1).every(r => r.state === "pending" && r.gun_score === null)));
+});
+
+test("runtime diagnostic reports installed signatures, RPC payload and canonical source totals", async () => {
+  await summerPairsRuntimeFixture();
+  const diagnostic = (await readFile(new URL("../database/diagnostics/aggregate-runtime.sql", import.meta.url), "utf8"))
+    .replace("'YOUR_SIGNED_IN_USER_UUID'", `'${viewer}'`)
+    // The test already owns a rollback-only fixture transaction. Production
+    // diagnostics keep their read-only transaction and temporary claim intact.
+    .replace(/^begin;\r?\nset transaction read only;$/m, "")
+    .replace(/^rollback;$/m, "");
+  const resultSets = await db.exec(diagnostic);
+  const inventory = resultSets.find(result => result.rows[0]?.installed_definition)?.rows;
+  assert.ok(inventory.some(row => row.signature === "get_competition_aggregate_results(bigint,bigint,bigint)"));
+  const result = resultSets.find(result => result.rows[0]?.rpc_payload)?.rows[0];
+  assert.deepEqual(result.canonical_released_totals.map(e => [e.entrant_id, e.stored_achieved_sum, e.recorded_dropped_sum]), [[1, 397, 3], [2, 396, 4]]);
+  assert.deepEqual(entrants(result.rpc_payload).map(e => [e.entrant_id, e.rounds[0].gun_score]), [[1, 3], [2, 4]]);
+});
+
+// A 400-point entrant Course of Fire with two components per participant.
+// Keep the actual participant engine in the path for all three entry formats.
+async function maximum400Fixture(format, size, mode = "points_dropped", x = false) {
+  await fixture({ format, size, mode, x });
+  const componentMaximum = 400 / (size * 2);
+  await db.query("update competition_score_components set maximum_score=$1", [componentMaximum]);
+  await db.query("insert into competition_score_components values (2,1,2,'B',$1,$2)", [componentMaximum, mode]);
+  await db.query("update shooting_score_values set achieved_score=$1", [componentMaximum]);
+  await db.query(`insert into shooting_score_values
+    (shooting_score_source_id, set_number, component_position, achieved_score, x_count)
+    select shooting_score_source_id, 1, 2, $1, x_count from shooting_score_values`, [componentMaximum]);
+  // First released Round: entrants A/B achieve 397/396; C/D/E 395/394/393.
+  await db.query(`update shooting_score_values as value
+    set achieved_score = $1 - participant.competition_entrant_id - 2
+    from competition_score_usages as usage
+    join competition_entrant_participants as participant
+      on participant.id = usage.competition_entrant_participant_id
+    where usage.shooting_score_source_id = value.shooting_score_source_id
+      and usage.competition_round_id = 1 and participant.slot_number = 1
+      and value.component_position = 1`, [componentMaximum]);
+}
+
+for (const [format, size] of [["individual", 1], ["pairs", 2], ["team", 4]]) {
+  for (const mode of ["points_dropped", "points_scored"]) {
+    test(`${format} ${mode}: 397/400 beats 396/400 with component-derived gun results`, async () => {
+      await maximum400Fixture(format, size, mode);
+      const before = (await db.query("select * from shooting_score_values order by id")).rows;
+      const data = await read();
+      const [a, b] = entrants(data);
+      assert.equal(data.display_scoring_mode, mode);
+      assert.deepEqual([a.entrant_id, b.entrant_id], [1, 2]);
+      assert.deepEqual([a.position, b.position], [1, 2]);
+      assert.deepEqual([a.achieved_total, b.achieved_total], [397, 396]);
+      assert.deepEqual([a.maximum_total, b.maximum_total], [400, 400]);
+      const expectedGun = mode === "points_dropped" ? [3, 4] : [397, 396];
+      assert.deepEqual([a.rounds[0].gun_score, b.rounds[0].gun_score], expectedGun);
+      assert.deepEqual([a.gun_total, b.gun_total], expectedGun);
+      assert.deepEqual(firstPoints(data), [5, 4, 3, 2, 1]);
+      assert.ok(entrants(data).every(e => e.participants.length === size));
+      assert.deepEqual((await db.query("select * from shooting_score_values order by id")).rows, before);
+    });
+  }
+}
+
+test("Pairs dropped: primary 3 beats 4 regardless of X; equal 3 uses higher X, then shares rank", async () => {
+  await maximum400Fixture("pairs", 2, "points_dropped", true);
+  let rows = entrants(await read());
+  assert.deepEqual(rows.slice(0, 2).map(e => [e.entrant_id, e.gun_total, e.x_total]), [[1, 3, 4], [2, 4, 8]]);
+  // B now also drops 3; its higher X resolves the primary gun tie.
+  await db.exec("update shooting_score_values set achieved_score=97 where shooting_score_source_id=211 and component_position=1");
+  rows = entrants(await read());
+  assert.deepEqual(rows.slice(0, 2).map(e => [e.entrant_id, e.gun_total, e.total_points]), [[2, 3, 5], [1, 3, 4]]);
+  await db.exec("update shooting_score_values set x_count=1 where shooting_score_source_id in (211,221)");
+  rows = entrants(await read());
+  assert.deepEqual(rows.slice(0, 3).map(e => [e.position, e.total_points, e.tied]), [[1, 5, true], [1, 5, true], [3, 3, false]]);
+});
+
+test("Pairs dropped: incomplete NSR and saved unreleased 400s never contribute", async () => {
+  await maximum400Fixture("pairs", 2);
+  await db.exec("delete from shooting_score_values where shooting_score_source_id=511 and component_position=2");
+  const data = await read();
+  assert.equal(data.released_round_count, 1);
+  assert.deepEqual(firstPoints(data), [5, 4, 3, 2, 0]);
+  const missing = entrants(data)[4];
+  assert.deepEqual(missing.rounds[0], { round_id: 1, state: "nsr", gun_score: null, ranking_points: 0 });
+  assert.equal(missing.gun_total, null);
+  for (const entrant of entrants(data)) {
+    assert.equal(entrant.scored_rounds, entrant.entrant_id === 5 ? 0 : 1);
+    assert.deepEqual(entrant.rounds.slice(1), [2, 3].map(round_id => ({ round_id, state: "pending", gun_score: null, ranking_points: null })));
+  }
+  assert.deepEqual(entrants(data).slice(0, 2).map(e => [e.gun_total, e.total_points]), [[3, 5], [4, 4]]);
+});
+
+test("Pairs dropped: two released Rounds sum dropped gun totals, not achieved totals", async () => {
+  await maximum400Fixture("pairs", 2);
+  await db.exec(`
+    update competition_rounds set deadline=deadline-1 where id=2;
+    update shooting_score_values as value set achieved_score=100-participant.competition_entrant_id-4
+    from competition_score_usages as usage
+    join competition_entrant_participants as participant on participant.id=usage.competition_entrant_participant_id
+    where usage.shooting_score_source_id=value.shooting_score_source_id
+      and usage.competition_round_id=2 and participant.slot_number=1 and value.component_position=1;
+  `);
+  const data = await read();
+  const [a, b] = entrants(data);
+  assert.equal(data.released_round_count, 2);
+  assert.deepEqual([a.rounds.slice(0, 2).map(r => r.gun_score), b.rounds.slice(0, 2).map(r => r.gun_score)], [[3, 5], [4, 6]]);
+  assert.deepEqual([a.gun_total, b.gun_total], [8, 10]);
+  assert.deepEqual([a.achieved_total, b.achieved_total], [792, 790]);
+  assert.deepEqual([a.maximum_total, b.maximum_total], [800, 800]);
+  assert.deepEqual([a.total_points, b.total_points], [10, 8]);
+  assert.deepEqual([a.position, b.position], [1, 2]);
+  assert.deepEqual(a.participants.map(participant => ({
+    rounds: participant.rounds.slice(0, 2).map(round => round.gun_score),
+    total: participant.gun_total,
+  })), [
+    { rounds: [3, 5], total: 8 },
+    { rounds: [0, 0], total: 0 },
+  ]);
+});
 
 test("five entrants: 5..1 points; Individual rows and scored gun totals", async () => {
   await fixture();
@@ -113,6 +324,13 @@ test("five entrants: 5..1 points; Individual rows and scored gun totals", async 
   assert.equal(entrants(data)[0].entrant_format, "individual");
   assert.equal(entrants(data)[0].maximum_total, 100);
   assert.equal(entrants(data)[0].scored_rounds, 1);
+  assert.deepEqual(Object.keys(entrants(data)[0].participants[0]).sort(), ["first_name", "last_name", "slot_number"]);
+  const competition = (await db.query("select * from competitions where id=1")).rows[0];
+  const { html } = await renderAggregateResultsRoute({ competition, readRpc: parameters =>
+    read(parameters.p_organisation_id, parameters.p_league_season_id, parameters.p_competition_id) });
+  assert.ok(html.includes("Shooter 1 Slot 1"));
+  assert.ok(!html.includes("Released shooting results by participant"));
+  assert.ok(!html.includes("data-participant-row"));
 });
 
 test("NSR is derived after release; N includes missing entrants; no source writes", async () => {
@@ -165,29 +383,58 @@ for (const [format, size] of [["pairs", 2], ["team", 4]]) {
     assert.equal(entrants(data)[0].gun_total, size);
     assert.equal(entrants(data)[0].x_total, size);
     assert.equal(entrants(data)[0].entrant_label, format === "pairs" ? "Pair 1" : "Team 1");
+    assert.deepEqual(entrants(data)[0].participants[0], {
+      first_name: "Shooter 1",
+      last_name: "Slot 1",
+      slot_number: 1,
+      gun_total: 1,
+      x_total: 1,
+      rounds: [
+        { round_id: 1, state: "scored", gun_score: 1, x_total: 1 },
+        { round_id: 2, state: "pending", gun_score: null, x_total: null },
+        { round_id: 3, state: "pending", gun_score: null, x_total: null },
+      ],
+    });
+    assert.ok(entrants(data)[0].participants.every(participant =>
+      participant.rounds.every(round => !Object.hasOwn(round, "ranking_points"))));
+
+    const competition = (await db.query("select * from competitions where id=1")).rows[0];
+    const { html } = await renderAggregateResultsRoute({ competition, readRpc: parameters =>
+      read(parameters.p_organisation_id, parameters.p_league_season_id, parameters.p_competition_id) });
+    assert.ok(html.includes(`Released shooting results by participant for ${format === "pairs" ? "Pair" : "Team"} 1.`));
+    assert.equal([...html.matchAll(/<tr data-participant-row=/g)].length, 5 * size);
+    const firstParticipant = html.match(/<tr data-participant-row="1">([\s\S]*?)<\/tr>/)[0];
+    assert.ok(firstParticipant.includes("Shooter 1 Slot 1"));
+    assert.match(firstParticipant, /data-participant-round="1"[\s\S]*?>1<[\s\S]*?>1 X</);
+    assert.match(firstParticipant, /data-participant-total="true"[\s\S]*?>1<[\s\S]*?>1 X</);
+
     await db.exec("delete from shooting_score_values where shooting_score_source_id=111");
     data = await read();
     const incomplete = entrants(data).find((e) => e.entrant_id === 1);
     assert.equal(incomplete.rounds[0].state, "nsr");
     assert.equal(incomplete.gun_total, null);
     assert.equal(incomplete.x_total, null);
+    assert.equal(incomplete.participants[0].rounds[0].state, "nsr");
+    assert.equal(incomplete.participants[0].gun_total, null);
+    assert.equal(incomplete.participants[1].rounds[0].gun_score, 1);
     assert.deepEqual(firstPoints(data), [5, 4, 3, 2, 0]);
   });
 }
 
-test("source correction automatically recomputes Round points, totals and order", async () => {
-  await fixture();
+test("source correction automatically recomputes participant and entrant totals, points and order", async () => {
+  await fixture({ format: "pairs", size: 2 });
   assert.equal(entrants(await read())[0].entrant_id, 1);
-  await db.exec("update shooting_score_values set achieved_score=100 where shooting_score_source_id=511");
+  await db.exec("update shooting_score_values set achieved_score=100 where shooting_score_source_id in (511,521)");
   const data = await read();
   assert.equal(entrants(data)[0].entrant_id, 5);
   assert.equal(entrants(data)[0].total_points, 5);
-  assert.equal(entrants(data)[0].gun_total, 100);
+  assert.equal(entrants(data)[0].gun_total, 200);
+  assert.deepEqual(entrants(data)[0].participants.map(participant => participant.gun_total), [100, 100]);
   assert.equal(entrants(data)[1].total_points, 4);
 });
 
 test("saved scores on deadline day and future Rounds never leak, even to organiser", async () => {
-  await fixture({ x: true });
+  await fixture({ format: "pairs", size: 2, x: true });
   const memberData = await read();
   await db.query("insert into organisation_staff values (1,$1,'active','manager')", [viewer]);
   assert.deepEqual(await read(), memberData);
@@ -197,14 +444,25 @@ test("saved scores on deadline day and future Rounds never leak, even to organis
     for (const cell of entrant.rounds.slice(1)) {
       assert.deepEqual(cell, { round_id: cell.round_id, state: "pending", gun_score: null, ranking_points: null, x_total: null });
     }
+    for (const participant of entrant.participants) {
+      for (const cell of participant.rounds.slice(1)) {
+        assert.deepEqual(cell, { round_id: cell.round_id, state: "pending", gun_score: null, x_total: null });
+      }
+    }
   }
   assert.ok(!JSON.stringify(memberData).includes("88.12"));
+  const competition = (await db.query("select * from competitions where id=1")).rows[0];
+  const { html } = await renderAggregateResultsRoute({ competition, readRpc: parameters =>
+    read(parameters.p_organisation_id, parameters.p_league_season_id, parameters.p_competition_id) });
+  assert.ok(!html.includes("88.12"));
   const diagnostic = (await db.query("select public.get_competition_round_results(1,1,1) as data")).rows[0].data;
-  assert.equal(diagnostic.rounds[1].entrants[0].achieved_score, 88.12);
+  assert.equal(diagnostic.rounds[1].entrants[0].participants[0].achieved_score, 88.12);
   // The same source is released automatically when its Round End has passed.
   await db.exec("update competition_rounds set deadline=deadline-1 where id=2");
   assert.equal((await read()).released_round_count, 2);
-  assert.equal(entrants(await read())[0].rounds[1].gun_score, 88.12);
+  const released = await read();
+  assert.equal(entrants(released)[0].rounds[1].gun_score, 176.24);
+  assert.equal(entrants(released)[0].participants[0].rounds[1].gun_score, 88.12);
 });
 
 test("published divisions isolate N and placements across clubs", async () => {
@@ -229,13 +487,20 @@ test("no divisions supports an ungrouped table; draft and incomplete allocations
 });
 
 test("API excludes private/profile/source fields; disabled X is omitted", async () => {
-  await fixture();
+  await fixture({ format: "pairs", size: 2 });
   const data = await read();
   const json = JSON.stringify(data);
-  for (const forbidden of ["PRIVATE", "phone", "address", "profile_id", "component_values", "achieved_score", "x_total", "recorded_slot_count"]) {
+  for (const forbidden of [
+    "PRIVATE", "phone", "address", "profile_id", "user_id", "participant_id",
+    "shooting_score_source_id", "component_values", "achieved_score", "display_score",
+    "x_total", "recorded_slot_count", "expected_slot_count",
+  ]) {
     assert.ok(!json.includes(forbidden), forbidden);
   }
-  assert.deepEqual(Object.keys(entrants(data)[0].participants[0]).sort(), ["first_name", "last_name", "slot_number"]);
+  assert.deepEqual(Object.keys(entrants(data)[0].participants[0]).sort(), [
+    "first_name", "gun_total", "last_name", "rounds", "slot_number",
+  ]);
+  assert.deepEqual(Object.keys(entrants(data)[0].participants[0].rounds[0]).sort(), ["gun_score", "round_id", "state"]);
 });
 
 for (const mode of ["points_scored", "points_dropped"]) {

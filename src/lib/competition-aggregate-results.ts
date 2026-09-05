@@ -7,6 +7,16 @@ export type AggregateParticipant = {
   first_name: string | null;
   last_name: string | null;
   slot_number: number;
+  gun_total?: number | null;
+  x_total?: number | null;
+  rounds?: AggregateParticipantRoundCell[];
+};
+
+export type AggregateParticipantRoundCell = {
+  round_id: number;
+  state: "pending" | "scored" | "nsr";
+  gun_score: number | null;
+  x_total?: number | null;
 };
 
 export type AggregateRoundCell = {
