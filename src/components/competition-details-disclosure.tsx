@@ -34,23 +34,11 @@ const accessibleRoundDateFormatter = new Intl.DateTimeFormat("en-GB", {
 });
 
 function getCompactRoundDateLabels(rounds: Array<{ deadline: string }>) {
-  const years = new Set(rounds.map((round) => round.deadline.slice(0, 4)));
-  const crossesCalendarYear = years.size > 1;
-  let previousYear: string | null = null;
-
   return rounds.map((round) => {
-    const year = round.deadline.slice(0, 4);
     const [, month, day] = round.deadline.split("-").map(Number);
     const date = new Date(`${round.deadline}T00:00:00Z`);
-    const compactDate = `${day} ${compactMonthLabels[month - 1]}`;
-    const label =
-      crossesCalendarYear && previousYear !== null && year !== previousYear
-        ? `${compactDate} ’${year.slice(-2)}`
-        : compactDate;
-
-    previousYear = year;
     return {
-      compact: label,
+      compact: `${day} ${compactMonthLabels[month - 1]}`,
       accessible: accessibleRoundDateFormatter.format(date),
     };
   });
@@ -208,7 +196,7 @@ export function CompetitionDetailsDisclosure({
               No Round End dates are configured.
             </p>
           ) : (
-            <ol className="mt-4 grid min-w-0 grid-cols-1 overflow-hidden rounded-xl border border-border bg-border gap-px min-[360px]:grid-cols-2 sm:grid-cols-3 md:grid-cols-5">
+            <ol className="mt-4 grid min-w-0 grid-cols-[repeat(auto-fit,minmax(9rem,1fr))] gap-px overflow-hidden rounded-xl border border-border bg-border">
               {rounds.map((round, index) => (
                 <li key={round.id} className="min-w-0 bg-surface px-3 py-2.5">
                   <span className="block text-[11px] font-semibold uppercase tracking-[0.08em] text-brand-strong">

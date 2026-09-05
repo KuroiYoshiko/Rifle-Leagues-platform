@@ -10,7 +10,7 @@ const require = createRequire(import.meta.url);
 
 // Compile the real application modules with the installed TypeScript compiler.
 // Only Next request context/navigation and unrelated page lookups are supplied
-// by the test. The Results loader, Supabase SSR client/SDK, page and table are real.
+// by the test. The Results loader, Supabase SSR client/SDK, Competition page and table are real.
 async function loadModule(relativePath, dependencies = {}) {
   const filename = new URL(`../../${relativePath}`, import.meta.url);
   const source = await readFile(filename, "utf8");
@@ -59,23 +59,54 @@ export async function renderAggregateResultsRoute({ readRpc, competition, organi
     const resultsTable = await loadModule("src/components/competition-aggregate-results.tsx", {
       "@/components/ui": ui,
     });
-    const route = await loadModule("src/app/(app)/organisations/[slug]/leagues/[seasonSlug]/competitions/[competitionSlug]/results/page.tsx", {
+    const route = await loadModule("src/app/(app)/organisations/[slug]/leagues/[seasonSlug]/competitions/[competitionSlug]/page.tsx", {
       "next/link": { __esModule: true, default: ({ children, ...props }) => createElement("a", props, children) },
-      "next/navigation": { notFound: () => { throw new Error("Unexpected notFound in Results route"); } },
+      "next/navigation": { notFound: () => { throw new Error("Unexpected notFound in Competition route"); } },
       "@/components/ui": ui,
+      "@/components/competition-details-disclosure": { CompetitionDetailsDisclosure: () => null },
+      "@/components/competition-entry-controls": { CompetitionEntryControls: () => null },
       "@/components/competition-aggregate-results": resultsTable,
+      "@/components/competition-lifecycle-actions": { CompetitionLifecycleActions: () => null },
       "@/components/organisation-page-frame": { OrganisationPageFrame: ({ children }) => children },
+      "@/components/published-competition-divisions": { PublishedCompetitionDivisionsView: () => null },
       "@/lib/competition-aggregate-results": resultsLoader,
-      "@/lib/organisations": { getActiveOrganisationBySlug: async () => ({ id: organisationId, slug: "test-org" }) },
-      "@/lib/league-seasons": { getLeagueSeasonBySlug: async () => ({ id: seasonId, slug: "test-season" }) },
+      "@/lib/competition-divisions": {
+        getCompetitionDivisionManagement: async () => null,
+        getPublishedCompetitionDivisions: async () => null,
+      },
+      "@/lib/competition-entries": { getCompetitionClubEntryContext: async () => [] },
+      "@/lib/organisations": {
+        getActiveOrganisationBySlug: async () => ({ id: organisationId, slug: "test-org", name: "Test Organisation" }),
+        getOrganisationManagementContextBySlug: async () => null,
+      },
+      "@/lib/league-seasons": {
+        formatLeagueSeasonDate: () => null,
+        getLeagueSeasonBySlug: async () => ({ id: seasonId, slug: "test-season", name: "Test Season", entry_opens_at: null, entry_closes_at: null, starts_at: null }),
+      },
       "@/lib/competitions": {
         getCompetitionBySlug: async () => competition,
+        formatCompetitionEntryFee: () => null,
+        getCompetitionMaximumPerRound: () => 0,
         getCompetitionEntryFormatLabel: () => "Pairs",
+        getCompetitionLifecycleState: async () => null,
+        getCompetitionRankingMethodLabel: () => "Aggregate points",
+        getCompetitionRounds: async () => [],
+        getCompetitionScoreComponents: async () => [],
+        getCompetitionScoringMethodLabel: () => "Points scored",
+        getCompetitionStatusLabel: () => "Published",
+        resolveCompetitionEffectiveDates: () => ({
+          effective_entry_opens_at: null,
+          effective_entry_closes_at: null,
+          effective_starts_at: null,
+        }),
       },
     });
-    const element = await route.default({ params: Promise.resolve({ slug: "test-org", seasonSlug: "test-season", competitionSlug: competition.slug }) });
+    const element = await route.default({
+      params: Promise.resolve({ slug: "test-org", seasonSlug: "test-season", competitionSlug: competition.slug }),
+      searchParams: Promise.resolve({}),
+    });
     const html = renderToStaticMarkup(element);
-    assert.equal(calls.length, 1, "Results page must use the single Aggregate RPC");
+    assert.equal(calls.length, 1, "Competition page must use the single Aggregate RPC");
     return { html, call: calls[0] };
   } finally {
     globalThis.fetch = originalFetch;
@@ -84,4 +115,13 @@ export async function renderAggregateResultsRoute({ readRpc, competition, organi
       else process.env[key] = previousEnv[index];
     });
   }
+}
+
+export async function getCompetitionResultsRedirect(params) {
+  let destination;
+  const route = await loadModule("src/app/(app)/organisations/[slug]/leagues/[seasonSlug]/competitions/[competitionSlug]/results/page.tsx", {
+    "next/navigation": { permanentRedirect: (href) => { destination = href; } },
+  });
+  await route.default({ params: Promise.resolve(params) });
+  return destination;
 }

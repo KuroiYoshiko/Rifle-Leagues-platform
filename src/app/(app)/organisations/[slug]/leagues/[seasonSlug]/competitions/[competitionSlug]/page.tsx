@@ -268,25 +268,8 @@ export default async function CompetitionDetailPage({
       />
 
       {competition.status === "published" ? (
-        <section className="mt-8 min-w-0" aria-label="Competition results">
-          <SectionHeader
-            title="Results"
-            description={
-              competition.ranking_method === "aggregate"
-                ? "Aggregate standings across released Rounds"
-                : `${getCompetitionRankingMethodLabel(competition.ranking_method)} standings`
-            }
-            action={
-              aggregateResults ? (
-                <Link
-                  href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/results`}
-                  className="shrink-0 text-sm font-semibold text-brand-strong hover:underline"
-                >
-                  View results
-                </Link>
-              ) : undefined
-            }
-          />
+        <section id="results" className="mt-8 min-w-0 scroll-mt-24" aria-label="Competition results">
+          <SectionHeader title="Results" />
           {aggregateResults ? (
             <CompetitionAggregateResultsTable data={aggregateResults} />
           ) : (

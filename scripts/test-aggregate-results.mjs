@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test, before, after, beforeEach, afterEach } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
-import { renderAggregateResultsRoute } from "./helpers/aggregate-ui-path.mjs";
+import {
+  getCompetitionResultsRedirect,
+  renderAggregateResultsRoute,
+} from "./helpers/aggregate-ui-path.mjs";
 
 // Disposable PostgreSQL only: no credentials, network, or application data.
 // Minimal source-schema fixture; the production derivation and standings SQL
@@ -122,7 +125,7 @@ async function summerPairsRuntimeFixture() {
   `);
 }
 
-test("actual Results route -> Supabase SSR RPC -> SQL -> rendered cells: Summer Pairs 200", async () => {
+test("actual Competition route -> Supabase SSR RPC -> SQL -> rendered cells: Summer Pairs 200", async () => {
   await summerPairsRuntimeFixture();
   const competition = (await db.query("select * from competitions where id=1")).rows[0];
   const { html, call } = await renderAggregateResultsRoute({ competition, readRpc: async parameters =>
@@ -136,6 +139,10 @@ test("actual Results route -> Supabase SSR RPC -> SQL -> rendered cells: Summer 
   ]);
   const renderedRows = renderedEntrantRows(html).map((row) => row.html);
   assert.equal(renderedRows.length, 2);
+  assert.match(html, /<section id="results"/);
+  assert.doesNotMatch(html, /Aggregate standings across released Rounds/);
+  assert.doesNotMatch(html, /above each Round’s ranking points/);
+  assert.doesNotMatch(html, /href="[^"]*\/results"/);
   for (const [index, row] of renderedRows.entries()) {
     assert.ok(row.includes(`Pair ${index + 1}`));
     assert.match(row, new RegExp(`>${index + 3}<span class="sr-only"> gun result`));
@@ -144,6 +151,17 @@ test("actual Results route -> Supabase SSR RPC -> SQL -> rendered cells: Summer 
     assert.ok(!row.includes("397") && !row.includes("396"), "Must not render achieved totals");
     assert.match(row, />Pending</);
   }
+});
+
+test("historical Competition Results route redirects to the embedded Results anchor", async () => {
+  assert.equal(
+    await getCompetitionResultsRedirect({
+      slug: "test-org",
+      seasonSlug: "test-season",
+      competitionSlug: "summer-pairs-200",
+    }),
+    "/organisations/test-org/leagues/test-season/competitions/summer-pairs-200#results",
+  );
 });
 
 test("points-scored Total renders gun_total first and total_points in the Round-style badge", async () => {
