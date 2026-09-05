@@ -149,6 +149,12 @@ export default async function CompetitionScoresPage({
                 : "Review participant source scores for the selected Round. Read-only fields cannot be changed in this scoring scope."}
             </p>
           </div>
+          {competition.ranking_method === "aggregate" ? <Link
+            href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/results`}
+            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
+          >
+            View results
+          </Link> : null}
         </div>
       </Card>
 

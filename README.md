@@ -219,6 +219,204 @@ division configuration, division, or assignment exists. Safe deletion removes
 only the Competition and its configuration-owned rounds and Course of Fire rows;
 no database reset or reseed is required.
 
+## Competition source scores and derived Round results
+
+After the Competition configuration and entry foundations above, run these
+focused additive files in this order:
+
+1. [`database/competition-configuration-save-fix.sql`](database/competition-configuration-save-fix.sql)
+2. [`database/competition-configuration-owner-save-fix.sql`](database/competition-configuration-owner-save-fix.sql)
+3. [`database/competition-scores.sql`](database/competition-scores.sql)
+4. [`database/competition-scores-deferred-trigger-security.sql`](database/competition-scores-deferred-trigger-security.sql)
+5. [`database/competition-scores-participant-formats.sql`](database/competition-scores-participant-formats.sql)
+6. [`database/competition-results.sql`](database/competition-results.sql)
+
+The score files create participant-owned physical source scores and link them
+to exact Competition participant/Round slots without copying the canonical
+achieved value. The final results file adds an authenticated live read model for
+Individual, Pair, and Team Round results. It stores no entrant totals. Required
+slots are derived from `sets_per_round × score components`; missing rows remain
+incomplete, X totals are exposed only for X-enabled Competitions, and a single
+legacy display score is withheld for mixed scoring methods.
+
+The foundation's diagnostic RPC remains restricted to organisation owners/managers
+or the exact submitted club's owners/officials. Normal Competition Results now use
+the separate released Aggregate API below. Manage Scores remains the live source
+score editing workflow.
+
+## Aggregate Competition Results
+
+For an existing installation with the tested Results foundation, run these **complete
+files in this order** in the Supabase SQL Editor:
+
+1. [`database/competition-results.sql`](database/competition-results.sql) — rerun
+   the updated foundation to extract its shared private derivation. The existing
+   authorised diagnostic RPC keeps its signature and access checks.
+2. [`database/competition-aggregate-results.sql`](database/competition-aggregate-results.sql)
+   — add the released `get_competition_aggregate_results` RPC.
+
+Both files are transactional and safe to rerun. They only define functions and
+their grants/comments: no reset, reseed, source-score redesign, fake zeros, NSR
+rows, materialized standings, or data backfill. Rerun the Aggregate file last if
+reapplying earlier foundation SQL.
+
+For the points-dropped standings update on an installation that already has the
+shared foundation, rerun only `database/competition-aggregate-results.sql`.
+It derives the homogeneous gun result directly from achieved/maximum totals and
+uses that one value for Round placement, cells and overall totals. It no longer
+depends on the foundation's presentation-only `display_score` field. No source
+score, score-entry, shared derivation, or mixed-method behavior changes are needed.
+
+The exact 397/400 versus 396/400 example also passes against the preceding
+checked-in SQL: achieved descending is equivalent to dropped ascending for equal
+maxima. A later live diagnostic resolved the Summer Pairs 200 discrepancy:
+canonical participant scores actually summed to **3 and 4 achieved**, not 397 and
+396. The private derivation returned those same achieved totals, and Aggregate
+correctly returned **397 and 396 dropped**, placing Pair 2 first. The installed
+Aggregate, shared derivation, and diagnostic function bodies matched these files;
+the frontend passed their values and order through unchanged.
+
+For that data discrepancy, no function rerun or ranking change is needed. An
+authorised scorer should use Manage Scores for Round 1, check the original score
+records, and enter each participant's **dropped points** in the Ex 200 fields.
+For example, 199/200 achieved is entered as 1 dropped and is stored canonically as
+199 achieved. Correct dropped totals of 3 and 4 produce achieved totals of 397
+and 396 and standings of Pair 1 (3 dropped, 2 points), then Pair 2 (4 dropped,
+1 point). Do not guess the participant split from a Pair total or bulk-invert
+source rows. The diagnostic establishes the stored-data mismatch, but does not
+identify who wrote the rows or whether they came from score entry or another
+earlier data operation. No live source corrections have been applied by this work.
+
+### Tracing an installed Aggregate discrepancy
+
+Both the Competition page and its `/results` page call the real server loader
+`src/lib/competition-aggregate-results.ts`. It uses `src/lib/supabase/server.ts`
+and the configured `NEXT_PUBLIC_SUPABASE_URL`, issuing a POST to the default
+public schema's `/rest/v1/rpc/get_competition_aggregate_results` with exactly
+`p_organisation_id`, `p_league_season_id`, and `p_competition_id`. There is no
+overload type encoded in that HTTP request: PostgREST resolves the installed
+function from its schema, parameter names and values.
+
+The loader returns the response unchanged. The Results table maps the returned
+entrant order and renders `rounds[].gun_score`, `rounds[].ranking_points`,
+`gun_total`, and `position`; it does not sort or substitute achieved totals.
+The old diagnostic RPC/component is not called by either Results page.
+
+If the runtime differs, run
+[`database/diagnostics/aggregate-runtime.sql`](database/diagnostics/aggregate-runtime.sql)
+in the same Supabase project as the app. Section 1 inventories all relevant
+schemas/overloads and returns installed function definitions. Section 2 uses
+your own existing Auth user UUID to run the exact RPC and compare its payload
+with component configuration, upstream derived totals, and canonical released
+source totals. It changes no database rows and rolls back its temporary claim.
+Do not interpret scored-entry fields as canonical achieved values: for a
+points-dropped component, score entry converts entered dropped points into
+stored achieved points. Use the diagnostic's `stored_achieved_sum` to verify.
+
+The runtime-path regression executes the actual Results route, Results loader,
+Supabase SSR client/SDK and React table. Next request context and unrelated page
+lookups are supplied by the test; only HTTP transport is intercepted to dispatch
+the exact RPC request to PGlite. A two-Pair, one-Ex-200-component fixture verifies
+397/396 achieved becomes 3/4 dropped with 2/1 points in both the payload and HTML.
+The live-data regression uses synthetic participants with the confirmed stored
+achieved sums of 3/4 and reproduces the reported 397/396 display and reversed
+order through the actual SQL, SDK, loader and renderer. Correcting only those
+fixture source values to achieved sums of 397/396 yields the expected 3/4 display
+and 2/1 ranking points on the next read. This tests the read path after correction;
+it does not alter live data or test the score-save RPC itself.
+
+### Ranking and publication contract
+
+- Source `achieved_score` remains authoritative. The shared foundation derives
+  complete participant/entrant totals from all required participants, sets and
+  components. PostgreSQL `numeric` arithmetic preserves score precision.
+- A Round End is a **date**, inclusive for the whole UTC day. A Round releases
+  when `(statement_timestamp() at time zone 'UTC')::date > deadline`. Release
+  is independent of Shoot-by and viewer role. The source usage join is gated
+  before reading any unreleased score values, including partial components/X.
+- Before release, every cell is pending with null gun/X/points. After release,
+  an incomplete entrant is NSR with null gun/X and zero ranking points. A real
+  complete zero is a scored result. NSR contributes neither gun nor maximum/X
+  to aggregates; entrants without scored Rounds have null gun totals.
+- Each published division ranks complete entrant gun results by dropped points
+  (`maximum - achieved`) ascending for homogeneous dropped courses, or achieved
+  points descending for scored courses. X descending follows when `uses_x_score` is
+  enabled. There is no separate configurable X tie-break flag in this schema.
+  Remaining ties use competition rank (`1,1,3`), awarding `N - rank + 1` points
+  where N includes every submitted entrant assigned to that division, including
+  NSR. Five distinct scorers earn `5,4,3,2,1`; tied leaders earn `5,5,3,2,1`.
+- Overall order: total ranking points descending; gun aggregate (points scored
+  descending, points dropped ascending); then X descending when enabled.
+  Dropped totals sum `maximum - achieved` across scored Rounds only, including
+  when tied entrants have different attendance. Mixed courses show and compare
+  normalized achieved totals instead of summing incompatible display values.
+- Genuine overall ties share position and show `=`. Entrant ID provides stable
+  display order within ties, never additional ranking points or a sporting win.
+- Divisions are calculated independently. No division configuration means one
+  ungrouped table. Draft or incomplete published allocations withhold standings
+  until a complete allocation is published; no draft assignment is returned.
+- Corrections recalculate on every Results request. React `cache` deduplicates
+  only within a request; there is no persistent standings cache. The existing
+  score-save action invalidates the organisation layout after a successful save.
+  Results do not subscribe to live changes in other viewers' already-open tabs.
+
+### Results UI and read scope
+
+The Competition page and `/results` route now render compact division tables:
+position/entrant, one column per Round, then Total. Round and Total cells share the
+same hierarchy: the shooting result is primary and the Aggregate ranking-points
+award is the small `pts` badge beneath it. Individual rows remain unchanged.
+Pair/Team rows keep their label and club plus a native keyboard/touch-accessible
+`details`/`summary` disclosure. Expanding it shows one participant per row with
+released shooting results by Round, an individual shooting Total, and compact X
+values when enabled; participants never receive Aggregate ranking points. Names
+stay in a sticky column and the table remains horizontally scrollable on mobile.
+
+Normal authenticated viewers of the exact active organisation / visible season /
+published Aggregate Competition receive all participating clubs, matching the
+published-division read scope. The RPC does not accept a club filter or release
+override. It returns names, slots, clubs, standings, configured Round metadata,
+and for Pair/Team entrants only the complete released participant gun/X results
+and their released-round totals. Unreleased and incomplete participant values are
+null; no contact details, profile IDs, component values, partial results or source
+IDs cross the RPC boundary.
+Source-table permissions/RLS are unchanged. Its privileged read is explicitly
+authenticated, context-checked, uses an empty search path, and denies anonymous
+execution; the shared private derivation is not executable by API readers.
+
+The Internal Preview action and route rendering are retired. The old component,
+types and restricted RPC remain documented as internal diagnostics only. Manage
+Scores keeps its existing permissions and source-score workflow. Other ranking
+methods display an unavailable state if their Results route is visited directly.
+
+### Verification and deliberately deferred work
+
+Run `npm run test:aggregate` for disposable PostgreSQL (PGlite) regression cases.
+It applies both real SQL files twice to a minimal source-schema fixture and checks
+Individual/Pairs/Team, 5..1 points, ties, NSR/zero, scored/dropped/mixed courses,
+multi-set completeness, X, overall ordering, corrections, date boundaries,
+division isolation, cross-club reads, private-field exclusion and denied access.
+It does not connect to or modify the application database and is not a substitute
+for verifying deployment-specific grants/schema in the Supabase project.
+
+Focused 400-maximum cases cover Individual/Pairs/Team in both homogeneous modes:
+397 achieved beats 396, displaying 3/4 dropped or 397/396 scored. Additional Pairs
+cases check that 3 dropped beats 4 despite a lower X total; tied dropped results
+use X then preserve unresolved ties; NSR earns zero; saved unreleased 400s stay
+pending; and two released Rounds (397+395 versus 396+394 achieved) produce gun
+totals of 8 versus 10 dropped with ranking-point totals of 10 versus 8. Route-level
+assertions cover Total hierarchy, Pair/Team participant Round columns and totals,
+X, unchanged Individual rendering, unreleased-value exclusion, and live source
+corrections updating both participant and entrant totals.
+
+Required application checks: `npm run lint`, `npx tsc --noEmit`, `npm run build`,
+and `git diff --check`.
+
+Countback and later tie-break criteria are intentionally deferred: the repository
+does not define them precisely. Also deferred: Best N Average, Round Robin, Gun
+Score standings, promotion/relegation, Starting Average, payments, Concurrent
+Shooting, organisation-wide result search, and live push updates to open Results.
+
 ## Club competition entries
 
 Run the complete
