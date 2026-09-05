@@ -144,20 +144,12 @@ export function CompetitionAggregateResultsTable({ data }: { data: CompetitionAg
 
   return (
     <div className="min-w-0 space-y-6">
-      <p className="text-sm leading-6 text-muted-foreground">
-        {gunLabel} above each Round’s ranking points. Total uses the same hierarchy: gun total above Aggregate ranking points.
-        {data.uses_x_score ? " X totals resolve equal gun results." : ""}
-        {" "}Rounds release after their Round End date (UTC). Pending Rounds do not contribute to totals.
-      </p>
       {data.released_round_count === 0 ? (
         <p className="rounded-xl bg-brand-subtle px-4 py-3 text-sm text-brand-deep">No Rounds have been released yet.</p>
       ) : null}
       {data.groups.map((group) => (
         <section key={group.id} aria-labelledby={`results-division-${group.id}`} className="min-w-0">
-          <div className="mb-3 flex items-baseline justify-between gap-3">
-            <h2 id={`results-division-${group.id}`} className="text-lg font-semibold text-foreground">{group.name}</h2>
-            <span className="text-xs text-muted-foreground">{group.entrants.length} entrant{group.entrants.length === 1 ? "" : "s"}</span>
-          </div>
+          <h2 id={`results-division-${group.id}`} className="mb-3 text-lg font-semibold text-foreground">{group.name}</h2>
           {group.entrants.length === 0 ? (
             <Card className="p-5 text-sm text-muted-foreground">No submitted entrants yet.</Card>
           ) : (
@@ -215,7 +207,6 @@ export function CompetitionAggregateResultsTable({ data }: { data: CompetitionAg
           )}
         </section>
       ))}
-      <p className="text-xs leading-5 text-muted-foreground">NSR: no complete score returned after Round End; earns 0 ranking points. Equal results share position points, with the next position skipped. Unresolved overall ties show “=”. Countback is not applied.</p>
     </div>
   );
 }
