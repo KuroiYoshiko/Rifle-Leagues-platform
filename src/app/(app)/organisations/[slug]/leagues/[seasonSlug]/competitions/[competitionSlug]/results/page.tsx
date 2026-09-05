@@ -1,41 +1,31 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { CompetitionResultsPreview } from "@/components/competition-results-preview";
+import { CompetitionAggregateResultsTable } from "@/components/competition-aggregate-results";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { Badge, Card } from "@/components/ui";
 import {
   getCompetitionBySlug,
   getCompetitionEntryFormatLabel,
 } from "@/lib/competitions";
-import { getCompetitionRoundResults } from "@/lib/competition-results";
+import { getCompetitionAggregateResults } from "@/lib/competition-aggregate-results";
 import { getLeagueSeasonBySlug } from "@/lib/league-seasons";
 import { getActiveOrganisationBySlug } from "@/lib/organisations";
 
 export const metadata: Metadata = {
-  title: "Competition results preview",
+  title: "Competition results",
 };
-
-function positiveInteger(value: string | string[] | undefined) {
-  const candidate = Array.isArray(value) ? value[0] : value;
-  if (!candidate || !/^[1-9][0-9]*$/.test(candidate)) return null;
-  const number = Number(candidate);
-  return Number.isSafeInteger(number) ? number : null;
-}
 
 export default async function CompetitionResultsPage({
   params,
-  searchParams,
 }: {
   params: Promise<{
     slug: string;
     seasonSlug: string;
     competitionSlug: string;
   }>;
-  searchParams: Promise<{ club?: string | string[] }>;
 }) {
   const { slug, seasonSlug, competitionSlug } = await params;
-  const query = await searchParams;
   const organisation = await getActiveOrganisationBySlug(slug);
   if (!organisation) notFound();
 
@@ -45,14 +35,12 @@ export default async function CompetitionResultsPage({
   const competition = await getCompetitionBySlug(season.id, competitionSlug);
   if (!competition || competition.status !== "published") notFound();
 
-  const clubId = positiveInteger(query.club);
-  const data = await getCompetitionRoundResults(
+  const data = competition.ranking_method === "aggregate" ? await getCompetitionAggregateResults(
     organisation.id,
     season.id,
     competition.id,
-    clubId,
-  );
-  if (!data) notFound();
+  ) : null;
+  if (competition.ranking_method === "aggregate" && !data) notFound();
 
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="leagues">
@@ -70,7 +58,7 @@ export default async function CompetitionResultsPage({
               <Badge tone="positive">
                 {getCompetitionEntryFormatLabel(competition.entry_format)} Competition
               </Badge>
-              <Badge tone="brand">Internal preview</Badge>
+              {competition.ranking_method === "aggregate" ? <Badge tone="brand">Aggregate standings</Badge> : null}
             </div>
             <h1 className="mt-3 text-2xl font-semibold tracking-[-0.035em] text-foreground sm:text-3xl">
               Competition results
@@ -79,16 +67,16 @@ export default async function CompetitionResultsPage({
               {competition.name}
             </p>
             <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-              Live Round results derived from participant source scores. This
-              diagnostic preview does not calculate ranking positions or
-              standings.
+              Released Round results and standings across all participating clubs.
             </p>
           </div>
         </div>
       </Card>
 
       <div className="mt-6">
-        <CompetitionResultsPreview data={data} />
+        {data ? <CompetitionAggregateResultsTable data={data} /> : (
+          <Card className="p-6 text-sm text-muted-foreground">Standings for this ranking method are not available yet.</Card>
+        )}
       </div>
     </OrganisationPageFrame>
   );

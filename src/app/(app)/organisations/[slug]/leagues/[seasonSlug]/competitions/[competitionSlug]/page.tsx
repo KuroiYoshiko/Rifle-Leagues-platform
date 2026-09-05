@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CompetitionEntryControls } from "@/components/competition-entry-controls";
+import { CompetitionAggregateResultsTable } from "@/components/competition-aggregate-results";
+import { getCompetitionAggregateResults } from "@/lib/competition-aggregate-results";
 import { CompetitionLifecycleActions } from "@/components/competition-lifecycle-actions";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { PublishedCompetitionDivisionsView } from "@/components/published-competition-divisions";
@@ -120,7 +122,7 @@ export default async function CompetitionDetailPage({
   }
 
   const isOwner = managementContext?.access.role === "owner";
-  const [rounds, scoreComponents, entryContexts, divisionManagement, publishedDivisions, lifecycleState] = await Promise.all([
+  const [rounds, scoreComponents, entryContexts, divisionManagement, publishedDivisions, lifecycleState, aggregateResults] = await Promise.all([
     getCompetitionRounds(competition.id),
     getCompetitionScoreComponents(competition.id),
     competition.status === "published"
@@ -142,6 +144,9 @@ export default async function CompetitionDetailPage({
           season.id,
           competition.id,
         )
+      : Promise.resolve(null),
+    competition.status === "published" && competition.ranking_method === "aggregate"
+      ? getCompetitionAggregateResults(organisation.id, season.id, competition.id)
       : Promise.resolve(null),
   ]);
   const roundDateLabels = getCompactRoundDateLabels(rounds);
@@ -366,6 +371,15 @@ export default async function CompetitionDetailPage({
         basePath={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}`}
       />
 
+      {aggregateResults ? (
+        <section className="mt-10 min-w-0" aria-label="Competition results">
+          <SectionHeader title="Results" description="Aggregate standings across released Rounds"
+            action={<Link href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/results`}
+              className="shrink-0 text-sm font-semibold text-brand-strong hover:underline">View results</Link>} />
+          <CompetitionAggregateResultsTable data={aggregateResults} />
+        </section>
+      ) : null}
+
       {managementContext &&
       competition.status === "published" ? (
         <section className="mt-10" aria-labelledby="score-management-heading">
@@ -388,12 +402,6 @@ export default async function CompetitionDetailPage({
                 </p>
               </div>
               <div className="flex flex-col gap-2 sm:flex-row">
-                <Link
-                  href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/results`}
-                  className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
-                >
-                  Preview results
-                </Link>
                 <Link
                   href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/scores`}
                   className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep"

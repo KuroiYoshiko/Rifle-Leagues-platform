@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import {
   OrganisationEmptyState,
@@ -28,9 +29,10 @@ export default async function OrganisationResultsPage({
       <Card className="p-6 sm:p-8">
         <OrganisationEmptyState
           mark="R"
-          title="No results are available yet"
-          description="Published results will appear here after real leagues, competitions, divisions and scores exist in RifleLeagues."
+          title="Competition results"
+          description="Open a Competition within its season to view Aggregate standings and released Round results."
         />
+        <Link href={`/organisations/${organisation.slug}/leagues`} className="mt-5 inline-flex min-h-11 items-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! hover:bg-brand-deep">Browse seasons</Link>
       </Card>
 
       <Card className="mt-6 bg-surface-muted p-5 sm:p-6">
@@ -39,8 +41,7 @@ export default async function OrganisationResultsPage({
         </h2>
         <p className="mt-1.5 max-w-3xl text-sm leading-6 text-muted-foreground">
           This area will later support finding results by season, competition and
-          division. No standings, shooter records or statistics are being inferred
-          before those data models exist.
+          division. Aggregate standings are available on each published Aggregate Competition.
         </p>
       </Card>
     </OrganisationPageFrame>

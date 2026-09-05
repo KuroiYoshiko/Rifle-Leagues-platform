@@ -1,3 +1,5 @@
+// Retained for internal derived-score diagnostics. Do not mount on product
+// Results routes: ordinary readers use CompetitionAggregateResultsTable.
 import { Badge, Card } from "@/components/ui";
 import type {
   CompetitionEntrantRoundResult,

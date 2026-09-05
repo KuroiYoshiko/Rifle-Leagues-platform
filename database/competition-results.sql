@@ -107,29 +107,27 @@ comment on function private.require_competition_results_context(
 ) is
   'Authorises one exact organisation-wide or submitted-club Competition result read scope.';
 
-create or replace function public.get_competition_round_results(
+-- Shared derivation, callable only by the authorised wrappers below and in
+-- competition-aggregate-results.sql. Ordinary Results always pass true.
+create or replace function private.derive_competition_round_results(
   p_organisation_id bigint,
   p_league_season_id bigint,
   p_competition_id bigint,
-  p_club_id bigint default null
+  p_club_id bigint,
+  p_released_only boolean
 )
 returns jsonb
 language plpgsql
-security definer
+stable
+security invoker
 set search_path = ''
 as $$
 declare
-  v_context record;
   v_result jsonb;
 begin
-  select *
-  into v_context
-  from private.require_competition_results_context(
-    p_organisation_id,
-    p_league_season_id,
-    p_competition_id,
-    p_club_id
-  );
+  if (select auth.uid()) is null then
+    raise exception 'Authentication is required.' using errcode = '42501';
+  end if;
 
   with component_config as (
     select
@@ -172,8 +170,8 @@ begin
     where entry.competition_id = p_competition_id
       and entry.status = 'submitted'
       and (
-        v_context.scoped_club_id is null
-        or entry.club_id = v_context.scoped_club_id
+        p_club_id is null
+        or entry.club_id = p_club_id
       )
   ), entrant_round_base as (
     select
@@ -207,6 +205,10 @@ begin
       on usage.competition_id = entrant_round.competition_id
      and usage.competition_round_id = entrant_round.round_id
      and usage.competition_entrant_participant_id = participant.id
+     -- Gate the source join, not just displayed totals: partial slots and X
+     -- values must never enter the ordinary Results projection before release.
+     and (not p_released_only or
+       (statement_timestamp() at time zone 'UTC')::date > entrant_round.deadline)
   ), participant_aggregates as (
     select
       participant.*,
@@ -396,8 +398,8 @@ begin
     ) as division_assignment on true
   )
   select jsonb_build_object(
-    'access_scope', v_context.access_scope,
-    'scoped_club_id', v_context.scoped_club_id,
+    'access_scope', case when p_club_id is null then 'organisation' else 'club' end,
+    'scoped_club_id', p_club_id,
     'competition', jsonb_build_object(
       'id', competition.id,
       'name', competition.name,
@@ -492,6 +494,32 @@ begin
   end if;
 
   return v_result;
+end;
+$$;
+
+revoke execute on function private.derive_competition_round_results(
+  bigint, bigint, bigint, bigint, boolean
+) from public, anon, authenticated;
+
+-- Retained for authorised internal diagnostics; never used by normal Results.
+create or replace function public.get_competition_round_results(
+  p_organisation_id bigint,
+  p_league_season_id bigint,
+  p_competition_id bigint,
+  p_club_id bigint default null
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  perform private.require_competition_results_context(
+    p_organisation_id, p_league_season_id, p_competition_id, p_club_id
+  );
+  return private.derive_competition_round_results(
+    p_organisation_id, p_league_season_id, p_competition_id, p_club_id, false
+  );
 end;
 $$;
 

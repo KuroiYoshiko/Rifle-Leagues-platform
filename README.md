@@ -239,10 +239,101 @@ slots are derived from `sets_per_round × score components`; missing rows remain
 incomplete, X totals are exposed only for X-enabled Competitions, and a single
 legacy display score is withheld for mixed scoring methods.
 
-Organisation owners/managers can inspect all submitted entrant results from the
-Competition page. A participating club owner/official can inspect only that
-club's results through the club-scoped score workflow. No public result or
-ranking visibility is added by this foundation.
+The foundation's diagnostic RPC remains restricted to organisation owners/managers
+or the exact submitted club's owners/officials. Normal Competition Results now use
+the separate released Aggregate API below. Manage Scores remains the live source
+score editing workflow.
+
+## Aggregate Competition Results
+
+For an existing installation with the tested Results foundation, run these **complete
+files in this order** in the Supabase SQL Editor:
+
+1. [`database/competition-results.sql`](database/competition-results.sql) — rerun
+   the updated foundation to extract its shared private derivation. The existing
+   authorised diagnostic RPC keeps its signature and access checks.
+2. [`database/competition-aggregate-results.sql`](database/competition-aggregate-results.sql)
+   — add the released `get_competition_aggregate_results` RPC.
+
+Both files are transactional and safe to rerun. They only define functions and
+their grants/comments: no reset, reseed, source-score redesign, fake zeros, NSR
+rows, materialized standings, or data backfill. Rerun the Aggregate file last if
+reapplying earlier foundation SQL.
+
+### Ranking and publication contract
+
+- Source `achieved_score` remains authoritative. The shared foundation derives
+  complete participant/entrant totals from all required participants, sets and
+  components. PostgreSQL `numeric` arithmetic preserves score precision.
+- A Round End is a **date**, inclusive for the whole UTC day. A Round releases
+  when `(statement_timestamp() at time zone 'UTC')::date > deadline`. Release
+  is independent of Shoot-by and viewer role. The source usage join is gated
+  before reading any unreleased score values, including partial components/X.
+- Before release, every cell is pending with null gun/X/points. After release,
+  an incomplete entrant is NSR with null gun/X and zero ranking points. A real
+  complete zero is a scored result. NSR contributes neither gun nor maximum/X
+  to aggregates; entrants without scored Rounds have null gun totals.
+- Each published division ranks complete entrant gun results by normalized
+  achieved total descending, followed by X descending when `uses_x_score` is
+  enabled. There is no separate configurable X tie-break flag in this schema.
+  Remaining ties use competition rank (`1,1,3`), awarding `N - rank + 1` points
+  where N includes every submitted entrant assigned to that division, including
+  NSR. Five distinct scorers earn `5,4,3,2,1`; tied leaders earn `5,5,3,2,1`.
+- Overall order: total ranking points descending; gun aggregate (points scored
+  descending, points dropped ascending); then X descending when enabled.
+  Dropped totals sum `maximum - achieved` across scored Rounds only, including
+  when tied entrants have different attendance. Mixed courses show and compare
+  normalized achieved totals instead of summing incompatible display values.
+- Genuine overall ties share position and show `=`. Entrant ID provides stable
+  display order within ties, never additional ranking points or a sporting win.
+- Divisions are calculated independently. No division configuration means one
+  ungrouped table. Draft or incomplete published allocations withhold standings
+  until a complete allocation is published; no draft assignment is returned.
+- Corrections recalculate on every Results request. React `cache` deduplicates
+  only within a request; there is no persistent standings cache. The existing
+  score-save action invalidates the organisation layout after a successful save.
+  Results do not subscribe to live changes in other viewers' already-open tabs.
+
+### Results UI and read scope
+
+The Competition page and `/results` route now render compact division tables:
+position/entrant, one column per Round, then ranking-points total with supporting
+gun/X totals. Individual rows show shooter names; Pair/Team rows show their label
+and club, with native keyboard-accessible `details`/`summary` participant names
+collapsed by default. Names stay in a sticky column; Round columns keep readable
+widths inside a keyboard-focusable horizontal scrolling region on desktop/mobile.
+
+Normal authenticated viewers of the exact active organisation / visible season /
+published Aggregate Competition receive all participating clubs, matching the
+published-division read scope. The RPC does not accept a club filter or release
+override. It returns names, slots, clubs, standings, and configured Round metadata;
+no contact details, profile IDs, component values, partial results or source IDs.
+Source-table permissions/RLS are unchanged. Its privileged read is explicitly
+authenticated, context-checked, uses an empty search path, and denies anonymous
+execution; the shared private derivation is not executable by API readers.
+
+The Internal Preview action and route rendering are retired. The old component,
+types and restricted RPC remain documented as internal diagnostics only. Manage
+Scores keeps its existing permissions and source-score workflow. Other ranking
+methods display an unavailable state if their Results route is visited directly.
+
+### Verification and deliberately deferred work
+
+Run `npm run test:aggregate` for disposable PostgreSQL (PGlite) regression cases.
+It applies both real SQL files twice to a minimal source-schema fixture and checks
+Individual/Pairs/Team, 5..1 points, ties, NSR/zero, scored/dropped/mixed courses,
+multi-set completeness, X, overall ordering, corrections, date boundaries,
+division isolation, cross-club reads, private-field exclusion and denied access.
+It does not connect to or modify the application database and is not a substitute
+for verifying deployment-specific grants/schema in the Supabase project.
+
+Required application checks: `npm run lint`, `npx tsc --noEmit`, `npm run build`,
+and `git diff --check`.
+
+Countback and later tie-break criteria are intentionally deferred: the repository
+does not define them precisely. Also deferred: Best N Average, Round Robin, Gun
+Score standings, promotion/relegation, Starting Average, payments, Concurrent
+Shooting, organisation-wide result search, and live push updates to open Results.
 
 ## Club competition entries
 

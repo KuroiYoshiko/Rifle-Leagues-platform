@@ -102,6 +102,8 @@ export type CompetitionRoundResults = {
   rounds: CompetitionRoundResult[];
 };
 
+// Administrative diagnostics only; this RPC can return unreleased scores.
+// Product Results must use getCompetitionAggregateResults instead.
 export const getCompetitionRoundResults = cache(
   async (
     organisationId: number,
