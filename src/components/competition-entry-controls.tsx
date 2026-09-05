@@ -6,7 +6,7 @@ import {
   startClubCompetitionEntry,
   type CompetitionEntryActionState,
 } from "@/app/(app)/competition-entry-actions";
-import { Badge, Card } from "@/components/ui";
+import { Card } from "@/components/ui";
 import type { CompetitionClubEntryContext } from "@/lib/competition-entries";
 
 const initialState: CompetitionEntryActionState = {};
@@ -19,14 +19,10 @@ function statusLabel(status: "draft" | "submitted" | "withdrawn") {
   return status[0].toUpperCase() + status.slice(1);
 }
 
-function WindowMessage({ state }: { state: "upcoming" | "open" | "closed" }) {
-  if (state === "upcoming") {
-    return <p className="text-sm text-muted-foreground">Entries are not open yet.</p>;
-  }
-  if (state === "closed") {
-    return <p className="text-sm text-muted-foreground">Entry is closed and saved entries are read-only.</p>;
-  }
-  return <p className="text-sm text-muted-foreground">Entries are open for active club owners and officials.</p>;
+function windowMessage(state: "upcoming" | "open" | "closed") {
+  if (state === "upcoming") return "Entries are not open yet";
+  if (state === "closed") return "Entry closed · Saved entries are read-only";
+  return "Entry open";
 }
 
 export function CompetitionEntryControls({
@@ -57,26 +53,23 @@ export function CompetitionEntryControls({
   if (manageable.length === 0 && memberOnly.length === 0) return null;
 
   return (
-    <section className="mt-10" aria-labelledby="competition-entry-heading">
-      <div className="mb-5">
+    <section className="mt-8" aria-labelledby="competition-entry-heading">
+      <div className="mb-3">
         <h2 id="competition-entry-heading" className="text-lg font-semibold tracking-[-0.025em] text-foreground">
           Competition entry
         </h2>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Club participation is managed by active club owners and officials.
-        </p>
       </div>
 
       {manageable.length > 0 && selected ? (
-        <Card className="p-6 sm:p-8">
+        <Card className="p-4 sm:p-5">
           <form action={formAction}>
             <input type="hidden" name="competition_id" value={competitionId} />
             <input type="hidden" name="club_id" value={selected.club_id} />
-            <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+            <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
               <div className="min-w-0">
                 {manageable.length > 1 ? (
                   <div className="max-w-xl">
-                    <label htmlFor="competition-entry-club" className="text-sm font-medium text-foreground">
+                    <label htmlFor="competition-entry-club" className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
                       Club
                     </label>
                     <select
@@ -84,7 +77,7 @@ export function CompetitionEntryControls({
                       value={selected.club_id}
                       onChange={(event) => setSelectedClubId(Number(event.target.value))}
                       disabled={pending}
-                      className="mt-2 min-h-12 w-full rounded-xl border border-border bg-surface px-4 text-sm text-foreground outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10"
+                      className="mt-1.5 min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm font-semibold text-foreground outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10"
                     >
                       {manageable.map((context) => (
                         <option key={context.club_id} value={context.club_id}>
@@ -94,25 +87,27 @@ export function CompetitionEntryControls({
                     </select>
                   </div>
                 ) : (
-                  <>
-                    <p className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">Club</p>
-                    <p className="mt-2 font-semibold text-foreground">{selected.club_name}</p>
-                  </>
+                  <p className="font-semibold text-foreground">{selected.club_name}</p>
                 )}
 
-                <div className="mt-4 flex flex-wrap items-center gap-2">
+                <p className="mt-1.5 text-sm text-muted-foreground">
                   {selected.entry_status ? (
-                    <Badge
-                      tone={selected.entry_status === "submitted" ? "positive" : selected.entry_status === "draft" ? "warning" : "neutral"}
-                    >
+                    <span className="font-semibold text-foreground">
                       {statusLabel(selected.entry_status)}
-                    </Badge>
+                    </span>
+                  ) : (
+                    <span className="font-semibold text-foreground">Not entered</span>
+                  )}
+                  {selected.is_user_entered && selected.entry_status === "submitted"
+                    ? " · You are entered"
+                    : ""}
+                  {` · ${windowMessage(selected.entry_window_state)}`}
+                  {selected.entry_status ? (
+                    <>
+                      {` · ${selected.participant_count} shooter${selected.participant_count === 1 ? "" : "s"}`}
+                    </>
                   ) : null}
-                  {selected.is_user_entered && selected.entry_status === "submitted" ? (
-                    <Badge tone="brand">You are entered</Badge>
-                  ) : null}
-                  <WindowMessage state={selected.entry_window_state} />
-                </div>
+                </p>
               </div>
 
               <div className="flex flex-wrap gap-3 sm:justify-end">
@@ -145,7 +140,7 @@ export function CompetitionEntryControls({
 
             {state.message ? (
               <p
-                className={`mt-4 text-sm ${state.status === "error" ? "text-danger" : "text-success"}`}
+                className={`mt-3 text-sm ${state.status === "error" ? "text-danger" : "text-success"}`}
                 role={state.status === "error" ? "alert" : "status"}
               >
                 {state.message}
@@ -156,19 +151,19 @@ export function CompetitionEntryControls({
       ) : null}
 
       {memberOnly.map((context) => (
-        <Card key={context.club_id} className={`${manageable.length > 0 ? "mt-4" : ""} p-6 sm:p-8`}>
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <div className="flex flex-wrap gap-2">
-                <Badge tone="positive">Submitted</Badge>
-                {context.is_user_entered ? <Badge tone="brand">You are entered</Badge> : null}
-              </div>
-              <p className="mt-3 font-semibold text-foreground">{context.club_name}</p>
+        <Card key={context.club_id} className={`${manageable.length > 0 ? "mt-3" : ""} p-4 sm:p-5`}>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+            <div className="min-w-0">
+              <p className="font-semibold text-foreground">{context.club_name}</p>
               <p className="mt-1 text-sm text-muted-foreground">
-                {context.participant_count} shooter{context.participant_count === 1 ? "" : "s"} entered by your club.
+                <span className="font-semibold text-foreground">Submitted</span>
+                {context.is_user_entered ? " · You are entered" : ""}
+                {` · ${context.participant_count} shooter${context.participant_count === 1 ? "" : "s"}`}
               </p>
             </div>
-            <p className="text-sm text-muted-foreground">Club officials manage the roster.</p>
+            <p className="shrink-0 text-sm text-muted-foreground">
+              Club officials manage the roster
+            </p>
           </div>
         </Card>
       ))}
