@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ClubAbout } from "@/components/club-about";
 import {
@@ -58,6 +59,17 @@ export default async function ClubOverviewPage({
 
   const { club, membership, informationCardCount } = context;
   const owner = isClubOwner(membership);
+  const relatedOrganisations = Array.from(
+    new Map(
+      (publicCatalog?.competitions ?? []).map((competition) => [
+        competition.organisation_slug,
+        {
+          name: competition.organisation_name,
+          slug: competition.organisation_slug,
+        },
+      ]),
+    ).values(),
+  ).sort((left, right) => left.name.localeCompare(right.name, "en-GB"));
   const registrationSucceeded = Array.isArray(registered)
     ? registered[0] === "1"
     : registered === "1";
@@ -94,6 +106,32 @@ export default async function ClubOverviewPage({
             isOwner={owner}
           />
         </div>
+      ) : null}
+
+      {relatedOrganisations.length > 0 ? (
+        <section className="mt-10" aria-labelledby="related-organisations-heading">
+          <SectionHeader
+            title="Related organisations"
+            description="Derived from this club’s published Competition participation"
+          />
+          <Card className="p-5 sm:p-6">
+            <h2 id="related-organisations-heading" className="sr-only">
+              Related organisations
+            </h2>
+            <ul className="divide-y divide-border">
+              {relatedOrganisations.map((organisation) => (
+                <li key={organisation.slug}>
+                  <Link
+                    href={`/organisations/${organisation.slug}`}
+                    className="flex min-h-12 items-center py-3 text-sm font-semibold text-brand-deep hover:underline"
+                  >
+                    {organisation.name}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </Card>
+        </section>
       ) : null}
 
       <section className="mt-10" aria-labelledby="club-details-heading">

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { LeaveClubButton } from "@/components/leave-club-button";
 import { MembershipRequestButton } from "@/components/membership-request-button";
+import { SavedPublicResultButton } from "@/components/saved-public-results";
 import { Badge, Card, SectionHeader } from "@/components/ui";
 import {
   getClubLocation,
@@ -70,12 +71,17 @@ export function ClubPageFrame({
             {location ?? club.postcode ?? "Location not yet provided"}
           </p>
         </div>
-        <Link
-          href={isAuthenticated ? "/clubs" : "/organisations"}
-          className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
-        >
-          {isAuthenticated ? "Browse clubs" : "Browse results"}
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          {!isAuthenticated ? (
+            <SavedPublicResultButton type="club" slug={club.slug} />
+          ) : null}
+          <Link
+            href={isAuthenticated ? "/clubs" : "/organisations"}
+            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
+          >
+            {isAuthenticated ? "Browse clubs" : "Browse results"}
+          </Link>
+        </div>
       </div>
 
       <nav

@@ -149,6 +149,16 @@ test("actual Competition route -> Supabase SSR RPC -> SQL -> rendered cells: Sum
   assert.doesNotMatch(html, /Aggregate standings across released Rounds/);
   assert.doesNotMatch(html, /above each Round’s ranking points/);
   assert.doesNotMatch(html, /href="[^"]*\/results"/);
+  const roundDateHeaders = Array.from(
+    html.matchAll(/<time[^>]*date[Tt]ime="\d{4}-\d{2}-\d{2}"[^>]*>([^<]+)<\/time>/g),
+  );
+  assert.equal(roundDateHeaders.length, 3);
+  for (const header of roundDateHeaders) {
+    assert.match(header[1], /^\d{1,2} [A-Z][a-z]{2}$/);
+    assert.doesNotMatch(header[1], /\d{4}/);
+    assert.match(header[0], /title="[^"]*\d{4}"/);
+    assert.match(header[0], /aria-label="Round End [^"]*\d{4}"/);
+  }
   for (const [index, row] of renderedRows.entries()) {
     assert.ok(row.includes(`Pair ${index + 1}`));
     assert.match(row, new RegExp(`>${index + 3}<span class="sr-only"> gun result`));

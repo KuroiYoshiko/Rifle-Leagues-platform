@@ -9,9 +9,21 @@ import type {
 } from "@/lib/competition-aggregate-results";
 
 const numberFormatter = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 });
-const dateFormatter = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric", month: "short", year: "numeric", timeZone: "UTC",
+const compactRoundDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric", month: "short", timeZone: "UTC",
 });
+const accessibleRoundDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
+});
+
+function compactRoundDate(value: string) {
+  const parts = compactRoundDateFormatter.formatToParts(
+    new Date(`${value}T00:00:00Z`),
+  );
+  const day = parts.find((part) => part.type === "day")?.value;
+  const month = parts.find((part) => part.type === "month")?.value.slice(0, 3);
+  return `${day} ${month}`;
+}
 
 function number(value: number | null | undefined) {
   return value == null ? "—" : numberFormatter.format(value);
@@ -163,7 +175,14 @@ export function CompetitionAggregateResultsTable({ data }: { data: CompetitionAg
                     {data.rounds.map((round) => (
                       <th key={round.id} scope="col" className="min-w-24 whitespace-nowrap border-b border-border bg-surface-muted px-3 py-3 text-center">
                         <span className="block font-semibold text-foreground">R{round.round_number}</span>
-                        <time dateTime={round.deadline} className="mt-1 block text-[10px] font-normal">{dateFormatter.format(new Date(`${round.deadline}T00:00:00Z`))}</time>
+                        <time
+                          dateTime={round.deadline}
+                          title={accessibleRoundDateFormatter.format(new Date(`${round.deadline}T00:00:00Z`))}
+                          aria-label={`Round End ${accessibleRoundDateFormatter.format(new Date(`${round.deadline}T00:00:00Z`))}`}
+                          className="mt-1 block text-[10px] font-normal"
+                        >
+                          {compactRoundDate(round.deadline)}
+                        </time>
                         {!round.released ? <span className="mt-1 block text-[10px] font-normal">Unreleased</span> : null}
                       </th>
                     ))}
