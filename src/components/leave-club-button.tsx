@@ -11,9 +11,11 @@ const initialState: LeaveClubState = {};
 export function LeaveClubButton({
   membershipId,
   clubName,
+  surface = "dark",
 }: {
   membershipId: number;
   clubName: string;
+  surface?: "dark" | "light";
 }) {
   const dialogId = useId();
   const titleId = `${dialogId}-title`;
@@ -71,7 +73,11 @@ export function LeaveClubButton({
           aria-haspopup="menu"
           aria-expanded={menuOpen}
           onClick={() => setMenuOpen((open) => !open)}
-          className="grid size-11 place-items-center rounded-lg text-white/55 transition hover:bg-white/[.07] hover:text-white focus-visible:bg-white/[.1] focus-visible:text-white"
+          className={`grid size-11 place-items-center rounded-lg transition ${
+            surface === "dark"
+              ? "text-white/55 hover:bg-white/[.07] hover:text-white focus-visible:bg-white/[.1] focus-visible:text-white"
+              : "border border-border bg-surface text-muted-foreground hover:bg-surface-muted hover:text-foreground focus-visible:bg-surface-muted focus-visible:text-foreground"
+          }`}
         >
           <svg
             viewBox="0 0 24 24"

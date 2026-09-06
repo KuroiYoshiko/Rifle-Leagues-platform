@@ -6,7 +6,6 @@ import {
   type DashboardClubMembership,
 } from "@/components/dashboard-club-cards";
 import { MembershipRequestButton } from "@/components/membership-request-button";
-import { ClubManagementSummary } from "@/components/club-operational-summary";
 import { Badge, Card, ProgressBar, SectionHeader } from "@/components/ui";
 import {
   getClubLocation,
@@ -164,6 +163,17 @@ export default async function DashboardPage() {
   const managedClubSummaries = managedClubCount > 0
     ? sortClubOperationalSummaries(await getClubOperationalSummaries())
     : [];
+  const managedClubOrder = new Map(
+    managedClubSummaries.map((summary, index) => [summary.club_id, index]),
+  );
+  const dashboardMemberships = [...activeMemberships].sort(
+    (left, right) =>
+      (managedClubOrder.get(left.club_id) ?? Number.MAX_SAFE_INTEGER) -
+        (managedClubOrder.get(right.club_id) ?? Number.MAX_SAFE_INTEGER) ||
+      left.club.name.localeCompare(right.club.name, "en", {
+        sensitivity: "base",
+      }),
+  );
   const hasMembershipState = memberships.length > 0;
   const metadataFirstName = metadataValue(claims.user_metadata, "first_name");
   const firstName = profile.first_name?.trim() || metadataFirstName || "there";
@@ -324,7 +334,10 @@ export default async function DashboardPage() {
             </div>
           </Card>
         ) : activeClubCount > 0 ? (
-          <DashboardClubCards memberships={activeMemberships} />
+          <DashboardClubCards
+            memberships={dashboardMemberships}
+            operationalSummaries={managedClubSummaries}
+          />
         ) : pendingMemberships.length > 0 || rejectedMemberships.length > 0 ? (
           <div className="space-y-4">
             {pendingMemberships.map((membership) => (
@@ -451,12 +464,6 @@ export default async function DashboardPage() {
           </Card>
         )}
       </section>
-
-      {managedClubSummaries.length > 0 ? (
-        <div className="mt-10">
-          <ClubManagementSummary summaries={managedClubSummaries} />
-        </div>
-      ) : null}
 
       {activeClubCount > 0 && !membershipsResult.error ? (
         <section id="competitions" className="mt-10">

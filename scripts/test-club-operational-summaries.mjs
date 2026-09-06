@@ -356,7 +356,7 @@ test("anonymous callers cannot execute the operational RPC", async () => {
   );
 });
 
-test("compact and full widgets render the operational hierarchy", async () => {
+test("dashboard Club cards and the full widget render the operational hierarchy", async () => {
   const ui = await loadModule("src/components/ui.tsx");
   const presentation = await loadModule(
     "src/lib/club-operational-summary-presentation.ts",
@@ -369,6 +369,22 @@ test("compact and full widgets render the operational hierarchy", async () => {
         default: ({ children, ...props }) => createElement("a", props, children),
       },
       "@/components/ui": ui,
+      "@/lib/club-operational-summary-presentation": presentation,
+    },
+  );
+  const dashboardCards = await loadModule(
+    "src/components/dashboard-club-cards.tsx",
+    {
+      "next/link": {
+        __esModule: true,
+        default: ({ children, ...props }) => createElement("a", props, children),
+      },
+      "@/components/leave-club-button": { LeaveClubButton: () => null },
+      "@/components/ui": ui,
+      "@/lib/clubs": {
+        getClubLocation: (club) => [club.town, club.county].filter(Boolean).join(", "),
+        getClubRoleLabel: (role) => role[0].toUpperCase() + role.slice(1),
+      },
       "@/lib/club-operational-summary-presentation": presentation,
     },
   );
@@ -402,33 +418,89 @@ test("compact and full widgets render the operational hierarchy", async () => {
     incomplete_participant_count: 0,
     complete_participant_count: 6,
   };
-  const ordered = presentation.sortClubOperationalSummaries([healthy, action]);
-  const compactHtml = renderToStaticMarkup(
-    createElement(widgets.ClubManagementSummary, { summaries: ordered }),
+  const dashboardHtml = renderToStaticMarkup(
+    createElement(dashboardCards.DashboardClubCards, {
+      memberships: [
+        {
+          id: 1,
+          club_id: 1,
+          status: "active",
+          role: "owner",
+          created_at: "2026-01-01",
+          club: {
+            id: 1,
+            name: action.club_name,
+            slug: action.club_slug,
+            town: "Basildon",
+            county: "Essex",
+          },
+        },
+        {
+          id: 2,
+          club_id: 2,
+          status: "active",
+          role: "official",
+          created_at: "2026-01-01",
+          club: {
+            id: 2,
+            name: healthy.club_name,
+            slug: healthy.club_slug,
+            town: "Chelmsford",
+            county: "Essex",
+          },
+        },
+      ],
+      operationalSummaries: [action, healthy],
+    }),
+  );
+  const memberHtml = renderToStaticMarkup(
+    createElement(dashboardCards.DashboardClubCards, {
+      memberships: [{
+        id: 3,
+        club_id: 3,
+        status: "active",
+        role: "member",
+        created_at: "2026-01-01",
+        club: {
+          id: 3,
+          name: "Member Only Club",
+          slug: "member-only",
+          town: "Billericay",
+          county: "Essex",
+        },
+      }],
+    }),
   );
   const fullHtml = renderToStaticMarkup(
     createElement(widgets.ClubOperationalSummaryCard, { summary: action }),
   );
 
-  assert.ok(compactHtml.includes("Club attention"));
-  assert.ok(compactHtml.includes("Manage scores"));
-  assert.ok(
-    compactHtml.indexOf("Basildon Rifle and Pistol Club") <
-      compactHtml.indexOf("Another Club"),
-  );
+  assert.ok(dashboardHtml.includes("Action needed"));
+  assert.ok(dashboardHtml.includes("Manage scores"));
+  assert.ok(dashboardHtml.includes("All required scores currently complete"));
+  assert.ok(!dashboardHtml.includes("Club attention"));
+  assert.ok(memberHtml.includes("Member Only Club"));
+  assert.ok(!memberHtml.includes("incomplete"));
+  assert.ok(!memberHtml.includes("Manage scores"));
   assert.ok(fullHtml.includes("target-mark"));
   assert.ok(fullHtml.includes("Active members"));
   assert.ok(fullHtml.includes("Scores required"));
-  assert.ok(!compactHtml.includes("shooting_score_source_id"));
+  assert.ok(!dashboardHtml.includes("shooting_score_source_id"));
 });
 
-test("both authenticated overview routes use the shared operational read model", async () => {
-  const [dashboardSource, clubSource] = await Promise.all([
+test("overview routes use the cleaned hierarchy with the shared read model", async () => {
+  const [dashboardSource, clubSource, clubFrameSource] = await Promise.all([
     readFile(new URL("../src/app/(app)/dashboard/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/app/(app)/clubs/[slug]/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/club-page-frame.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(dashboardSource, /getClubOperationalSummaries\(\)/);
-  assert.match(dashboardSource, /<ClubManagementSummary/);
+  assert.match(dashboardSource, /operationalSummaries=\{managedClubSummaries\}/);
+  assert.match(dashboardSource, /managedClubOrder/);
+  assert.doesNotMatch(dashboardSource, /ClubManagementSummary|Club attention/);
   assert.match(clubSource, /manager\s*\?\s*\(await getClubOperationalSummaries\(club\.id\)\)/);
   assert.match(clubSource, /<ClubOperationalSummaryCard/);
+  assert.doesNotMatch(clubSource, /ClubMembershipPanel/);
+  assert.match(clubFrameSource, /getClubRoleLabel\(membership\.role\)/);
+  assert.match(clubFrameSource, /<Badge tone="positive">Active<\/Badge>/);
 });

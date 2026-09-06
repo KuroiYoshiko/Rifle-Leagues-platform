@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Badge, Card, SectionHeader, TargetContextCard } from "@/components/ui";
+import { Badge, SectionHeader, TargetContextCard } from "@/components/ui";
 import type {
   ClubOperationalStatus,
   ClubOperationalSummary,
@@ -153,79 +153,6 @@ export function ClubOperationalSummaryCard({
           ) : null}
         </div>
       </TargetContextCard>
-    </section>
-  );
-}
-
-function CompactClubSummaryRow({
-  summary,
-}: {
-  summary: ClubOperationalSummary;
-}) {
-  const needsAttention =
-    summary.attention_status === "action_needed" ||
-    summary.attention_status === "deadline_passed";
-  const managementPath = getClubScoreManagementPath(summary);
-  const clubPath = `/clubs/${summary.club_slug}`;
-
-  return (
-    <li className="grid gap-4 px-5 py-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:px-6">
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <h3 className="min-w-0 break-words font-semibold text-foreground">
-            {summary.club_name}
-          </h3>
-          <StatusBadge status={summary.attention_status} />
-        </div>
-        {summary.attention_status === "no_active_scoring" ? (
-          <p className="mt-2 text-sm text-muted-foreground">
-            No actionable Club-scored Competition work
-          </p>
-        ) : (
-          <>
-            <CompletionLine summary={summary} />
-            <CompetitionContext summary={summary} />
-            <DeadlineLine summary={summary} />
-          </>
-        )}
-      </div>
-      <Link
-        href={needsAttention && managementPath ? managementPath : clubPath}
-        className={`inline-flex min-h-10 items-center justify-center rounded-xl px-4 text-sm font-semibold transition ${
-          needsAttention && managementPath
-            ? "bg-primary text-primary-foreground! hover:bg-brand-deep"
-            : "border border-border bg-surface text-brand-deep hover:bg-brand-subtle"
-        }`}
-      >
-        {needsAttention && managementPath ? "Manage scores" : "View club"}
-      </Link>
-    </li>
-  );
-}
-
-export function ClubManagementSummary({
-  summaries,
-}: {
-  summaries: ClubOperationalSummary[];
-}) {
-  if (summaries.length === 0) return null;
-
-  return (
-    <section aria-labelledby="club-attention-heading">
-      <SectionHeader
-        title="Club attention"
-        description="Private operational status for Clubs you actively manage"
-      />
-      <Card>
-        <h2 id="club-attention-heading" className="sr-only">
-          Club attention
-        </h2>
-        <ul className="divide-y divide-border">
-          {summaries.map((summary) => (
-            <CompactClubSummaryRow key={summary.club_id} summary={summary} />
-          ))}
-        </ul>
-      </Card>
     </section>
   );
 }

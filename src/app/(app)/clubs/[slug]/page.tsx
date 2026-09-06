@@ -3,10 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ClubAbout } from "@/components/club-about";
 import { ClubOperationalSummaryCard } from "@/components/club-operational-summary";
-import {
-  ClubMembershipPanel,
-  ClubPageFrame,
-} from "@/components/club-page-frame";
+import { ClubPageFrame } from "@/components/club-page-frame";
 import { Card, SectionHeader } from "@/components/ui";
 import {
   getClubPageContextBySlug,
@@ -103,14 +100,8 @@ export default async function ClubOverviewPage({
         </div>
       ) : null}
 
-      {viewerId ? (
-        <ClubMembershipPanel club={club} membership={membership} />
-      ) : null}
-
       {operationalSummary ? (
-        <div className="mt-10">
-          <ClubOperationalSummaryCard summary={operationalSummary} />
-        </div>
+        <ClubOperationalSummaryCard summary={operationalSummary} />
       ) : null}
 
       {club.about_content || owner ? (

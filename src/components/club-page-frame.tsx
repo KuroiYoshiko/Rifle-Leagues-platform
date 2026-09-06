@@ -52,6 +52,17 @@ export function ClubPageFrame({
   const membershipIsManager = isClubManager(membership);
   const membershipIsOwner = membershipIsActive && membership?.role === "owner";
   const location = getClubLocation(club);
+  const membershipStatusBadge = membershipIsActive
+    ? null
+    : membership?.status === "pending"
+      ? <Badge tone="warning">Pending</Badge>
+      : membership?.status === "rejected"
+        ? <Badge tone="danger">Declined</Badge>
+        : membership?.status === "left"
+          ? <Badge tone="neutral">Former member</Badge>
+          : isAuthenticated
+            ? <Badge tone="neutral">Not a member</Badge>
+            : null;
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -64,9 +75,17 @@ export function ClubPageFrame({
                 ? "Club information"
                 : "Public club"}
           </p>
-          <h1 className="mt-3 max-w-4xl text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">
-            {club.name}
-          </h1>
+          <div className="mt-3 flex max-w-4xl flex-wrap items-center gap-2.5">
+            <h1 className="text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">
+              {club.name}
+            </h1>
+            {membershipIsActive ? (
+              <>
+                <Badge tone="brand">{getClubRoleLabel(membership.role)}</Badge>
+                <Badge tone="positive">Active</Badge>
+              </>
+            ) : membershipStatusBadge}
+          </div>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
             {location ?? club.postcode ?? "Location not yet provided"}
           </p>
@@ -74,6 +93,20 @@ export function ClubPageFrame({
         <div className="flex flex-wrap gap-3">
           {!isAuthenticated ? (
             <SavedPublicResultButton type="club" slug={club.slug} />
+          ) : null}
+          {membershipIsActive && !membershipIsOwner ? (
+            <LeaveClubButton
+              membershipId={membership.id}
+              clubName={club.name}
+              surface="light"
+            />
+          ) : null}
+          {isAuthenticated && !membershipIsActive && membership?.status !== "pending" ? (
+            <MembershipRequestButton
+              clubId={club.id}
+              currentStatus={membership?.status}
+              showDeclinedLabel={false}
+            />
           ) : null}
           <Link
             href={isAuthenticated ? "/clubs" : "/organisations"}
