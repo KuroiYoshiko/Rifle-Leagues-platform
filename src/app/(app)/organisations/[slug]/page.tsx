@@ -1,16 +1,18 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { LeagueSeasonPhaseBadge } from "@/components/league-season-phase-badge";
 import { OrganisationAbout } from "@/components/organisation-about";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
-import { Badge, Card, SectionHeader } from "@/components/ui";
+import { Card, SectionHeader } from "@/components/ui";
 import {
   getLeagueEntrySummary,
   getLeagueSeasons,
-  getLeagueSeasonDateSummary,
+  getLeagueSeasonDateDisplay,
   getLeagueSeasonPresentationPhase,
   getLeagueToday,
   type LeagueSeason,
+  type LeagueSeasonPresentationPhase,
 } from "@/lib/league-seasons";
 import {
   getActiveOrganisationBySlug,
@@ -27,11 +29,13 @@ function OverviewLeagueCard({
   organisationSlug,
   season,
   phase,
+  label,
   today,
 }: {
   organisationSlug: string;
   season: LeagueSeason;
-  phase: "ongoing" | "upcoming";
+  phase: LeagueSeasonPresentationPhase;
+  label: string;
   today: string;
 }) {
   const entrySummary = getLeagueEntrySummary(
@@ -39,27 +43,28 @@ function OverviewLeagueCard({
     season.entry_closes_at,
     today,
   );
-  const seasonSummary = getLeagueSeasonDateSummary(
+  const seasonSummary = getLeagueSeasonDateDisplay(
     season.starts_at,
     season.ends_at,
   );
 
   return (
-    <Card className="min-w-0 p-5 sm:p-6">
-      <Badge tone={phase === "ongoing" ? "positive" : "brand"}>
-        {phase === "ongoing" ? "Ongoing" : "Upcoming"}
-      </Badge>
-      <h3 className="mt-3 break-words font-semibold text-foreground">
-        <Link
-          href={`/organisations/${organisationSlug}/leagues/${season.slug}`}
-          className="hover:text-brand-deep hover:underline"
-        >
-          {season.name}
-        </Link>
-      </h3>
+    <Card className="min-w-0 p-4 sm:p-5">
+      <p className="text-xs font-semibold text-muted-foreground">{label}</p>
+      <div className="mt-2 flex min-w-0 flex-wrap items-center gap-2">
+        <h3 className="min-w-0 break-words font-semibold text-foreground">
+          <Link
+            href={`/organisations/${organisationSlug}/leagues/${season.slug}`}
+            className="hover:text-brand-deep hover:underline"
+          >
+            {season.name}
+          </Link>
+        </h3>
+        <LeagueSeasonPhaseBadge phase={phase} />
+      </div>
       <div className="mt-2 space-y-1 text-xs leading-5 text-muted-foreground">
-        {entrySummary ? <p>{entrySummary}</p> : null}
         {seasonSummary ? <p>{seasonSummary}</p> : null}
+        {entrySummary ? <p>{entrySummary}</p> : null}
         {!entrySummary && !seasonSummary ? <p>Dates have not been set</p> : null}
       </div>
     </Card>
@@ -101,12 +106,24 @@ export default async function OrganisationOverviewPage({
   const publishedSeasons = seasons.filter(
     (season) => season.status === "open" || season.status === "active",
   );
-  const ongoingSeasons = publishedSeasons.filter(
-    (season) => getLeagueSeasonPresentationPhase(season, today) === "ongoing",
-  );
-  const upcomingSeasons = publishedSeasons.filter(
-    (season) => getLeagueSeasonPresentationPhase(season, today) === "upcoming",
-  );
+  const ongoingSeason = publishedSeasons
+    .filter(
+      (season) => getLeagueSeasonPresentationPhase(season, today) === "ongoing",
+    )
+    .sort((left, right) =>
+      (left.ends_at ?? "9999-12-31").localeCompare(
+        right.ends_at ?? "9999-12-31",
+      ),
+    )[0];
+  const upcomingSeason = publishedSeasons
+    .filter(
+      (season) => getLeagueSeasonPresentationPhase(season, today) === "upcoming",
+    )
+    .sort((left, right) =>
+      (left.starts_at ?? "9999-12-31").localeCompare(
+        right.starts_at ?? "9999-12-31",
+      ),
+    )[0];
 
   return (
     <OrganisationPageFrame
@@ -130,64 +147,42 @@ export default async function OrganisationOverviewPage({
         isOwner={managementContext?.access.role === "owner"}
       />
 
-      <section className="mt-10" aria-label="Ongoing seasons">
-        <SectionHeader
-          title="Ongoing seasons"
-          description="Published seasons currently in progress"
-        />
-        {ongoingSeasons.length > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {ongoingSeasons.map((season) => (
+      {ongoingSeason || upcomingSeason ? (
+        <section className="mt-10" aria-label="Season summary">
+          <SectionHeader
+            title="Season summary"
+            description="Current and next published seasons"
+            action={
+              <Link
+                href={`/organisations/${organisation.slug}/leagues`}
+                className="text-sm font-semibold text-brand-strong hover:text-brand-deep hover:underline"
+              >
+                View all seasons
+              </Link>
+            }
+          />
+          <div className="grid gap-3 sm:grid-cols-2">
+            {ongoingSeason ? (
               <OverviewLeagueCard
-                key={season.id}
                 organisationSlug={organisation.slug}
-                season={season}
+                season={ongoingSeason}
                 phase="ongoing"
+                label="Ongoing season"
                 today={today}
               />
-            ))}
-          </div>
-        ) : (
-          <Card className="p-6 sm:p-8">
-            <h2 className="font-semibold text-foreground">
-              No ongoing seasons
-            </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Published seasons appear here while today falls within their
-              scheduled season dates.
-            </p>
-          </Card>
-        )}
-      </section>
-
-      <section className="mt-10" aria-label="Upcoming seasons">
-        <SectionHeader
-          title="Upcoming seasons"
-          description="Published seasons scheduled to start in the future"
-        />
-        {upcomingSeasons.length > 0 ? (
-          <div className="grid gap-4 sm:grid-cols-2">
-            {upcomingSeasons.map((season) => (
+            ) : null}
+            {upcomingSeason ? (
               <OverviewLeagueCard
-                key={season.id}
                 organisationSlug={organisation.slug}
-                season={season}
+                season={upcomingSeason}
                 phase="upcoming"
+                label="Next season"
                 today={today}
               />
-            ))}
+            ) : null}
           </div>
-        ) : (
-          <Card className="p-6 sm:p-8">
-            <h2 className="font-semibold text-foreground">
-              No upcoming seasons
-            </h2>
-            <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-              Published seasons with a future start date will appear here.
-            </p>
-          </Card>
-        )}
-      </section>
+        </section>
+      ) : null}
     </OrganisationPageFrame>
   );
 }
