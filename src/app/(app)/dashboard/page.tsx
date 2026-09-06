@@ -6,11 +6,15 @@ import {
   type DashboardClubMembership,
 } from "@/components/dashboard-club-cards";
 import { MembershipRequestButton } from "@/components/membership-request-button";
+import { ClubManagementSummary } from "@/components/club-operational-summary";
 import { Badge, Card, ProgressBar, SectionHeader } from "@/components/ui";
 import {
   getClubLocation,
+  isClubManager,
   type ClubMembership,
 } from "@/lib/clubs";
+import { getClubOperationalSummaries } from "@/lib/club-operational-summaries";
+import { sortClubOperationalSummaries } from "@/lib/club-operational-summary-presentation";
 import {
   calculateProfileCompleteness,
   type Profile,
@@ -156,6 +160,10 @@ export default async function DashboardPage() {
       }),
     );
   const activeClubCount = activeMemberships.length;
+  const managedClubCount = activeMemberships.filter(isClubManager).length;
+  const managedClubSummaries = managedClubCount > 0
+    ? sortClubOperationalSummaries(await getClubOperationalSummaries())
+    : [];
   const hasMembershipState = memberships.length > 0;
   const metadataFirstName = metadataValue(claims.user_metadata, "first_name");
   const firstName = profile.first_name?.trim() || metadataFirstName || "there";
@@ -164,7 +172,7 @@ export default async function DashboardPage() {
     !profileIsComplete && !hasMembershipState && !membershipsResult.error;
   const welcomeCopy =
     activeClubCount > 0
-      ? `You have ${activeClubCount} active club ${activeClubCount === 1 ? "membership" : "memberships"}. Competition features will appear here when they are ready.`
+      ? `You have ${activeClubCount} active club ${activeClubCount === 1 ? "membership" : "memberships"}. Club and Competition activity is summarised below.`
       : pendingMemberships.length > 0
         ? `You have ${pendingMemberships.length} club membership ${pendingMemberships.length === 1 ? "request" : "requests"} waiting for approval.`
         : rejectedMemberships.length > 0
@@ -443,6 +451,12 @@ export default async function DashboardPage() {
           </Card>
         )}
       </section>
+
+      {managedClubSummaries.length > 0 ? (
+        <div className="mt-10">
+          <ClubManagementSummary summaries={managedClubSummaries} />
+        </div>
+      ) : null}
 
       {activeClubCount > 0 && !membershipsResult.error ? (
         <section id="competitions" className="mt-10">

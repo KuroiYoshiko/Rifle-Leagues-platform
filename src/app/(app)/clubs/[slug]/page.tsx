@@ -2,12 +2,18 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ClubAbout } from "@/components/club-about";
+import { ClubOperationalSummaryCard } from "@/components/club-operational-summary";
 import {
   ClubMembershipPanel,
   ClubPageFrame,
 } from "@/components/club-page-frame";
 import { Card, SectionHeader } from "@/components/ui";
-import { getClubPageContextBySlug, isClubOwner } from "@/lib/clubs";
+import {
+  getClubPageContextBySlug,
+  isClubManager,
+  isClubOwner,
+} from "@/lib/clubs";
+import { getClubOperationalSummaries } from "@/lib/club-operational-summaries";
 import { getPublicClubResultsCatalog } from "@/lib/public-results";
 import { getViewerId } from "@/lib/viewer";
 
@@ -59,6 +65,10 @@ export default async function ClubOverviewPage({
 
   const { club, membership, informationCardCount } = context;
   const owner = isClubOwner(membership);
+  const manager = isClubManager(membership);
+  const operationalSummary = manager
+    ? (await getClubOperationalSummaries(club.id))[0] ?? null
+    : null;
   const relatedOrganisations = Array.from(
     new Map(
       (publicCatalog?.competitions ?? []).map((competition) => [
@@ -95,6 +105,12 @@ export default async function ClubOverviewPage({
 
       {viewerId ? (
         <ClubMembershipPanel club={club} membership={membership} />
+      ) : null}
+
+      {operationalSummary ? (
+        <div className="mt-10">
+          <ClubOperationalSummaryCard summary={operationalSummary} />
+        </div>
       ) : null}
 
       {club.about_content || owner ? (
