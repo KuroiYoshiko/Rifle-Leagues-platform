@@ -7,6 +7,8 @@ import {
 } from "@/components/organisation-page-frame";
 import { Card } from "@/components/ui";
 import { getActiveOrganisationBySlug } from "@/lib/organisations";
+import { getPublicResultsCatalog } from "@/lib/public-results";
+import { getViewerId } from "@/lib/viewer";
 
 export const metadata: Metadata = {
   title: "Organisation results",
@@ -18,7 +20,10 @@ export default async function OrganisationResultsPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const organisation = await getActiveOrganisationBySlug(slug);
+  const viewerId = await getViewerId();
+  const organisation = viewerId
+    ? await getActiveOrganisationBySlug(slug)
+    : (await getPublicResultsCatalog({ organisationSlug: slug }))?.organisation;
 
   if (!organisation) {
     notFound();

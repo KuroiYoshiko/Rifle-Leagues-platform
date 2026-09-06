@@ -1,9 +1,11 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { SavedPublicResultButton } from "@/components/saved-public-results";
 import {
   getOrganisationManagementContextBySlug,
-  type Organisation,
 } from "@/lib/organisations";
+import type { PublicOrganisation } from "@/lib/public-results";
+import { getViewerId } from "@/lib/viewer";
 
 export type OrganisationSection =
   | "overview"
@@ -30,21 +32,27 @@ export async function OrganisationPageFrame({
   currentSection,
   children,
 }: {
-  organisation: Organisation;
+  organisation: PublicOrganisation;
   currentSection: OrganisationSection;
   children: ReactNode;
 }) {
   const basePath = `/organisations/${organisation.slug}`;
-  const managementContext = await getOrganisationManagementContextBySlug(
-    organisation.slug,
-  );
+  const viewerId = await getViewerId();
+  const managementContext = viewerId
+    ? await getOrganisationManagementContextBySlug(organisation.slug)
+    : null;
   const showManagement = Boolean(managementContext);
-  const visibleSectionItems = showManagement
-    ? [
-        ...sectionItems,
-        { id: "management" as const, label: "Management", suffix: "/management" },
-      ]
-    : sectionItems;
+  const publicSectionItems = sectionItems.filter((item) =>
+    ["overview", "leagues", "results"].includes(item.id),
+  );
+  const visibleSectionItems = viewerId
+    ? showManagement
+      ? [
+          ...sectionItems,
+          { id: "management" as const, label: "Management", suffix: "/management" },
+        ]
+      : sectionItems
+    : publicSectionItems;
 
   return (
     <div className="mx-auto max-w-6xl">
@@ -60,12 +68,20 @@ export async function OrganisationPageFrame({
             Public league context and information from this organisation.
           </p>
         </div>
-        <Link
-          href="/organisations"
-          className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
-        >
-          Browse organisations
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          {!viewerId ? (
+            <SavedPublicResultButton
+              type="organisation"
+              slug={organisation.slug}
+            />
+          ) : null}
+          <Link
+            href="/organisations"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
+          >
+            {viewerId ? "Browse organisations" : "Browse results"}
+          </Link>
+        </div>
       </div>
 
       <nav

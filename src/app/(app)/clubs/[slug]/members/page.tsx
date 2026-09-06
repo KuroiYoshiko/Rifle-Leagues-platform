@@ -58,6 +58,7 @@ export default async function ClubMembersPage({
       club={club}
       membership={membership}
       informationCardCount={informationCardCount}
+      isAuthenticated
       currentSection="members"
     >
       {error ? (

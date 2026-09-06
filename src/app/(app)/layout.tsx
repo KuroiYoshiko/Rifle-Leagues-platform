@@ -1,6 +1,8 @@
 import type { ReactNode } from "react";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { AppShell } from "@/components/app-shell";
+import { PublicResultsShell } from "@/components/public-results-shell";
 import type { SidebarClub } from "@/lib/clubs";
 import type { SidebarOrganisation } from "@/lib/organisations";
 import type { Profile } from "@/lib/profiles";
@@ -22,6 +24,10 @@ export default async function ApplicationLayout({
   const claims = data?.claims;
 
   if (error || !claims?.sub) {
+    const requestHeaders = await headers();
+    if (requestHeaders.get("x-rifleleagues-public-results") === "1") {
+      return <PublicResultsShell>{children}</PublicResultsShell>;
+    }
     redirect("/login");
   }
 

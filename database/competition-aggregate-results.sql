@@ -25,10 +25,6 @@ declare
   v_scoring_mode text;
   v_result jsonb;
 begin
-  if (select auth.uid()) is null then
-    raise exception 'Authentication is required.' using errcode = '42501';
-  end if;
-
   select competition.* into v_competition
   from public.competitions as competition
   join public.league_seasons as season on season.id = competition.league_season_id
@@ -299,8 +295,8 @@ $$;
 revoke execute on function public.get_competition_aggregate_results(bigint, bigint, bigint)
   from public, anon, authenticated;
 grant execute on function public.get_competition_aggregate_results(bigint, bigint, bigint)
-  to authenticated;
+  to anon, authenticated;
 comment on function public.get_competition_aggregate_results(bigint, bigint, bigint) is
-  'Released Aggregate standings for authenticated viewers of an exact published competition, across all clubs. Pair/Team participant breakdowns contain only complete released derived shooting results. UTC deadline dates are inclusive. Competition-rank ties use X when enabled; countback is deferred. No stored totals or source-score writes.';
+  'Public released Aggregate standings for an exact active organisation, public season, and published competition. Pair/Team participant breakdowns contain only complete released derived shooting results. UTC deadline dates are inclusive. Competition-rank ties use X when enabled; countback is deferred. No stored totals or source-score writes.';
 
 commit;

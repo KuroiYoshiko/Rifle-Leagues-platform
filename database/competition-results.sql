@@ -125,7 +125,11 @@ as $$
 declare
   v_result jsonb;
 begin
-  if (select auth.uid()) is null then
+  -- The private function is not executable by API roles. Its one public
+  -- wrapper always passes released_only=true; diagnostic/management callers
+  -- still require an authenticated identity before unreleased values can be
+  -- derived.
+  if (select auth.uid()) is null and not p_released_only then
     raise exception 'Authentication is required.' using errcode = '42501';
   end if;
 

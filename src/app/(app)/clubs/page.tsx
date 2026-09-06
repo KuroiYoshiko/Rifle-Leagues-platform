@@ -39,7 +39,10 @@ export default async function ClubsPage({
   const userId = claimsData?.claims?.sub;
 
   if (claimsError || !userId) {
-    redirect("/login");
+    const params = new URLSearchParams();
+    if (searchTerm) params.set("q", searchTerm);
+    const query = params.toString();
+    redirect(query ? `/organisations?${query}` : "/organisations");
   }
 
   let clubsQuery = supabase

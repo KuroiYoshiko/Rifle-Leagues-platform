@@ -3,6 +3,10 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, type ReactNode } from "react";
+import {
+  ApplicationSidebarBrand,
+  ApplicationSidebarLink,
+} from "@/components/application-sidebar-primitives";
 import type { SidebarClub } from "@/lib/clubs";
 import type { SidebarOrganisation } from "@/lib/organisations";
 
@@ -131,18 +135,6 @@ function isNavigationItemActive(pathname: string, href: string) {
   );
 }
 
-function Brand() {
-  return (
-    <Link
-      href="/"
-      className="inline-flex items-baseline text-lg font-semibold tracking-[-0.035em] text-white"
-      aria-label="RifleLeagues home"
-    >
-      Rifle <span className="ml-1.5 font-medium text-brand">Leagues</span>
-    </Link>
-  );
-}
-
 function NavigationLinks({
   items,
   pathname,
@@ -186,31 +178,14 @@ function NavigationLinks({
         }
 
         return (
-          <Link
+          <ApplicationSidebarLink
             key={item.label}
             href={item.href}
-            onClick={onNavigate}
-            aria-current={isActive ? "page" : undefined}
-            className={`group flex min-h-10 items-center gap-3 rounded-xl px-3 text-sm transition ${
-              isActive
-                ? "bg-white text-[var(--brand-deep)] shadow-sm hover:bg-white hover:text-[var(--brand-deep)] focus-visible:bg-white focus-visible:text-[var(--brand-deep)]"
-                : "text-white/62 hover:bg-white/[.07] hover:text-white focus-visible:bg-white/[.1] focus-visible:text-white"
-            }`}
-          >
-            <span
-              className={`grid size-6 place-items-center rounded-md border text-[9px] font-semibold ${
-                isActive
-                  ? "border-border bg-brand-subtle text-[var(--brand-strong)] group-hover:border-brand/30 group-focus-visible:border-brand/40"
-                  : "border-white/12 text-white/45 group-hover:border-white/20 group-focus-visible:border-white/25"
-              }`}
-              aria-hidden="true"
-            >
-              {item.mark}
-            </span>
-            <span className={isActive ? "text-[var(--brand-deep)]" : undefined}>
-              {item.label}
-            </span>
-          </Link>
+            label={item.label}
+            mark={item.mark}
+            active={isActive}
+            onNavigate={onNavigate}
+          />
         );
       })}
     </div>
@@ -492,7 +467,7 @@ function SidebarContent({
   return (
     <>
       <div className="px-5 pt-6">
-        <Brand />
+        <ApplicationSidebarBrand />
       </div>
       <Navigation
         key={navigationContext}

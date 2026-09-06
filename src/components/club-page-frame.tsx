@@ -2,6 +2,7 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import { LeaveClubButton } from "@/components/leave-club-button";
 import { MembershipRequestButton } from "@/components/membership-request-button";
+import { SavedPublicResultButton } from "@/components/saved-public-results";
 import { Badge, Card, SectionHeader } from "@/components/ui";
 import {
   getClubLocation,
@@ -35,12 +36,14 @@ export function ClubPageFrame({
   club,
   membership,
   informationCardCount,
+  isAuthenticated,
   currentSection,
   children,
 }: {
   club: Club;
   membership: ClubMembership | null;
   informationCardCount: number;
+  isAuthenticated: boolean;
   currentSection: ClubSection;
   children: ReactNode;
 }) {
@@ -55,7 +58,11 @@ export function ClubPageFrame({
       <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-medium text-brand-strong">
-            {membershipIsActive ? "Member club" : "Club information"}
+            {membershipIsActive
+              ? "Member club"
+              : isAuthenticated
+                ? "Club information"
+                : "Public club"}
           </p>
           <h1 className="mt-3 max-w-4xl text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">
             {club.name}
@@ -64,29 +71,33 @@ export function ClubPageFrame({
             {location ?? club.postcode ?? "Location not yet provided"}
           </p>
         </div>
-        <Link
-          href="/clubs"
-          className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
-        >
-          Browse clubs
-        </Link>
+        <div className="flex flex-wrap gap-3">
+          {!isAuthenticated ? (
+            <SavedPublicResultButton type="club" slug={club.slug} />
+          ) : null}
+          <Link
+            href={isAuthenticated ? "/clubs" : "/organisations"}
+            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
+          >
+            {isAuthenticated ? "Browse clubs" : "Browse results"}
+          </Link>
+        </div>
       </div>
 
-      {membershipIsActive ? (
-        <nav
-          className="club-section-navigation mt-8 overflow-x-auto rounded-2xl border border-border bg-surface p-2 shadow-xs"
-          aria-label={`${club.name} sections`}
-        >
-          <div className="flex min-w-max gap-1">
-            {sectionItems
-              .filter(
-                (item) =>
-                  (item.id === "information"
-                    ? membershipIsOwner || informationCardCount > 0
-                    : membershipIsManager ||
-                      (item.id !== "members" && item.id !== "settings")),
-              )
-              .map((item) => {
+      <nav
+        className="club-section-navigation mt-8 overflow-x-auto rounded-2xl border border-border bg-surface p-2 shadow-xs"
+        aria-label={`${club.name} sections`}
+      >
+        <div className="flex min-w-max gap-1">
+          {sectionItems
+            .filter(
+              (item) =>
+                (item.id === "information"
+                  ? membershipIsOwner || informationCardCount > 0
+                  : membershipIsManager ||
+                    (item.id !== "members" && item.id !== "settings")),
+            )
+            .map((item) => {
               const isActive = item.id === currentSection;
 
               return (
@@ -103,10 +114,9 @@ export function ClubPageFrame({
                   {item.label}
                 </Link>
               );
-              })}
-          </div>
-        </nav>
-      ) : null}
+            })}
+        </div>
+      </nav>
 
       <div className="mt-8">{children}</div>
     </div>

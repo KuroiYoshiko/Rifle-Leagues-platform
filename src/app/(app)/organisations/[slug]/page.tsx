@@ -16,6 +16,8 @@ import {
   getActiveOrganisationBySlug,
   getOrganisationManagementContextBySlug,
 } from "@/lib/organisations";
+import { getPublicResultsCatalog } from "@/lib/public-results";
+import { getViewerId } from "@/lib/viewer";
 
 export const metadata: Metadata = {
   title: "Organisation overview",
@@ -73,10 +75,17 @@ export default async function OrganisationOverviewPage({
 }) {
   const { slug } = await params;
   const { registered } = await searchParams;
-  const [organisation, managementContext] = await Promise.all([
-    getActiveOrganisationBySlug(slug),
-    getOrganisationManagementContextBySlug(slug),
-  ]);
+  const viewerId = await getViewerId();
+  const isAuthenticated = Boolean(viewerId);
+  const publicCatalog = viewerId
+    ? null
+    : await getPublicResultsCatalog({ organisationSlug: slug });
+  const [organisation, managementContext] = viewerId
+    ? await Promise.all([
+        getActiveOrganisationBySlug(slug),
+        getOrganisationManagementContextBySlug(slug),
+      ])
+    : [publicCatalog?.organisation ?? null, null];
   const registrationSucceeded = Array.isArray(registered)
     ? registered[0] === "1"
     : registered === "1";
@@ -85,7 +94,9 @@ export default async function OrganisationOverviewPage({
     notFound();
   }
 
-  const seasons = await getLeagueSeasons(organisation.id);
+  const seasons = viewerId
+    ? await getLeagueSeasons(organisation.id)
+    : (publicCatalog?.seasons ?? []);
   const today = getLeagueToday();
   const publishedSeasons = seasons.filter(
     (season) => season.status === "open" || season.status === "active",
@@ -102,7 +113,7 @@ export default async function OrganisationOverviewPage({
       organisation={organisation}
       currentSection="overview"
     >
-      {registrationSucceeded ? (
+      {isAuthenticated && registrationSucceeded ? (
         <div
           className="mb-8 rounded-2xl border border-success/20 bg-success-subtle px-5 py-4 text-sm leading-6 text-success"
           role="status"
@@ -113,7 +124,7 @@ export default async function OrganisationOverviewPage({
         </div>
       ) : null}
       <OrganisationAbout
-        key={organisation.updated_at}
+        key={`${organisation.id}:${organisation.about_content ?? ""}`}
         organisationId={organisation.id}
         initialContent={organisation.about_content}
         isOwner={managementContext?.access.role === "owner"}

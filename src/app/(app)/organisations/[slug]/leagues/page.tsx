@@ -18,6 +18,8 @@ import {
   getActiveOrganisationBySlug,
   getOrganisationManagementContextBySlug,
 } from "@/lib/organisations";
+import { getPublicResultsCatalog } from "@/lib/public-results";
+import { getViewerId } from "@/lib/viewer";
 
 export const metadata: Metadata = {
   title: "Organisation seasons",
@@ -116,16 +118,24 @@ export default async function OrganisationLeaguesPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
-  const [organisation, managementContext] = await Promise.all([
-    getActiveOrganisationBySlug(slug),
-    getOrganisationManagementContextBySlug(slug),
-  ]);
+  const viewerId = await getViewerId();
+  const publicCatalog = viewerId
+    ? null
+    : await getPublicResultsCatalog({ organisationSlug: slug });
+  const [organisation, managementContext] = viewerId
+    ? await Promise.all([
+        getActiveOrganisationBySlug(slug),
+        getOrganisationManagementContextBySlug(slug),
+      ])
+    : [publicCatalog?.organisation ?? null, null];
 
   if (!organisation) {
     notFound();
   }
 
-  const seasons = await getLeagueSeasons(organisation.id);
+  const seasons = viewerId
+    ? await getLeagueSeasons(organisation.id)
+    : (publicCatalog?.seasons ?? []);
   const isOwner = managementContext?.access.role === "owner";
 
   return (

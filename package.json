@@ -7,7 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test:aggregate": "node --test scripts/test-aggregate-results.mjs"
+    "test:aggregate": "node --test scripts/test-aggregate-results.mjs",
+    "test:public-results": "node --test scripts/test-public-results.mjs",
+    "test:saved-results": "node --test scripts/test-saved-public-results.mjs",
+    "test:results": "npm run test:aggregate && npm run test:public-results && npm run test:saved-results"
   },
   "dependencies": {
     "@dnd-kit/react": "0.5.0",

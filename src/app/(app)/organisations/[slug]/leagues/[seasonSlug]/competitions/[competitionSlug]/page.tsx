@@ -35,6 +35,9 @@ import {
   getActiveOrganisationBySlug,
   getOrganisationManagementContextBySlug,
 } from "@/lib/organisations";
+import { getPublicResultsCatalog } from "@/lib/public-results";
+import { getCompetitionViewerCapabilities } from "@/lib/public-results-routes.mjs";
+import { getViewerId } from "@/lib/viewer";
 
 export const metadata: Metadata = {
   title: "Competition",
@@ -58,30 +61,56 @@ export default async function CompetitionDetailPage({
 }) {
   const { slug, seasonSlug, competitionSlug } = await params;
   const { created, drafted, published, saved } = await searchParams;
-  const [organisation, managementContext] = await Promise.all([
-    getActiveOrganisationBySlug(slug),
-    getOrganisationManagementContextBySlug(slug),
-  ]);
+  const viewerId = await getViewerId();
+  const isAuthenticated = Boolean(viewerId);
+  const publicCatalog = viewerId
+    ? null
+    : await getPublicResultsCatalog({
+        organisationSlug: slug,
+        seasonSlug,
+        competitionSlug,
+      });
+  const [organisation, managementContext] = viewerId
+    ? await Promise.all([
+        getActiveOrganisationBySlug(slug),
+        getOrganisationManagementContextBySlug(slug),
+      ])
+    : [publicCatalog?.organisation ?? null, null];
 
   if (!organisation) {
     notFound();
   }
 
-  const season = await getLeagueSeasonBySlug(organisation.id, seasonSlug);
+  const season = viewerId
+    ? await getLeagueSeasonBySlug(organisation.id, seasonSlug)
+    : (publicCatalog?.season ?? null);
   if (!season) {
     notFound();
   }
 
-  const competition = await getCompetitionBySlug(season.id, competitionSlug);
+  const competition = viewerId
+    ? await getCompetitionBySlug(season.id, competitionSlug)
+    : (publicCatalog?.competition ?? null);
   if (!competition) {
     notFound();
   }
 
   const isOwner = managementContext?.access.role === "owner";
+  const initialCapabilities = getCompetitionViewerCapabilities({
+    isAuthenticated,
+    isOwner,
+    hasManagementContext: Boolean(managementContext),
+    competitionPublished: competition.status === "published",
+    hasDivisionManagement: false,
+  });
   const [rounds, scoreComponents, entryContexts, divisionManagement, publishedDivisions, lifecycleState, aggregateResults] = await Promise.all([
-    getCompetitionRounds(competition.id),
-    getCompetitionScoreComponents(competition.id),
-    competition.status === "published"
+    viewerId
+      ? getCompetitionRounds(competition.id)
+      : Promise.resolve(publicCatalog?.rounds ?? []),
+    viewerId
+      ? getCompetitionScoreComponents(competition.id)
+      : Promise.resolve(publicCatalog?.score_components ?? []),
+    initialCapabilities.loadEntryContext
       ? getCompetitionClubEntryContext(competition.id)
       : Promise.resolve([]),
     managementContext
@@ -91,10 +120,10 @@ export default async function CompetitionDetailPage({
           competition.id,
         )
       : Promise.resolve(null),
-    competition.status === "published"
+    viewerId && competition.status === "published"
       ? getPublishedCompetitionDivisions(competition.id)
-      : Promise.resolve(null),
-    isOwner
+      : Promise.resolve(publicCatalog?.published_divisions ?? null),
+    initialCapabilities.showLifecycleActions
       ? getCompetitionLifecycleState(
           organisation.id,
           season.id,
@@ -105,6 +134,13 @@ export default async function CompetitionDetailPage({
       ? getCompetitionAggregateResults(organisation.id, season.id, competition.id)
       : Promise.resolve(null),
   ]);
+  const capabilities = getCompetitionViewerCapabilities({
+    isAuthenticated,
+    isOwner,
+    hasManagementContext: Boolean(managementContext),
+    competitionPublished: competition.status === "published",
+    hasDivisionManagement: Boolean(divisionManagement),
+  });
   const creationSucceeded = Array.isArray(created)
     ? created[0] === "1"
     : created === "1";
@@ -165,7 +201,8 @@ export default async function CompetitionDetailPage({
 
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="leagues">
-      {creationSucceeded || publishSucceeded || saveSucceeded || returnToDraftSucceeded ? (
+      {isAuthenticated &&
+      (creationSucceeded || publishSucceeded || saveSucceeded || returnToDraftSucceeded) ? (
         <div
           className="mb-6 rounded-2xl border border-success/20 bg-success-subtle px-5 py-4 text-sm leading-6 text-success"
           role="status"
@@ -216,7 +253,7 @@ export default async function CompetitionDetailPage({
               </p>
             ) : null}
           </div>
-          {isOwner && lifecycleState ? (
+          {capabilities.showLifecycleActions && lifecycleState ? (
             <CompetitionLifecycleActions
               organisationId={organisation.id}
               leagueSeasonId={season.id}
@@ -261,11 +298,13 @@ export default async function CompetitionDetailPage({
         </p>
       </Card>
 
-      <CompetitionEntryControls
-        contexts={entryContexts}
-        competitionId={competition.id}
-        basePath={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}`}
-      />
+      {capabilities.showEntryControls ? (
+        <CompetitionEntryControls
+          contexts={entryContexts}
+          competitionId={competition.id}
+          basePath={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}`}
+        />
+      ) : null}
 
       {competition.status === "published" ? (
         <section id="results" className="mt-8 min-w-0 scroll-mt-24" aria-label="Competition results">
@@ -287,6 +326,7 @@ export default async function CompetitionDetailPage({
         effectiveDates={effectiveDates}
         rounds={rounds}
         scoreComponents={scoreComponents}
+        showScoringAccess={capabilities.showScoringAccess}
       />
 
       {publishedDivisions ? (
@@ -296,8 +336,7 @@ export default async function CompetitionDetailPage({
         />
       ) : null}
 
-      {(managementContext && competition.status === "published") ||
-      divisionManagement ? (
+      {capabilities.showCompetitionManagement ? (
         <section className="mt-8" aria-labelledby="competition-management-heading">
           <SectionHeader
             title="Competition management"
