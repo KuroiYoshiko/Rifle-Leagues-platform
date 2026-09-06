@@ -267,6 +267,31 @@ uses that one value for Round placement, cells and overall totals. It no longer
 depends on the foundation's presentation-only `display_score` field. No source
 score, score-entry, shared derivation, or mixed-method behavior changes are needed.
 
+## Gun Score Competition Results
+
+For an existing installation, run these complete files in order:
+
+1. [`database/competition-results.sql`](database/competition-results.sql) — ensure
+   the current shared participant/entrant derivation is installed.
+2. [`database/competition-gun-score-results.sql`](database/competition-gun-score-results.sql)
+   — add the narrow public `get_competition_gun_score_results` RPC.
+
+Gun Score standings accumulate complete released shooting results directly. Points
+scored rank high-to-low; points dropped are derived from maximum minus canonical
+achieved score and rank low-to-high. Equal primary totals use higher X only when X
+is enabled, with exact equality retaining competition rank ties. NSR remains a
+derived presentation state: it contributes no gun result, maximum, or X and does
+not create a source row. Because no prior Gun Score attendance rule exists, the
+read model does not add a scored-Round-count penalty or invalidate an entrant's
+other complete Rounds. This is significant for accumulated points-dropped totals
+and should be revisited only when a separate sporting policy is established.
+
+The Competition page uses the same responsive Results matrix and participant
+disclosures as Aggregate Results, but Gun Score cells contain no ranking-point
+fields or badges. Anonymous readers call only the context-checked RPC; score-table
+grants and RLS remain unchanged. Run `npm run test:gun-score` for its disposable
+PGlite, route, loader, public-boundary, and rendered-matrix coverage.
+
 The exact 397/400 versus 396/400 example also passes against the preceding
 checked-in SQL: achieved descending is equivalent to dropped ascending for equal
 maxima. A later live diagnostic resolved the Summer Pairs 200 discrepancy:

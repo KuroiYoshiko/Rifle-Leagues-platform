@@ -7,6 +7,16 @@ import type {
   AggregateRoundCell,
   CompetitionAggregateResults,
 } from "@/lib/competition-aggregate-results";
+import type {
+  CompetitionGunScoreResults,
+  GunScoreEntrant,
+  GunScoreRoundCell,
+} from "@/lib/competition-gun-score-results";
+
+type ResultsRankingMethod = "aggregate" | "gun_score";
+type ResultsEntrant = AggregateEntrant | GunScoreEntrant;
+type ResultsRoundCell = AggregateRoundCell | GunScoreRoundCell;
+type ResultsData = CompetitionAggregateResults | CompetitionGunScoreResults;
 
 const numberFormatter = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 });
 const compactRoundDateFormatter = new Intl.DateTimeFormat("en-GB", {
@@ -34,7 +44,11 @@ function participantName(participant: AggregateParticipant) {
     `Shooter ${participant.slot_number}`;
 }
 
-function RoundCell({ cell, usesX }: { cell: AggregateRoundCell; usesX: boolean }) {
+function RoundCell({ cell, usesX, rankingMethod }: {
+  cell: ResultsRoundCell;
+  usesX: boolean;
+  rankingMethod: ResultsRankingMethod;
+}) {
   if (cell.state === "pending") {
     return <span className="text-xs text-muted-foreground">Pending</span>;
   }
@@ -44,9 +58,11 @@ function RoundCell({ cell, usesX }: { cell: AggregateRoundCell; usesX: boolean }
         {cell.state === "nsr" ? <abbr title="No score returned: incomplete at Round End" className="no-underline">NSR</abbr> : number(cell.gun_score)}
         {cell.state === "scored" ? <span className="sr-only"> gun result</span> : null}
       </span>
-      <span className="rounded-md bg-brand-subtle px-2 py-0.5 text-[11px] font-semibold text-brand-deep">
-        {cell.ranking_points} <span aria-hidden="true">pts</span><span className="sr-only">aggregate ranking points</span>
-      </span>
+      {rankingMethod === "aggregate" ? (
+        <span className="rounded-md bg-brand-subtle px-2 py-0.5 text-[11px] font-semibold text-brand-deep">
+          {(cell as AggregateRoundCell).ranking_points} <span aria-hidden="true">pts</span><span className="sr-only">aggregate ranking points</span>
+        </span>
+      ) : null}
       {usesX && cell.state === "scored" ? (
         <span className="text-[11px] text-muted-foreground">{number(cell.x_total)} X</span>
       ) : null}
@@ -54,10 +70,11 @@ function RoundCell({ cell, usesX }: { cell: AggregateRoundCell; usesX: boolean }
   );
 }
 
-function TotalCell({ entrant, usesX, gunLabel }: {
-  entrant: AggregateEntrant;
+function TotalCell({ entrant, usesX, gunLabel, rankingMethod }: {
+  entrant: ResultsEntrant;
   usesX: boolean;
   gunLabel: string;
+  rankingMethod: ResultsRankingMethod;
 }) {
   return (
     <div className="flex flex-col items-center gap-1">
@@ -65,9 +82,11 @@ function TotalCell({ entrant, usesX, gunLabel }: {
         {number(entrant.gun_total)}
         <span className="sr-only"> total gun result</span>
       </span>
-      <span className="rounded-md bg-brand-subtle px-2 py-0.5 text-[11px] font-semibold text-brand-deep">
-        {entrant.total_points} <span aria-hidden="true">pts</span><span className="sr-only">total aggregate ranking points</span>
-      </span>
+      {rankingMethod === "aggregate" ? (
+        <span className="rounded-md bg-brand-subtle px-2 py-0.5 text-[11px] font-semibold text-brand-deep">
+          {(entrant as AggregateEntrant).total_points} <span aria-hidden="true">pts</span><span className="sr-only">total aggregate ranking points</span>
+        </span>
+      ) : null}
       {usesX ? <span className="text-[11px] text-muted-foreground">{number(entrant.x_total)} X</span> : null}
       <span className="sr-only">{entrant.scored_rounds} scored Rounds. {gunLabel}.</span>
     </div>
@@ -92,10 +111,11 @@ function ParticipantResultCell({ cell, usesX }: {
   );
 }
 
-function ParticipantBreakdown({ entrant, rounds, usesX }: {
-  entrant: AggregateEntrant;
+function ParticipantBreakdown({ entrant, rounds, usesX, rankingMethod }: {
+  entrant: ResultsEntrant;
   rounds: Array<{ id: number; round_number: number }>;
   usesX: boolean;
+  rankingMethod: ResultsRankingMethod;
 }) {
   return (
     <tr className="bg-surface-muted/40">
@@ -106,7 +126,9 @@ function ParticipantBreakdown({ entrant, rounds, usesX }: {
           </summary>
           <div className="border-t border-border bg-surface px-2 pb-2 sm:px-3">
             <table className="w-full border-separate border-spacing-0 text-xs tabular-nums">
-              <caption className="sr-only">Released shooting results by participant for {entrant.entrant_label}. Participant rows do not receive Aggregate ranking points.</caption>
+              <caption className="sr-only">
+                Released shooting results by participant for {entrant.entrant_label}. Participant rows do not receive {rankingMethod === "aggregate" ? "Aggregate ranking points" : "a separate ranking position"}.
+              </caption>
               <thead>
                 <tr className="text-muted-foreground">
                   <th scope="col" className="sticky left-0 z-10 min-w-44 border-b border-border bg-surface px-2 py-2 text-left font-medium sm:min-w-60">Participant</th>
@@ -147,7 +169,10 @@ function ParticipantBreakdown({ entrant, rounds, usesX }: {
   );
 }
 
-export function CompetitionAggregateResultsTable({ data }: { data: CompetitionAggregateResults }) {
+function CompetitionResultsTable({ data, rankingMethod }: {
+  data: ResultsData;
+  rankingMethod: ResultsRankingMethod;
+}) {
   if (data.status === "awaiting_divisions") {
     return <Card className="p-6 text-sm text-muted-foreground">Results will be available when division allocations are published.</Card>;
   }
@@ -160,7 +185,7 @@ export function CompetitionAggregateResultsTable({ data }: { data: CompetitionAg
         <p className="rounded-xl bg-brand-subtle px-4 py-3 text-sm text-brand-deep">No Rounds have been released yet.</p>
       ) : null}
       {data.groups.map((group) => (
-        <section key={group.id} aria-labelledby={`results-division-${group.id}`} className="min-w-0">
+        <section key={group.id} aria-labelledby={`results-division-${group.id}`} className="min-w-0" data-ranking-method={rankingMethod}>
           <h2 id={`results-division-${group.id}`} className="mb-3 text-lg font-semibold text-foreground">{group.name}</h2>
           {group.entrants.length === 0 ? (
             <Card className="p-5 text-sm text-muted-foreground">No submitted entrants yet.</Card>
@@ -168,7 +193,9 @@ export function CompetitionAggregateResultsTable({ data }: { data: CompetitionAg
             <div role="region" aria-labelledby={`results-division-${group.id}`} tabIndex={0}
               className="relative max-w-full overflow-x-auto rounded-2xl border border-border bg-surface outline-none focus-visible:ring-2 focus-visible:ring-brand">
               <table className="w-full border-separate border-spacing-0 text-sm tabular-nums">
-                <caption className="sr-only">{group.name} Aggregate standings. {gunLabel} and ranking points per Round. Scroll horizontally for more Rounds. Equal positions remain tied.</caption>
+                <caption className="sr-only">
+                  {group.name} {rankingMethod === "aggregate" ? `Aggregate standings. ${gunLabel} and ranking points per Round.` : `Gun Score standings. ${gunLabel} per Round.`} Scroll horizontally for more Rounds. Equal positions remain tied.
+                </caption>
                 <thead>
                   <tr className="text-xs text-muted-foreground">
                     <th scope="col" className="sticky left-0 z-20 min-w-44 border-b border-r border-border bg-surface-muted px-3 py-3 text-left sm:min-w-60">Position / Entrant</th>
@@ -208,15 +235,15 @@ export function CompetitionAggregateResultsTable({ data }: { data: CompetitionAg
                       </th>
                       {entrant.rounds.map((cell) => (
                         <td key={cell.round_id} className="border-b border-border px-3 py-3 text-center align-top">
-                          <RoundCell cell={cell} usesX={data.uses_x_score} />
+                          <RoundCell cell={cell} usesX={data.uses_x_score} rankingMethod={rankingMethod} />
                         </td>
                       ))}
                       <td data-total-cell className="border-b border-border bg-brand-subtle/30 px-3 py-3 text-center align-top">
-                        <TotalCell entrant={entrant} usesX={data.uses_x_score} gunLabel={gunLabel} />
+                        <TotalCell entrant={entrant} usesX={data.uses_x_score} gunLabel={gunLabel} rankingMethod={rankingMethod} />
                       </td>
                     </tr>
                     {entrant.entrant_format !== "individual" ? (
-                      <ParticipantBreakdown entrant={entrant} rounds={data.rounds} usesX={data.uses_x_score} />
+                      <ParticipantBreakdown entrant={entrant} rounds={data.rounds} usesX={data.uses_x_score} rankingMethod={rankingMethod} />
                     ) : null}
                     </Fragment>
                   ))}
@@ -228,4 +255,12 @@ export function CompetitionAggregateResultsTable({ data }: { data: CompetitionAg
       ))}
     </div>
   );
+}
+
+export function CompetitionAggregateResultsTable({ data }: { data: CompetitionAggregateResults }) {
+  return <CompetitionResultsTable data={data} rankingMethod="aggregate" />;
+}
+
+export function CompetitionGunScoreResultsTable({ data }: { data: CompetitionGunScoreResults }) {
+  return <CompetitionResultsTable data={data} rankingMethod="gun_score" />;
 }

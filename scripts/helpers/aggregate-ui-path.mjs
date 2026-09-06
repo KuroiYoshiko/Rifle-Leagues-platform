@@ -33,6 +33,9 @@ export async function renderAggregateResultsRoute({
   viewerId = "00000000-0000-0000-0000-000000000001",
 }) {
   const calls = [];
+  const rpcName = competition.ranking_method === "gun_score"
+    ? "get_competition_gun_score_results"
+    : "get_competition_aggregate_results";
   const originalFetch = globalThis.fetch;
   const envKeys = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"];
   const previousEnv = envKeys.map(key => process.env[key]);
@@ -41,7 +44,7 @@ export async function renderAggregateResultsRoute({
   // No network: the real SDK's HTTP request is dispatched to isolated PostgreSQL.
   globalThis.fetch = async (input, init) => {
     const request = new Request(input, init);
-    assert.equal(request.url, "https://aggregate-test.invalid/rest/v1/rpc/get_competition_aggregate_results");
+    assert.equal(request.url, `https://aggregate-test.invalid/rest/v1/rpc/${rpcName}`);
     assert.equal(request.method, "POST");
     assert.equal(request.headers.get("content-profile"), "public");
     const parameters = await request.json();
@@ -59,6 +62,10 @@ export async function renderAggregateResultsRoute({
       "next/headers": { cookies: async () => ({ getAll: () => [], set: () => {} }) },
     });
     const resultsLoader = await loadModule("src/lib/competition-aggregate-results.ts", {
+      "@/lib/supabase/server": serverClient,
+    });
+    const gunScoreResultsLoader = await loadModule("src/lib/competition-gun-score-results.ts", {
+      "@/lib/competition-aggregate-results": resultsLoader,
       "@/lib/supabase/server": serverClient,
     });
     const ui = await loadModule("src/components/ui.tsx");
@@ -83,6 +90,7 @@ export async function renderAggregateResultsRoute({
       "@/components/organisation-page-frame": { OrganisationPageFrame: ({ children }) => children },
       "@/components/published-competition-divisions": { PublishedCompetitionDivisionsView: () => null },
       "@/lib/competition-aggregate-results": resultsLoader,
+      "@/lib/competition-gun-score-results": gunScoreResultsLoader,
       "@/lib/competition-divisions": {
         getCompetitionDivisionManagement: async () => null,
         getPublishedCompetitionDivisions: async () => null,
@@ -139,7 +147,7 @@ export async function renderAggregateResultsRoute({
       searchParams: Promise.resolve({}),
     });
     const html = renderToStaticMarkup(element);
-    assert.equal(calls.length, 1, "Competition page must use the single Aggregate RPC");
+    assert.equal(calls.length, 1, "Competition page must use one Results RPC");
     return { html, call: calls[0] };
   } finally {
     globalThis.fetch = originalFetch;
@@ -149,6 +157,8 @@ export async function renderAggregateResultsRoute({
     });
   }
 }
+
+export const renderGunScoreResultsRoute = renderAggregateResultsRoute;
 
 export async function getCompetitionResultsRedirect(params) {
   let destination;
