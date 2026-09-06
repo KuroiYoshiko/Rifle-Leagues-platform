@@ -9,10 +9,11 @@
     "lint": "eslint",
     "test:aggregate": "node --test scripts/test-aggregate-results.mjs",
     "test:gun-score": "node --test scripts/test-gun-score-results.mjs",
+    "test:round-robin": "node --test scripts/test-round-robin-results.mjs",
     "test:public-results": "node --test scripts/test-public-results.mjs",
     "test:saved-results": "node --test scripts/test-saved-public-results.mjs",
     "test:club-operations": "node --test scripts/test-club-operational-summaries.mjs",
-    "test:results": "npm run test:aggregate && npm run test:gun-score && npm run test:public-results && npm run test:saved-results"
+    "test:results": "npm run test:aggregate && npm run test:gun-score && npm run test:round-robin && npm run test:public-results && npm run test:saved-results"
   },
   "dependencies": {
     "@dnd-kit/react": "0.5.0",

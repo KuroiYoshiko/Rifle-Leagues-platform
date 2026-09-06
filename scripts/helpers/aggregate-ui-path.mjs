@@ -35,6 +35,8 @@ export async function renderAggregateResultsRoute({
   const calls = [];
   const rpcName = competition.ranking_method === "gun_score"
     ? "get_competition_gun_score_results"
+    : competition.ranking_method === "round_robin"
+    ? "get_competition_round_robin_results"
     : "get_competition_aggregate_results";
   const originalFetch = globalThis.fetch;
   const envKeys = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"];
@@ -72,6 +74,13 @@ export async function renderAggregateResultsRoute({
     const resultsTable = await loadModule("src/components/competition-aggregate-results.tsx", {
       "@/components/ui": ui,
     });
+    const roundRobinLoader = await loadModule("src/lib/competition-round-robin-results.ts", {
+      "@/lib/supabase/server": serverClient,
+    });
+    const roundRobinTable = await loadModule("src/components/competition-round-robin-results.tsx", {
+      "@/components/ui": ui,
+      "@/components/competition-aggregate-results": resultsTable,
+    });
     const route = await loadModule("src/app/(app)/organisations/[slug]/leagues/[seasonSlug]/competitions/[competitionSlug]/page.tsx", {
       "next/link": { __esModule: true, default: ({ children, ...props }) => createElement("a", props, children) },
       "next/navigation": { notFound: () => { throw new Error("Unexpected notFound in Competition route"); } },
@@ -84,6 +93,7 @@ export async function renderAggregateResultsRoute({
         CompetitionEntryControls: () => createElement("div", { "data-entry-controls": "true" }),
       },
       "@/components/competition-aggregate-results": resultsTable,
+      "@/components/competition-round-robin-results": roundRobinTable,
       "@/components/competition-lifecycle-actions": {
         CompetitionLifecycleActions: () => createElement("div", { "data-lifecycle-actions": "true" }),
       },
@@ -91,6 +101,7 @@ export async function renderAggregateResultsRoute({
       "@/components/published-competition-divisions": { PublishedCompetitionDivisionsView: () => null },
       "@/lib/competition-aggregate-results": resultsLoader,
       "@/lib/competition-gun-score-results": gunScoreResultsLoader,
+      "@/lib/competition-round-robin-results": roundRobinLoader,
       "@/lib/competition-divisions": {
         getCompetitionDivisionManagement: async () => null,
         getPublishedCompetitionDivisions: async () => null,

@@ -547,3 +547,15 @@ You can check out [the Next.js GitHub repository](https://github.com/vercel/next
 The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
 
 Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+
+### Round Robin Results
+
+The first Round Robin implementation adds persisted entrant-unit fixtures and
+released match standings using the existing source-score derivation. Deploy
+`database/competition-round-robin.sql`, then
+`database/competition-round-robin-results.sql`. In development, run
+`database/development-round-robin-fixture.sql` afterward.
+
+See [the Round Robin implementation and deployment report](database/ROUND-ROBIN.md)
+for lifecycle rules, NSR policy, expected standings, exact manual paths and checks.
+Run `npm run test:round-robin` or the complete `npm run test:results`.

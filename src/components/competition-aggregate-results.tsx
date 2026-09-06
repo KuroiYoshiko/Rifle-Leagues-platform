@@ -111,7 +111,7 @@ function ParticipantResultCell({ cell, usesX }: {
   );
 }
 
-function ParticipantBreakdown({ entrant, rounds, usesX, rankingMethod }: {
+export function ParticipantBreakdown({ entrant, rounds, usesX, rankingMethod }: {
   entrant: ResultsEntrant;
   rounds: Array<{ id: number; round_number: number }>;
   usesX: boolean;

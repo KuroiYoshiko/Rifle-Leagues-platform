@@ -47,6 +47,13 @@ export default async function CompetitionDivisionsPage({
       organisation={managementContext.organisation}
       currentSection="leagues"
     >
+      {competition.ranking_method === "round_robin" ? (
+        <p className="mb-5 rounded-xl bg-brand-subtle px-5 py-4 text-sm text-brand-deep">
+          Publishing Divisions generates Round Robin fixtures. Before Competition Start,
+          use Edit divisions to clear and rebuild the schedule. From Start, Divisions,
+          entrants and opponents are frozen. A bye still requires a complete Round score.
+        </p>
+      ) : null}
       <CompetitionDivisionManager
         data={data}
         organisationId={managementContext.organisation.id}
