@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { Card } from "@/components/ui";
 import {
   isPublicResultSaved,
   readSavedPublicResults,
@@ -96,52 +95,89 @@ export function SavedPublicResultButton({
   );
 }
 
-function SavedShortcutGroup({
+export function isSavedPublicResultRouteActive(
+  pathname: string,
+  item: SavedItem,
+) {
+  const basePath = item.type === "club"
+    ? `/clubs/${item.slug}`
+    : `/organisations/${item.slug}`;
+  return pathname === basePath || pathname.startsWith(`${basePath}/`);
+}
+
+function SavedNavigationGroup({
   title,
   items,
+  pathname,
+  onNavigate,
   onRemove,
 }: {
   title: string;
   items: ResolvedSavedItem[];
+  pathname: string;
+  onNavigate?: () => void;
   onRemove: (item: ResolvedSavedItem) => void;
 }) {
   if (items.length === 0) return null;
 
   return (
-    <section aria-label={title}>
-      <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-foreground">
+    <section className="mt-7" aria-label={title}>
+      <h2 className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.17em] text-white/35">
         {title}
-      </h3>
-      <ul className="mt-2 divide-y divide-border">
-        {items.map((item) => (
-          <li
-            key={`${item.type}:${item.slug}`}
-            className="flex min-h-12 items-center gap-3 py-2"
-          >
-            <Link
-              href={item.type === "club"
-                ? `/clubs/${item.slug}`
-                : `/organisations/${item.slug}`}
-              className="min-w-0 flex-1 break-words text-sm font-semibold text-brand-deep hover:underline"
+      </h2>
+      <ul className="space-y-1">
+        {items.map((item) => {
+          const href = item.type === "club"
+            ? `/clubs/${item.slug}`
+            : `/organisations/${item.slug}`;
+          const active = isSavedPublicResultRouteActive(pathname, item);
+
+          return (
+            <li
+              key={`${item.type}:${item.slug}`}
+              className={`group flex min-h-10 items-center rounded-xl transition ${
+                active
+                  ? "bg-white text-[var(--brand-deep)] shadow-sm"
+                  : "text-white/62 hover:bg-white/[.07] hover:text-white"
+              }`}
             >
-              {item.name}
-            </Link>
-            <button
-              type="button"
-              onClick={() => onRemove(item)}
-              className="inline-flex min-h-10 shrink-0 items-center rounded-lg px-3 text-xs font-semibold text-muted-foreground transition hover:bg-surface-muted hover:text-foreground"
-              aria-label={`Remove ${item.name} from saved ${item.type === "club" ? "clubs" : "organisations"}`}
-            >
-              Remove
-            </button>
-          </li>
-        ))}
+              <Link
+                href={href}
+                onClick={onNavigate}
+                aria-current={active ? "page" : undefined}
+                title={item.name}
+                className="min-w-0 flex-1 truncate py-2.5 pl-3 text-sm font-medium focus-visible:underline"
+              >
+                {item.name}
+              </Link>
+              <button
+                type="button"
+                onClick={() => onRemove(item)}
+                className={`mr-1 grid size-8 shrink-0 place-items-center rounded-lg text-base transition focus-visible:outline-2 focus-visible:outline-offset-1 ${
+                  active
+                    ? "text-[var(--brand-strong)] hover:bg-brand-subtle"
+                    : "text-white/35 hover:bg-white/10 hover:text-white"
+                }`}
+                aria-label={`Remove ${item.name} from saved ${item.type === "club" ? "clubs" : "organisations"}`}
+                title="Remove saved shortcut"
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            </li>
+          );
+        })}
       </ul>
     </section>
   );
 }
 
-export function SavedPublicResultsShortcuts() {
+export function SavedPublicResultsNavigation({
+  pathname,
+  onNavigate,
+}: {
+  pathname: string;
+  onNavigate?: () => void;
+}) {
   const [items, setItems] = useState<ResolvedSavedItem[]>([]);
   const [revision, setRevision] = useState(0);
 
@@ -219,21 +255,21 @@ export function SavedPublicResultsShortcuts() {
   }
 
   return (
-    <Card className="mt-6 p-5 sm:p-6">
-      <h2 className="text-lg font-semibold tracking-[-0.025em] text-foreground">
-        Saved shortcuts
-      </h2>
-      <p className="mt-1 text-sm leading-6 text-muted-foreground">
-        Stored only in this browser.
-      </p>
-      <div className="mt-5 grid gap-6 md:grid-cols-2">
-        <SavedShortcutGroup title="Saved clubs" items={clubs} onRemove={remove} />
-        <SavedShortcutGroup
-          title="Saved organisations"
-          items={organisations}
-          onRemove={remove}
-        />
-      </div>
-    </Card>
+    <>
+      <SavedNavigationGroup
+        title="Saved clubs"
+        items={clubs}
+        pathname={pathname}
+        onNavigate={onNavigate}
+        onRemove={remove}
+      />
+      <SavedNavigationGroup
+        title="Saved organisations"
+        items={organisations}
+        pathname={pathname}
+        onNavigate={onNavigate}
+        onRemove={remove}
+      />
+    </>
   );
 }

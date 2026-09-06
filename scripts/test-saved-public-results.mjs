@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -128,16 +129,13 @@ test("saved shortcut resolver returns current public names and omits stale slugs
   ]);
 });
 
-test("Saved shortcuts render no empty section before browser storage resolves", async () => {
+test("Saved navigation renders no empty section before browser storage resolves", async () => {
   const savedComponents = await loadModule(
     "src/components/saved-public-results.tsx",
     {
       "next/link": {
         __esModule: true,
         default: ({ children, ...props }) => createElement("a", props, children),
-      },
-      "@/components/ui": {
-        Card: ({ children, ...props }) => createElement("div", props, children),
       },
       "@/lib/saved-public-results.mjs": {
         isPublicResultSaved: () => false,
@@ -151,7 +149,81 @@ test("Saved shortcuts render no empty section before browser storage resolves", 
     },
   );
   const html = renderToStaticMarkup(
-    createElement(savedComponents.SavedPublicResultsShortcuts),
+    createElement(savedComponents.SavedPublicResultsNavigation, {
+      pathname: "/organisations",
+    }),
   );
   assert.equal(html, "");
+});
+
+test("saved Club and Organisation shortcuts follow their canonical active routes", async () => {
+  const savedComponents = await loadModule(
+    "src/components/saved-public-results.tsx",
+    {
+      "next/link": {
+        __esModule: true,
+        default: ({ children, ...props }) => createElement("a", props, children),
+      },
+      "@/lib/saved-public-results.mjs": {
+        isPublicResultSaved: () => false,
+        readSavedPublicResults: () => [],
+        reconcileSavedPublicResults: () => [],
+        SAVED_PUBLIC_RESULTS_CHANGED_EVENT: "test:saved-change",
+        SAVED_PUBLIC_RESULTS_STORAGE_KEY: "test.saved",
+        setPublicResultSaved: () => true,
+        writeSavedPublicResults: () => true,
+      },
+    },
+  );
+
+  assert.equal(savedComponents.isSavedPublicResultRouteActive(
+    "/clubs/basildon/competitions",
+    { type: "club", slug: "basildon" },
+  ), true);
+  assert.equal(savedComponents.isSavedPublicResultRouteActive(
+    "/organisations/eastern/leagues/2026/competitions/summer",
+    { type: "organisation", slug: "eastern" },
+  ), true);
+  assert.equal(savedComponents.isSavedPublicResultRouteActive(
+    "/clubs/another-club",
+    { type: "club", slug: "basildon" },
+  ), false);
+});
+
+test("public Results shell is minimal and the directory no longer owns a Saved card", async () => {
+  const shell = await loadModule("src/components/public-results-shell.tsx", {
+    "next/link": {
+      __esModule: true,
+      default: ({ children, ...props }) => createElement("a", props, children),
+    },
+    "next/navigation": { usePathname: () => "/organisations" },
+    "@/components/application-sidebar-primitives": {
+      ApplicationSidebarBrand: () => createElement("a", { href: "/" }, "Rifle Leagues"),
+      ApplicationSidebarLink: ({ href, label, active }) => createElement(
+        "a",
+        { href, "aria-current": active ? "page" : undefined },
+        label,
+      ),
+    },
+    "@/components/saved-public-results": {
+      SavedPublicResultsNavigation: () => null,
+    },
+  });
+  const html = renderToStaticMarkup(
+    createElement(shell.PublicResultsShell, null, createElement("p", null, "Directory")),
+  );
+
+  assert.match(html, /Browse results/);
+  assert.match(html, /Browse clubs/);
+  assert.match(html, /Browse organisations/);
+  assert.match(html, /Login/);
+  assert.match(html, /Create account/);
+  assert.match(html, /aria-label="Open navigation"/);
+  assert.doesNotMatch(html, /My clubs|My organisations|Profile|Management|Club settings/);
+
+  const directorySource = await readFile(
+    new URL("../src/app/(app)/organisations/page.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.doesNotMatch(directorySource, /SavedPublicResultsShortcuts|Saved shortcuts/);
 });

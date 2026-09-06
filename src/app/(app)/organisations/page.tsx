@@ -3,7 +3,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DiscoverySearchForm } from "@/components/discovery-search-form";
 import { OrganisationDashboardButton } from "@/components/organisation-dashboard-button";
-import { SavedPublicResultsShortcuts } from "@/components/saved-public-results";
 import { Card } from "@/components/ui";
 import { getClubLocation } from "@/lib/clubs";
 import {
@@ -204,8 +203,6 @@ async function PublicResultsDirectory({
           hint="Search checks active clubs and league organisations."
         />
       </Card>
-
-      <SavedPublicResultsShortcuts />
 
       {loadError ? (
         <Card className="mt-6 border-danger/20 p-6">
