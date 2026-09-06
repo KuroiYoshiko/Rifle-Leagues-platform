@@ -117,10 +117,7 @@ export default async function ClubOverviewPage({
 
       {relatedOrganisations.length > 0 ? (
         <section className="mt-10" aria-labelledby="related-organisations-heading">
-          <SectionHeader
-            title="Related organisations"
-            description="Derived from this club’s published Competition participation"
-          />
+          <SectionHeader title="Related organisations" />
           <Card className="p-5 sm:p-6">
             <h2 id="related-organisations-heading" className="sr-only">
               Related organisations
@@ -142,10 +139,7 @@ export default async function ClubOverviewPage({
       ) : null}
 
       <section className="mt-10" aria-labelledby="club-details-heading">
-        <SectionHeader
-          title="Club details"
-          description="Published club discovery information"
-        />
+        <SectionHeader title="Club details" />
         <Card className="p-6 sm:p-8">
           <h2 id="club-details-heading" className="sr-only">
             Club details

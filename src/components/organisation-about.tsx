@@ -18,7 +18,6 @@ export function OrganisationAbout({
       entityLabel="Organisation"
       initialContent={initialContent}
       isOwner={isOwner}
-      description="Public introduction supplied by this organisation."
       editorEyebrow="Organisation overview"
       placeholder="Write an introduction to this organisation…"
       emptyMessage="No organisation introduction has been published yet."

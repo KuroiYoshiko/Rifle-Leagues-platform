@@ -31,7 +31,6 @@ export function RichTextDocument({
   entityLabel,
   initialContent,
   isOwner,
-  description,
   editorEyebrow,
   placeholder,
   emptyMessage,
@@ -42,7 +41,6 @@ export function RichTextDocument({
   entityLabel: string;
   initialContent: string | null;
   isOwner: boolean;
-  description: string;
   editorEyebrow: string;
   placeholder: string;
   emptyMessage: string;
@@ -99,7 +97,6 @@ export function RichTextDocument({
           <h2 id={`${fieldId}-heading`} className="text-lg font-semibold tracking-[-0.025em] text-foreground">
             About
           </h2>
-          <p className="mt-1 text-sm leading-6 text-muted-foreground">{description}</p>
         </div>
         {isOwner ? (
           <button

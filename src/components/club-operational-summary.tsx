@@ -83,10 +83,7 @@ export function ClubOperationalSummaryCard({
 
   return (
     <section aria-labelledby="club-operations-heading">
-      <SectionHeader
-        title="Club operations"
-        description="Local score completeness and the next relevant Club cutoff"
-      />
+      <SectionHeader title="Club operations" />
       <TargetContextCard className="p-5 sm:p-7">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
@@ -111,13 +108,9 @@ export function ClubOperationalSummaryCard({
             </dd>
           </div>
           <div className="rounded-2xl border border-white/10 bg-white/[.07] px-4 py-4 backdrop-blur-sm">
-            <dt className="text-xs font-medium text-white/55">
-              {needsAttention ? "Outstanding scores" : "Active competitions"}
-            </dt>
+            <dt className="text-xs font-medium text-white/55">Active competitions</dt>
             <dd className="mt-2 text-3xl font-semibold tracking-[-0.04em] tabular-nums text-white">
-              {needsAttention
-                ? summary.outstanding_score_count
-                : summary.active_competition_count}
+              {summary.active_competition_count}
             </dd>
           </div>
         </dl>

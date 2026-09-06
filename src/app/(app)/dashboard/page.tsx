@@ -465,36 +465,8 @@ export default async function DashboardPage() {
         )}
       </section>
 
-      {activeClubCount > 0 && !membershipsResult.error ? (
-        <section id="competitions" className="mt-10">
-          <SectionHeader
-            title="Competitions"
-            description="Competition activity connected to your club membership"
-          />
-          <Card className="p-6 sm:p-8">
-            <div className="flex items-start gap-4">
-              <span
-                className="grid size-11 shrink-0 place-items-center rounded-xl bg-surface-muted text-sm font-bold text-neutral-strong"
-                aria-hidden="true"
-              >
-                C
-              </span>
-              <div>
-                <h2 className="font-semibold text-foreground">
-                  No competition functionality yet
-                </h2>
-                <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  Entries, rounds, scores, standings and statistics will appear only
-                  after those features are implemented and real data exists.
-                </p>
-              </div>
-            </div>
-          </Card>
-        </section>
-      ) : null}
-
       <section id="settings" className="mt-10">
-        <SectionHeader title="Account" description="Manage the details linked to your account" />
+        <SectionHeader title="Account" />
         <Card className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-7">
           <div>
             <h2 className="font-semibold text-foreground">Profile and settings</h2>

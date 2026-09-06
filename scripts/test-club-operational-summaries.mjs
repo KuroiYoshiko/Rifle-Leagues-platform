@@ -484,23 +484,41 @@ test("dashboard Club cards and the full widget render the operational hierarchy"
   assert.ok(!memberHtml.includes("Manage scores"));
   assert.ok(fullHtml.includes("target-mark"));
   assert.ok(fullHtml.includes("Active members"));
+  assert.ok(fullHtml.includes("Active competitions"));
   assert.ok(fullHtml.includes("Scores required"));
+  assert.ok(!fullHtml.includes("Outstanding scores"));
+  assert.ok(!fullHtml.includes("Local score completeness"));
   assert.ok(!dashboardHtml.includes("shooting_score_source_id"));
 });
 
 test("overview routes use the cleaned hierarchy with the shared read model", async () => {
-  const [dashboardSource, clubSource, clubFrameSource] = await Promise.all([
+  const [
+    dashboardSource,
+    clubSource,
+    organisationSource,
+    clubFrameSource,
+    clubAboutSource,
+    organisationAboutSource,
+  ] = await Promise.all([
     readFile(new URL("../src/app/(app)/dashboard/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/app/(app)/clubs/[slug]/page.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/(app)/organisations/[slug]/page.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/club-page-frame.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/club-about.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/organisation-about.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(dashboardSource, /getClubOperationalSummaries\(\)/);
   assert.match(dashboardSource, /operationalSummaries=\{managedClubSummaries\}/);
   assert.match(dashboardSource, /managedClubOrder/);
   assert.doesNotMatch(dashboardSource, /ClubManagementSummary|Club attention/);
+  assert.doesNotMatch(dashboardSource, /No competition functionality yet|Competition activity connected/);
   assert.match(clubSource, /manager\s*\?\s*\(await getClubOperationalSummaries\(club\.id\)\)/);
   assert.match(clubSource, /<ClubOperationalSummaryCard/);
   assert.doesNotMatch(clubSource, /ClubMembershipPanel/);
+  assert.doesNotMatch(clubSource, /Published club discovery information|Derived from this club/);
+  assert.doesNotMatch(organisationSource, /Current and next published seasons/);
+  assert.doesNotMatch(clubAboutSource, /Public introduction supplied by this club/);
+  assert.doesNotMatch(organisationAboutSource, /Public introduction supplied by this organisation/);
   assert.match(clubFrameSource, /getClubRoleLabel\(membership\.role\)/);
   assert.match(clubFrameSource, /<Badge tone="positive">Active<\/Badge>/);
 });

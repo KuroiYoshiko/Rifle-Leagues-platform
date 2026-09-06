@@ -18,7 +18,6 @@ export function ClubAbout({
       entityLabel="Club"
       initialContent={initialContent}
       isOwner={isOwner}
-      description="Public introduction supplied by this club."
       editorEyebrow="Club overview"
       placeholder="Write an introduction to this club…"
       emptyMessage="Add About information to introduce your club."
