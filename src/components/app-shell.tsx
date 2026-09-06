@@ -356,7 +356,6 @@ function Navigation({
       items: [
         { label: "Overview", href: basePath },
         { label: "Seasons", href: `${basePath}/leagues` },
-        { label: "Results", href: `${basePath}/results` },
         { label: "Information", href: `${basePath}/information` },
         { label: "Contact", href: `${basePath}/contact` },
         ...(organisation.managementRole

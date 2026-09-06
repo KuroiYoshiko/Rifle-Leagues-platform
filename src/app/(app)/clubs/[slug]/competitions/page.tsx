@@ -5,6 +5,7 @@ import {
   ClubMembershipPanel,
   ClubPageFrame,
 } from "@/components/club-page-frame";
+import { LeagueSeasonPhaseBadge } from "@/components/league-season-phase-badge";
 import { Badge, Card } from "@/components/ui";
 import {
   getClubCompetitionEntries,
@@ -144,40 +145,35 @@ function ClubCompetitionCard({
   const scoreManagementPath = scoreRound
     ? `${competitionPath}/scores?club=${entry.club_id}&round=${scoreRound.id}`
     : null;
+  const entryWindowLabel = {
+    upcoming: "Entry upcoming",
+    open: "Entry open",
+    closed: "Entry closed",
+  }[entry.entry_window_state];
 
   return (
-    <Card className={compact ? "p-5 sm:p-6" : "p-6 sm:p-7"}>
-      <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+    <Card className={compact ? "p-4 sm:p-5" : "p-5 sm:p-6"}>
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <div className="min-w-0">
-          <div className="flex flex-wrap gap-2">
-            <Badge
-              tone={
-                entry.entry_status === "submitted"
-                  ? "positive"
-                  : entry.entry_status === "draft"
-                    ? "warning"
-                    : "neutral"
-              }
-            >
-              {getClubCompetitionEntryStatusLabel(entry.entry_status)}
-            </Badge>
-            {entry.entry_window_state === "closed" ? (
-              <Badge tone="neutral">Entry closed</Badge>
-            ) : null}
+          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-brand-strong">
+            {entry.league_season_name}
+          </p>
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+            <h3 className="min-w-0 break-words text-lg font-semibold tracking-[-0.025em] text-foreground sm:text-xl">
+              {entry.competition_name}
+            </h3>
             {entry.is_user_entered && entry.entry_status === "submitted" ? (
               <Badge tone="brand">You are entered</Badge>
             ) : null}
           </div>
-          <p className="mt-4 text-xs font-semibold uppercase tracking-[0.1em] text-brand-strong">
-            {entry.league_season_name}
-          </p>
-          <h3 className="mt-1 break-words text-xl font-semibold tracking-[-0.025em] text-foreground">
-            {entry.competition_name}
-          </h3>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <p className="mt-1 text-sm text-muted-foreground">
             {entry.organisation_name}
           </p>
-          <p className="mt-3 text-sm text-neutral-strong">
+          <p className="mt-2 text-xs font-medium text-muted-foreground">
+            {getClubCompetitionEntryStatusLabel(entry.entry_status)}
+            {` · ${entryWindowLabel}`}
+          </p>
+          <p className="mt-1.5 text-sm text-neutral-strong">
             {format}
             {entry.entry_format === "team"
               ? ` · ${entry.team_size} per team`
@@ -186,7 +182,7 @@ function ClubCompetitionCard({
             {` · ${entry.participant_count} shooter${entry.participant_count === 1 ? "" : "s"}`}
           </p>
         </div>
-        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:justify-end">
+        <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap sm:justify-end">
           <Link
             href={competitionPath}
             className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle sm:w-auto"
@@ -231,7 +227,6 @@ function ClubCompetitionCard({
 function CompetitionSection({
   id,
   title,
-  description,
   entries,
   today,
   compact = false,
@@ -239,7 +234,6 @@ function CompetitionSection({
 }: {
   id: string;
   title: string;
-  description: string;
   entries: ClubCompetitionEntryCard[];
   today: string;
   compact?: boolean;
@@ -249,17 +243,12 @@ function CompetitionSection({
 
   return (
     <section aria-labelledby={id}>
-      <div className="mb-4">
-        <h2
-          id={id}
-          className="text-sm font-semibold uppercase tracking-[0.12em] text-foreground"
-        >
-          {title}
-        </h2>
-        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-          {description}
-        </p>
-      </div>
+      <h2
+        id={id}
+        className="mb-4 text-sm font-semibold uppercase tracking-[0.12em] text-foreground"
+      >
+        {title}
+      </h2>
       <div className="space-y-3">
         {entries.map((entry) => (
           <ClubCompetitionCard
@@ -347,13 +336,6 @@ function PastCompetitionPagination({
   );
 }
 
-const publicPhasePresentation = {
-  ongoing: { label: "Current", tone: "positive" as const },
-  upcoming: { label: "Upcoming", tone: "brand" as const },
-  ended: { label: "Historical", tone: "neutral" as const },
-  unknown: { label: "Published", tone: "neutral" as const },
-};
-
 function PublicClubCompetitionCard({
   competition,
   today,
@@ -368,32 +350,31 @@ function PublicClubCompetitionCard({
     },
     today,
   );
-  const phasePresentation = publicPhasePresentation[phase];
   const competitionPath = `/organisations/${competition.organisation_slug}/leagues/${competition.season_slug}/competitions/${competition.competition_slug}`;
   const destination = competition.has_released_results
     ? `${competitionPath}#results`
     : competitionPath;
 
   return (
-    <Card className="p-6 sm:p-7">
-      <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+    <Card className="p-5 sm:p-6">
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <div className="min-w-0">
-          <div className="flex flex-wrap gap-2">
-            <Badge tone={phasePresentation.tone}>{phasePresentation.label}</Badge>
-            {competition.has_released_results ? (
-              <Badge tone="brand">Released results</Badge>
-            ) : null}
-          </div>
-          <p className="mt-4 text-xs font-semibold uppercase tracking-[0.1em] text-brand-strong">
+          <p className="text-xs font-semibold uppercase tracking-[0.1em] text-brand-strong">
             {competition.season_name}
           </p>
-          <h2 className="mt-1 break-words text-xl font-semibold tracking-[-0.025em] text-foreground">
-            {competition.competition_name}
-          </h2>
-          <p className="mt-2 text-sm text-muted-foreground">
+          <div className="mt-1 flex min-w-0 flex-wrap items-center gap-2">
+            <h2 className="min-w-0 break-words text-lg font-semibold tracking-[-0.025em] text-foreground sm:text-xl">
+              {competition.competition_name}
+            </h2>
+            <LeagueSeasonPhaseBadge phase={phase} />
+          </div>
+          <p className="mt-1 text-sm text-muted-foreground">
             {competition.organisation_name}
           </p>
-          <p className="mt-3 text-sm text-neutral-strong">
+          {competition.has_released_results ? (
+            <p className="mt-2 text-xs font-medium text-brand-strong">Released results</p>
+          ) : null}
+          <p className="mt-1.5 text-sm text-neutral-strong">
             {getCompetitionEntryFormatLabel(competition.entry_format)}
             {competition.entry_format === "team"
               ? ` · ${competition.team_size} per team`
@@ -545,7 +526,7 @@ export default async function ClubCompetitionsPage({
       today,
     );
 
-    if (phase === "ended") {
+    if (phase === "completed") {
       pastEntries.push(entry);
     } else if (phase === "upcoming") {
       upcomingEntries.push(entry);
@@ -607,7 +588,6 @@ export default async function ClubCompetitionsPage({
               <CompetitionSection
                 id="entry-drafts-heading"
                 title="Entry drafts"
-                description="Private entries still being prepared by club management"
                 entries={draftEntries}
                 today={today}
               />
@@ -615,21 +595,18 @@ export default async function ClubCompetitionsPage({
             <CompetitionSection
               id="ongoing-competitions-heading"
               title="Ongoing competitions"
-              description="Submitted entries in competitions currently in progress"
               entries={ongoingEntries}
               today={today}
             />
             <CompetitionSection
               id="upcoming-competitions-heading"
               title="Upcoming competitions"
-              description="Submitted entries in competitions scheduled to start"
               entries={upcomingEntries}
               today={today}
             />
             <CompetitionSection
               id="past-competitions-heading"
               title="Past competitions"
-              description="Submitted entries from completed seasons"
               entries={visiblePastEntries}
               today={today}
               compact

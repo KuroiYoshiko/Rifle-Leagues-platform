@@ -203,6 +203,30 @@ async function renderClubCompetitions({ viewerId = null, membership = null } = {
       local_scoring_enabled: true,
       score_rounds: [{ id: 20, round_number: 1, deadline: "2026-09-30", shoot_by_date: "2026-09-29" }],
     },
+    {
+      club_id: 1, entry_id: 12, entry_status: "submitted", submitted_at: "2026-03-01T00:00:00Z",
+      entry_updated_at: "2026-03-01T00:00:00Z", competition_id: 3,
+      competition_status: "published", competition_name: "Summer Individual",
+      competition_slug: "summer-individual", entry_format: "individual", team_size: 1,
+      league_season_name: "Summer 2026", league_season_slug: "summer-2026",
+      league_season_starts_at: "2026-02-02", league_season_ends_at: "2026-09-30",
+      competition_effective_starts_at: "2026-02-02", organisation_name: "County League",
+      organisation_slug: "county-league", entrant_count: 6, participant_count: 6,
+      is_user_entered: false, can_manage: true, entry_window_state: "closed",
+      local_scoring_enabled: false, score_rounds: [],
+    },
+    {
+      club_id: 1, entry_id: 13, entry_status: "submitted", submitted_at: "2026-03-01T00:00:00Z",
+      entry_updated_at: "2026-03-01T00:00:00Z", competition_id: 4,
+      competition_status: "published", competition_name: "Summer Team",
+      competition_slug: "summer-team", entry_format: "team", team_size: 4,
+      league_season_name: "Summer 2026", league_season_slug: "summer-2026",
+      league_season_starts_at: "2026-02-02", league_season_ends_at: "2026-09-30",
+      competition_effective_starts_at: "2026-02-02", organisation_name: "County League",
+      organisation_slug: "county-league", entrant_count: 2, participant_count: 8,
+      is_user_entered: true, can_manage: true, entry_window_state: "closed",
+      local_scoring_enabled: false, score_rounds: [],
+    },
   ];
 
   const route = await loadModule(
@@ -214,11 +238,15 @@ async function renderClubCompetitions({ viewerId = null, membership = null } = {
         ClubPageFrame: ({ children, isAuthenticated }) => createElement("main", { "data-authenticated": String(isAuthenticated) }, children),
         ClubMembershipPanel: () => createElement("div", { "data-membership-panel": "true" }),
       },
+      "@/components/league-season-phase-badge": {
+        LeagueSeasonPhaseBadge: ({ phase }) => createElement("span", { "data-season-phase": phase }, ({ ongoing: "Ongoing", upcoming: "Upcoming", completed: "Completed" })[phase]),
+      },
       "@/components/ui": ui,
       "@/lib/competition-entries": {
         getClubCompetitionEntries: async () => {
           authenticatedEntryReads += 1;
-          return authenticatedEntries;
+          const canManage = ["owner", "official"].includes(membership?.role);
+          return authenticatedEntries.map((entry) => ({ ...entry, can_manage: canManage }));
         },
         getClubCompetitionEntryStatusLabel: (status) => status[0].toUpperCase() + status.slice(1),
       },
@@ -323,6 +351,7 @@ test("anonymous Club Competitions render canonical released Results links and no
   assert.match(html, /Summer Aggregate/);
   assert.match(html, /County League/);
   assert.match(html, /Summer 2026/);
+  assert.match(html, /data-season-phase="ongoing">Ongoing/);
   assert.match(
     html,
     /href="\/organisations\/county-league\/leagues\/summer-2026\/competitions\/summer-aggregate#results"/,
@@ -363,8 +392,96 @@ test("authenticated club owners retain entry and score management controls", asy
   });
   assert.equal(authenticatedEntryReads, 1);
   assert.match(html, /Entry drafts/);
+  assert.match(html, /Draft · Entry open/);
+  assert.match(html, /Submitted · Entry closed/);
+  assert.match(html, /You are entered/);
+  assert.match(html, /Individual · 6 entrants · 6 shooters/);
+  assert.match(html, /Pairs · 1 entrant · 2 shooters/);
+  assert.match(html, /Team · 4 per team · 2 entrants · 8 shooters/);
   assert.match(html, /Continue entry/);
   assert.match(html, /Manage scores/);
+});
+
+test("ordinary club members see submitted cards without management actions", async () => {
+  const { html } = await renderClubCompetitions({
+    viewerId: "00000000-0000-0000-0000-000000000003",
+    membership: {
+      id: 2, club_id: 1, status: "active", role: "member",
+      created_at: "2026-01-01T00:00:00Z",
+    },
+  });
+  assert.match(html, /Summer Individual/);
+  assert.match(html, /Summer Aggregate/);
+  assert.match(html, /Summer Team/);
+  assert.match(html, /You are entered/);
+  assert.doesNotMatch(html, /Entry drafts|Continue entry|Manage entry|Manage scores|View entry/);
+});
+
+test("club officials retain entry and score management controls", async () => {
+  const { html } = await renderClubCompetitions({
+    viewerId: "00000000-0000-0000-0000-000000000004",
+    membership: {
+      id: 3, club_id: 1, status: "active", role: "official",
+      created_at: "2026-01-01T00:00:00Z",
+    },
+  });
+  assert.match(html, /Entry drafts/);
+  assert.match(html, /Continue entry/);
+  assert.match(html, /Manage scores/);
+});
+
+test("Season presentation phases use dates, inclusive boundaries, and definitive completion", async () => {
+  const seasons = await loadModule("src/lib/league-seasons.ts", {
+    "@/lib/supabase/server": { createClient: async () => ({}) },
+  });
+  const today = "2026-09-06";
+
+  assert.equal(seasons.getLeagueSeasonPresentationPhase({ starts_at: "2026-09-07", ends_at: "2027-01-01", status: "open" }, today), "upcoming");
+  assert.equal(seasons.getLeagueSeasonPresentationPhase({ starts_at: today, ends_at: today, status: "open" }, today), "ongoing");
+  assert.equal(seasons.getLeagueSeasonPresentationPhase({ starts_at: "2026-01-01", ends_at: "2026-09-05", status: "active" }, today), "completed");
+  assert.equal(seasons.getLeagueSeasonPresentationPhase({ starts_at: "2026-09-07", ends_at: "2027-01-01", status: "completed" }, today), "completed");
+  assert.equal(seasons.getLeagueSeasonPhaseLabel("upcoming"), "Upcoming");
+  assert.equal(seasons.getLeagueSeasonPhaseLabel("ongoing"), "Ongoing");
+  assert.equal(seasons.getLeagueSeasonPhaseLabel("completed"), "Completed");
+});
+
+test("Organisation Results navigation is removed and its legacy route redirects to Seasons", async () => {
+  const [frameSource, shellSource] = await Promise.all([
+    readFile(new URL("../src/components/organisation-page-frame.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/app-shell.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(frameSource, /label:\s*"Results"/);
+  assert.doesNotMatch(shellSource, /label:\s*"Results",\s*href:\s*`\$\{basePath\}\/results`/);
+
+  let destination = null;
+  const route = await loadModule("src/app/(app)/organisations/[slug]/results/page.tsx", {
+    "next/navigation": { redirect: (value) => { destination = value; } },
+  });
+  await route.default({ params: Promise.resolve({ slug: "county-league" }) });
+  assert.equal(destination, "/organisations/county-league/leagues");
+});
+
+test("Organisation management status uses the shared target card and supports owner and manager roles", async () => {
+  const ui = await loadModule("src/components/ui.tsx");
+  const panel = await loadModule("src/components/organisation-management-panel.tsx", {
+    "next/link": { __esModule: true, default: ({ children, ...props }) => createElement("a", props, children) },
+    "@/components/ui": ui,
+    "@/lib/organisations": {},
+  });
+  const organisation = { name: "Eastern Region Shooting Association", slug: "eastern-region" };
+  const ownerHtml = renderToStaticMarkup(createElement(panel.OrganisationManagementPanel, { organisation, role: "owner" }));
+  const managerHtml = renderToStaticMarkup(createElement(panel.OrganisationManagementPanel, { organisation, role: "manager" }));
+  const overviewSource = await readFile(new URL("../src/app/(app)/organisations/[slug]/page.tsx", import.meta.url), "utf8");
+
+  assert.match(ownerHtml, /bg-navigation/);
+  assert.match(ownerHtml, /target-mark/);
+  assert.match(ownerHtml, />Active</);
+  assert.match(ownerHtml, />Owner</);
+  assert.match(ownerHtml, /You manage Eastern Region Shooting Association\./);
+  assert.match(ownerHtml, /href="\/organisations\/eastern-region\/management"/);
+  assert.match(managerHtml, />Manager</);
+  assert.doesNotMatch(managerHtml, />Owner</);
+  assert.match(overviewSource, /isAuthenticated && managementContext/);
 });
 
 test("anonymous hierarchy exposes only public seasons, competitions, and divisions", async () => {

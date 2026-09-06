@@ -12,8 +12,7 @@ export type LeagueSeasonStatus = (typeof LEAGUE_SEASON_STATUSES)[number];
 export type LeagueSeasonPresentationPhase =
   | "upcoming"
   | "ongoing"
-  | "ended"
-  | "unknown";
+  | "completed";
 
 export type LeagueSeason = {
   id: number;
@@ -137,22 +136,35 @@ export function getLeagueToday() {
 }
 
 export function getLeagueSeasonPresentationPhase(
-  season: Pick<LeagueSeason, "starts_at" | "ends_at">,
+  season: Pick<LeagueSeason, "starts_at" | "ends_at"> &
+    Partial<Pick<LeagueSeason, "status">>,
   today = getLeagueToday(),
 ): LeagueSeasonPresentationPhase {
-  if (season.ends_at && season.ends_at < today) return "ended";
+  if (season.status === "completed") return "completed";
+  if (season.ends_at && season.ends_at < today) return "completed";
   if (season.starts_at && season.starts_at > today) return "upcoming";
 
-  if (
-    season.starts_at &&
-    season.ends_at &&
-    season.starts_at <= today &&
-    season.ends_at >= today
-  ) {
+  if (season.starts_at && season.starts_at <= today) {
     return "ongoing";
   }
 
-  return "unknown";
+  if (season.ends_at && season.ends_at >= today) return "ongoing";
+
+  // Dates are optional for legacy and draft seasons. Preserve a useful UI
+  // classification without changing the stored workflow status.
+  return season.status === "active" ? "ongoing" : "upcoming";
+}
+
+const phaseLabels: Record<LeagueSeasonPresentationPhase, string> = {
+  upcoming: "Upcoming",
+  ongoing: "Ongoing",
+  completed: "Completed",
+};
+
+export function getLeagueSeasonPhaseLabel(
+  phase: LeagueSeasonPresentationPhase,
+) {
+  return phaseLabels[phase];
 }
 
 export function getLeagueEntryCloseSummary(

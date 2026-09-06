@@ -5,14 +5,16 @@ import {
   OrganisationEmptyState,
   OrganisationPageFrame,
 } from "@/components/organisation-page-frame";
-import { Badge, Card, SectionHeader } from "@/components/ui";
+import { LeagueSeasonPhaseBadge } from "@/components/league-season-phase-badge";
+import { Card, SectionHeader } from "@/components/ui";
 import {
   getLeagueEntrySummary,
   getLeagueSeasons,
-  getLeagueSeasonDateSummary,
-  getLeagueSeasonStatusLabel,
+  getLeagueSeasonDateDisplay,
+  getLeagueSeasonPresentationPhase,
+  getLeagueToday,
   type LeagueSeason,
-  type LeagueSeasonStatus,
+  type LeagueSeasonPresentationPhase,
 } from "@/lib/league-seasons";
 import {
   getActiveOrganisationBySlug,
@@ -25,35 +27,21 @@ export const metadata: Metadata = {
   title: "Organisation seasons",
 };
 
-const statusSections: Array<{
-  status: LeagueSeasonStatus;
+const phaseSections: Array<{
+  phase: LeagueSeasonPresentationPhase;
   title: string;
-  description: string;
-  tone: "neutral" | "positive" | "warning" | "brand";
 }> = [
   {
-    status: "draft",
-    title: "Draft",
-    description: "Private seasons still being prepared",
-    tone: "warning",
+    phase: "ongoing",
+    title: "Ongoing",
   },
   {
-    status: "open",
-    title: "Open",
-    description: "Published seasons preparing to accept entries later",
-    tone: "brand",
+    phase: "upcoming",
+    title: "Upcoming",
   },
   {
-    status: "active",
-    title: "Active",
-    description: "Published seasons currently running",
-    tone: "positive",
-  },
-  {
-    status: "completed",
-    title: "Completed",
-    description: "Published season history",
-    tone: "neutral",
+    phase: "completed",
+    title: "Previous seasons",
   },
 ];
 
@@ -61,43 +49,46 @@ function LeagueSeasonCard({
   season,
   organisationSlug,
   isOwner,
-  tone,
+  phase,
+  today,
 }: {
   season: LeagueSeason;
   organisationSlug: string;
   isOwner: boolean;
-  tone: "neutral" | "positive" | "warning" | "brand";
+  phase: LeagueSeasonPresentationPhase;
+  today: string;
 }) {
   const detailPath = `/organisations/${organisationSlug}/leagues/${season.slug}`;
-  const entrySummary = getLeagueEntrySummary(
-    season.entry_opens_at,
-    season.entry_closes_at,
-  );
-  const seasonSummary = getLeagueSeasonDateSummary(
+  const entrySummary = phase === "completed"
+    ? null
+    : getLeagueEntrySummary(
+        season.entry_opens_at,
+        season.entry_closes_at,
+        today,
+      );
+  const seasonSummary = getLeagueSeasonDateDisplay(
     season.starts_at,
     season.ends_at,
   );
 
   return (
-    <Card className="min-w-0 p-5 sm:p-6">
-      <div className="grid min-w-0 gap-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+    <Card className="min-w-0 p-4 sm:px-5 sm:py-4">
+      <div className="grid min-w-0 gap-4 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge tone={tone}>
-              {getLeagueSeasonStatusLabel(season.status)}
-            </Badge>
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h3 className="min-w-0 break-words text-base font-semibold tracking-[-0.02em] text-foreground">
+              <Link href={detailPath} className="hover:text-brand-deep hover:underline">
+                {season.name}
+              </Link>
+            </h3>
+            <LeagueSeasonPhaseBadge phase={phase} />
             {season.status === "draft" ? (
               <span className="text-xs text-muted-foreground">Owner only</span>
             ) : null}
           </div>
-          <h3 className="mt-3 break-words text-lg font-semibold tracking-[-0.02em] text-foreground">
-            <Link href={detailPath} className="hover:text-brand-deep hover:underline">
-              {season.name}
-            </Link>
-          </h3>
-          <div className="mt-3 space-y-1 text-xs leading-5 text-muted-foreground">
-            {entrySummary ? <p>{entrySummary}</p> : null}
+          <div className="mt-2 space-y-0.5 text-xs leading-5 text-muted-foreground">
             {seasonSummary ? <p>{seasonSummary}</p> : null}
+            {entrySummary ? <p>{entrySummary}</p> : null}
             {!entrySummary && !seasonSummary ? <p>Dates not set</p> : null}
           </div>
         </div>
@@ -137,6 +128,11 @@ export default async function OrganisationLeaguesPage({
     ? await getLeagueSeasons(organisation.id)
     : (publicCatalog?.seasons ?? []);
   const isOwner = managementContext?.access.role === "owner";
+  const today = getLeagueToday();
+  const presentedSeasons = seasons.map((season) => ({
+    season,
+    phase: getLeagueSeasonPresentationPhase(season, today),
+  }));
 
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="leagues">
@@ -181,34 +177,44 @@ export default async function OrganisationLeaguesPage({
         </Card>
       ) : (
         <div className="space-y-10">
-          {statusSections.map((section) => {
-            const matchingSeasons = seasons.filter(
-              (season) => season.status === section.status,
-            );
+          {phaseSections.map((section) => {
+            const matchingSeasons = presentedSeasons
+              .filter(({ phase }) => phase === section.phase)
+              .sort((left, right) => {
+                if (section.phase === "upcoming") {
+                  return (left.season.starts_at ?? "9999-12-31").localeCompare(
+                    right.season.starts_at ?? "9999-12-31",
+                  );
+                }
+                if (section.phase === "completed") {
+                  return (right.season.ends_at ?? "").localeCompare(
+                    left.season.ends_at ?? "",
+                  );
+                }
+                return (left.season.ends_at ?? "9999-12-31").localeCompare(
+                  right.season.ends_at ?? "9999-12-31",
+                );
+              });
 
             if (matchingSeasons.length === 0) return null;
 
             return (
-              <section key={section.status} aria-labelledby={`${section.status}-leagues-heading`}>
-                <div className="mb-4">
-                  <h2
-                    id={`${section.status}-leagues-heading`}
-                    className="text-sm font-semibold uppercase tracking-[0.12em] text-foreground"
-                  >
-                    {section.title}
-                  </h2>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    {section.description}
-                  </p>
-                </div>
+              <section key={section.phase} aria-labelledby={`${section.phase}-leagues-heading`}>
+                <h2
+                  id={`${section.phase}-leagues-heading`}
+                  className="mb-4 text-sm font-semibold uppercase tracking-[0.12em] text-foreground"
+                >
+                  {section.title}
+                </h2>
                 <div className="space-y-3">
-                  {matchingSeasons.map((season) => (
+                  {matchingSeasons.map(({ season, phase }) => (
                     <LeagueSeasonCard
                       key={season.id}
                       season={season}
                       organisationSlug={organisation.slug}
                       isOwner={isOwner}
-                      tone={section.tone}
+                      phase={phase}
+                      today={today}
                     />
                   ))}
                 </div>

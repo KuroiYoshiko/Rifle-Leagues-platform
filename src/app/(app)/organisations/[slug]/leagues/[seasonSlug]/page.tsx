@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { LeagueSeasonPhaseBadge } from "@/components/league-season-phase-badge";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { Badge, Card, SectionHeader } from "@/components/ui";
 import {
@@ -15,8 +16,7 @@ import {
   getLeagueEntryWindowState,
   getLeagueSeasonBySlug,
   getLeagueSeasonDateDisplay,
-  getLeagueSeasonStatusLabel,
-  type LeagueSeasonStatus,
+  getLeagueSeasonPresentationPhase,
 } from "@/lib/league-seasons";
 import {
   getActiveOrganisationBySlug,
@@ -27,16 +27,6 @@ import { getViewerId } from "@/lib/viewer";
 
 export const metadata: Metadata = {
   title: "Season",
-};
-
-const badgeTones: Record<
-  LeagueSeasonStatus,
-  "neutral" | "positive" | "warning" | "brand"
-> = {
-  draft: "warning",
-  open: "brand",
-  active: "positive",
-  completed: "neutral",
 };
 
 function CompetitionCard({
@@ -163,6 +153,7 @@ export default async function LeagueSeasonDetailPage({
     season.starts_at,
     season.ends_at,
   );
+  const seasonPhase = getLeagueSeasonPresentationPhase(season);
 
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="leagues">
@@ -195,12 +186,12 @@ export default async function LeagueSeasonDetailPage({
       <Card className="mt-5 min-w-0 p-6 sm:p-8">
         <div className="flex flex-col gap-5 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <Badge tone={badgeTones[season.status]}>
-              {getLeagueSeasonStatusLabel(season.status)}
-            </Badge>
-            <h2 className="mt-4 break-words text-2xl font-semibold tracking-[-0.035em] text-foreground sm:text-3xl">
-              {season.name}
-            </h2>
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <h2 className="min-w-0 break-words text-2xl font-semibold tracking-[-0.035em] text-foreground sm:text-3xl">
+                {season.name}
+              </h2>
+              <LeagueSeasonPhaseBadge phase={seasonPhase} />
+            </div>
             {season.description ? (
               <p className="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
                 {season.description}

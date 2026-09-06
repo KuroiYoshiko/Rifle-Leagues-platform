@@ -10,7 +10,6 @@ import { getViewerId } from "@/lib/viewer";
 export type OrganisationSection =
   | "overview"
   | "leagues"
-  | "results"
   | "information"
   | "contact"
   | "management";
@@ -22,7 +21,6 @@ const sectionItems: Array<{
 }> = [
   { id: "overview", label: "Overview", suffix: "" },
   { id: "leagues", label: "Seasons", suffix: "/leagues" },
-  { id: "results", label: "Results", suffix: "/results" },
   { id: "information", label: "Information", suffix: "/information" },
   { id: "contact", label: "Contact", suffix: "/contact" },
 ];
@@ -43,7 +41,7 @@ export async function OrganisationPageFrame({
     : null;
   const showManagement = Boolean(managementContext);
   const publicSectionItems = sectionItems.filter((item) =>
-    ["overview", "leagues", "results"].includes(item.id),
+    ["overview", "leagues"].includes(item.id),
   );
   const visibleSectionItems = viewerId
     ? showManagement
