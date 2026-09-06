@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { LeagueSeasonPhaseBadge } from "@/components/league-season-phase-badge";
 import { OrganisationAbout } from "@/components/organisation-about";
+import { OrganisationManagementPanel } from "@/components/organisation-management-panel";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { Card, SectionHeader } from "@/components/ui";
 import {
@@ -139,6 +140,12 @@ export default async function OrganisationOverviewPage({
           You are now its owner, and it has been added to My Organisations through
           your active management access.
         </div>
+      ) : null}
+      {isAuthenticated && managementContext ? (
+        <OrganisationManagementPanel
+          organisation={organisation}
+          role={managementContext.access.role}
+        />
       ) : null}
       <OrganisationAbout
         key={`${organisation.id}:${organisation.about_content ?? ""}`}

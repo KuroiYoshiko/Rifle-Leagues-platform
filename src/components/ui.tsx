@@ -21,6 +21,27 @@ export function Card({
   );
 }
 
+export function TargetContextCard({
+  children,
+  className = "",
+}: {
+  children: ReactNode;
+  className?: string;
+}) {
+  return (
+    <Card
+      background="navigation"
+      className={`relative overflow-hidden border-0 text-white ${className}`}
+    >
+      <div
+        className="target-mark pointer-events-none absolute -right-36 -top-36 aspect-square w-[31rem] opacity-15"
+        aria-hidden="true"
+      />
+      <div className="relative">{children}</div>
+    </Card>
+  );
+}
+
 export function SectionHeader({
   title,
   description,

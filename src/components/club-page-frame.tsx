@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { LeaveClubButton } from "@/components/leave-club-button";
 import { MembershipRequestButton } from "@/components/membership-request-button";
 import { SavedPublicResultButton } from "@/components/saved-public-results";
-import { Badge, Card, SectionHeader } from "@/components/ui";
+import { Badge, Card, SectionHeader, TargetContextCard } from "@/components/ui";
 import {
   getClubLocation,
   getClubRoleLabel,
@@ -161,12 +161,8 @@ export function ClubMembershipPanel({
           title="Membership"
           description="Your current relationship with this club"
         />
-        <Card
-          background="navigation"
-          className="relative overflow-hidden border-0 p-6 text-white sm:p-8"
-        >
-          <div className="target-mark absolute -right-36 -top-36 aspect-square w-[31rem] opacity-15" />
-          <div className="relative flex items-start justify-between gap-5">
+        <TargetContextCard className="p-6 sm:p-8">
+          <div className="flex items-start justify-between gap-5">
             <div>
               <div className="flex flex-wrap gap-2">
                 <Badge tone="positive">Active</Badge>
@@ -191,7 +187,7 @@ export function ClubMembershipPanel({
               />
             )}
           </div>
-        </Card>
+        </TargetContextCard>
       </section>
     );
   }

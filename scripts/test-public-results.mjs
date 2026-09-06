@@ -461,6 +461,29 @@ test("Organisation Results navigation is removed and its legacy route redirects 
   assert.equal(destination, "/organisations/county-league/leagues");
 });
 
+test("Organisation management status uses the shared target card and supports owner and manager roles", async () => {
+  const ui = await loadModule("src/components/ui.tsx");
+  const panel = await loadModule("src/components/organisation-management-panel.tsx", {
+    "next/link": { __esModule: true, default: ({ children, ...props }) => createElement("a", props, children) },
+    "@/components/ui": ui,
+    "@/lib/organisations": {},
+  });
+  const organisation = { name: "Eastern Region Shooting Association", slug: "eastern-region" };
+  const ownerHtml = renderToStaticMarkup(createElement(panel.OrganisationManagementPanel, { organisation, role: "owner" }));
+  const managerHtml = renderToStaticMarkup(createElement(panel.OrganisationManagementPanel, { organisation, role: "manager" }));
+  const overviewSource = await readFile(new URL("../src/app/(app)/organisations/[slug]/page.tsx", import.meta.url), "utf8");
+
+  assert.match(ownerHtml, /bg-navigation/);
+  assert.match(ownerHtml, /target-mark/);
+  assert.match(ownerHtml, />Active</);
+  assert.match(ownerHtml, />Owner</);
+  assert.match(ownerHtml, /You manage Eastern Region Shooting Association\./);
+  assert.match(ownerHtml, /href="\/organisations\/eastern-region\/management"/);
+  assert.match(managerHtml, />Manager</);
+  assert.doesNotMatch(managerHtml, />Owner</);
+  assert.match(overviewSource, /isAuthenticated && managementContext/);
+});
+
 test("anonymous hierarchy exposes only public seasons, competitions, and divisions", async () => {
   const organisation = await publicCatalog({ organisation: "county-league" });
   assert.deepEqual(organisation.seasons.map((season) => season.slug), ["summer-2026"]);
