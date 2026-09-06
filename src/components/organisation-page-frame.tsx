@@ -2,8 +2,9 @@ import Link from "next/link";
 import type { ReactNode } from "react";
 import {
   getOrganisationManagementContextBySlug,
-  type Organisation,
 } from "@/lib/organisations";
+import type { PublicOrganisation } from "@/lib/public-results";
+import { getViewerId } from "@/lib/viewer";
 
 export type OrganisationSection =
   | "overview"
@@ -30,21 +31,27 @@ export async function OrganisationPageFrame({
   currentSection,
   children,
 }: {
-  organisation: Organisation;
+  organisation: PublicOrganisation;
   currentSection: OrganisationSection;
   children: ReactNode;
 }) {
   const basePath = `/organisations/${organisation.slug}`;
-  const managementContext = await getOrganisationManagementContextBySlug(
-    organisation.slug,
-  );
+  const viewerId = await getViewerId();
+  const managementContext = viewerId
+    ? await getOrganisationManagementContextBySlug(organisation.slug)
+    : null;
   const showManagement = Boolean(managementContext);
-  const visibleSectionItems = showManagement
-    ? [
-        ...sectionItems,
-        { id: "management" as const, label: "Management", suffix: "/management" },
-      ]
-    : sectionItems;
+  const publicSectionItems = sectionItems.filter((item) =>
+    ["overview", "leagues", "results"].includes(item.id),
+  );
+  const visibleSectionItems = viewerId
+    ? showManagement
+      ? [
+          ...sectionItems,
+          { id: "management" as const, label: "Management", suffix: "/management" },
+        ]
+      : sectionItems
+    : publicSectionItems;
 
   return (
     <div className="mx-auto max-w-6xl">

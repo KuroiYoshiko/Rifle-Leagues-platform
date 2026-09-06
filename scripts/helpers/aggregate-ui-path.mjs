@@ -25,7 +25,13 @@ async function loadModule(relativePath, dependencies = {}) {
   return loadedModule.exports;
 }
 
-export async function renderAggregateResultsRoute({ readRpc, competition, organisationId = 1, seasonId = 1 }) {
+export async function renderAggregateResultsRoute({
+  readRpc,
+  competition,
+  organisationId = 1,
+  seasonId = 1,
+  viewerId = "00000000-0000-0000-0000-000000000001",
+}) {
   const calls = [];
   const originalFetch = globalThis.fetch;
   const envKeys = ["NEXT_PUBLIC_SUPABASE_URL", "NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"];
@@ -63,10 +69,17 @@ export async function renderAggregateResultsRoute({ readRpc, competition, organi
       "next/link": { __esModule: true, default: ({ children, ...props }) => createElement("a", props, children) },
       "next/navigation": { notFound: () => { throw new Error("Unexpected notFound in Competition route"); } },
       "@/components/ui": ui,
-      "@/components/competition-details-disclosure": { CompetitionDetailsDisclosure: () => null },
-      "@/components/competition-entry-controls": { CompetitionEntryControls: () => null },
+      "@/components/competition-details-disclosure": {
+        CompetitionDetailsDisclosure: ({ showScoringAccess }) =>
+          createElement("div", { "data-scoring-access": String(showScoringAccess) }),
+      },
+      "@/components/competition-entry-controls": {
+        CompetitionEntryControls: () => createElement("div", { "data-entry-controls": "true" }),
+      },
       "@/components/competition-aggregate-results": resultsTable,
-      "@/components/competition-lifecycle-actions": { CompetitionLifecycleActions: () => null },
+      "@/components/competition-lifecycle-actions": {
+        CompetitionLifecycleActions: () => createElement("div", { "data-lifecycle-actions": "true" }),
+      },
       "@/components/organisation-page-frame": { OrganisationPageFrame: ({ children }) => children },
       "@/components/published-competition-divisions": { PublishedCompetitionDivisionsView: () => null },
       "@/lib/competition-aggregate-results": resultsLoader,
@@ -75,6 +88,26 @@ export async function renderAggregateResultsRoute({ readRpc, competition, organi
         getPublishedCompetitionDivisions: async () => null,
       },
       "@/lib/competition-entries": { getCompetitionClubEntryContext: async () => [] },
+      "@/lib/public-results": {
+        getPublicResultsCatalog: async () => ({
+          organisation: { id: organisationId, slug: "test-org", name: "Test Organisation" },
+          season: { id: seasonId, slug: "test-season", name: "Test Season", entry_opens_at: null, entry_closes_at: null, starts_at: null },
+          competition,
+          rounds: [],
+          score_components: [],
+          published_divisions: null,
+        }),
+      },
+      "@/lib/public-results-routes.mjs": {
+        getCompetitionViewerCapabilities: ({ isAuthenticated, isOwner, hasManagementContext, competitionPublished, hasDivisionManagement }) => ({
+          loadEntryContext: isAuthenticated && competitionPublished,
+          showEntryControls: isAuthenticated,
+          showLifecycleActions: isAuthenticated && isOwner,
+          showScoringAccess: isAuthenticated,
+          showCompetitionManagement: isAuthenticated && ((hasManagementContext && competitionPublished) || hasDivisionManagement),
+        }),
+      },
+      "@/lib/viewer": { getViewerId: async () => viewerId },
       "@/lib/organisations": {
         getActiveOrganisationBySlug: async () => ({ id: organisationId, slug: "test-org", name: "Test Organisation" }),
         getOrganisationManagementContextBySlug: async () => null,

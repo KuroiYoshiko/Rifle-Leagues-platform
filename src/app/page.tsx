@@ -49,7 +49,7 @@ export default async function Home() {
           <div className="hidden items-center gap-8 text-sm text-white/70 md:flex">
             <a href="#product" className="transition hover:text-white">Product</a>
             <a href="#for-clubs" className="transition hover:text-white">For clubs</a>
-            <a href="#competition" className="transition hover:text-white">Competition</a>
+            <Link href="/organisations" className="transition hover:text-white">Results</Link>
           </div>
           {isAuthenticated ? (
             <div className="flex items-center gap-2 sm:gap-3">
@@ -88,8 +88,8 @@ export default async function Home() {
               A focused home for competitors, clubs, and league organisers—built to make the season easier to follow and simpler to run.
             </p>
             <div className="mt-10 flex flex-col gap-3 sm:flex-row">
-              <Link href="/dashboard" className="inline-flex min-h-12 items-center justify-center rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-lg transition hover:bg-brand-deep">
-                Explore shooter view <span className="ml-3" aria-hidden="true">→</span>
+              <Link href="/organisations" className="inline-flex min-h-12 items-center justify-center rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground shadow-lg transition hover:bg-brand-deep">
+                Browse results <span className="ml-3" aria-hidden="true">→</span>
               </Link>
               <Link href="/clubs" className="inline-flex min-h-12 items-center justify-center rounded-full border border-white/20 bg-white/[.03] px-6 text-sm font-semibold text-white/85 transition hover:bg-white/[.08] hover:text-white">
                 Explore clubs

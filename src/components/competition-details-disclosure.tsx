@@ -49,11 +49,13 @@ export function CompetitionDetailsDisclosure({
   effectiveDates,
   rounds,
   scoreComponents,
+  showScoringAccess = true,
 }: {
   competition: Competition;
   effectiveDates: CompetitionEffectiveDates;
   rounds: CompetitionRound[];
   scoreComponents: CompetitionScoreComponent[];
+  showScoringAccess?: boolean;
 }) {
   const entryWindow =
     effectiveDates.effective_entry_opens_at &&
@@ -122,16 +124,18 @@ export function CompetitionDetailsDisclosure({
                 : "Season start date"}
             </p>
           </div>
-          <div>
-            <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
-              Scoring access
-            </dt>
-            <dd className="mt-1.5 text-sm font-semibold text-foreground">
-              {competition.local_scoring_enabled
-                ? "Club and organisation scoring"
-                : "Organisation scoring only"}
-            </dd>
-          </div>
+          {showScoringAccess ? (
+            <div>
+              <dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                Scoring access
+              </dt>
+              <dd className="mt-1.5 text-sm font-semibold text-foreground">
+                {competition.local_scoring_enabled
+                  ? "Club and organisation scoring"
+                  : "Organisation scoring only"}
+              </dd>
+            </div>
+          ) : null}
         </dl>
 
         <section className="mt-7 border-t border-border pt-6" aria-labelledby="course-of-fire-heading">

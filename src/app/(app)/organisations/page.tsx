@@ -10,10 +10,14 @@ import {
 } from "@/lib/discovery-search";
 import {
   organisationColumns,
-  type Organisation,
   type OrganisationStaffAccess,
 } from "@/lib/organisations";
+import {
+  getPublicResultsCatalog,
+  type PublicOrganisation,
+} from "@/lib/public-results";
 import { createClient } from "@/lib/supabase/server";
+import { getViewerId } from "@/lib/viewer";
 
 export const metadata: Metadata = {
   title: "League organisations",
@@ -80,31 +84,40 @@ export default async function OrganisationsPage({
   const currentPage = readPage(pageParam);
   const rangeStart = (currentPage - 1) * pageSize;
   const supabase = await createClient();
-  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
-  const userId = claimsData?.claims?.sub;
+  const userId = await getViewerId();
+  const isAuthenticated = Boolean(userId);
+  let organisationsResult: {
+    data: PublicOrganisation[] | null;
+    count: number | null;
+    error: unknown;
+  };
+  let associationsResult: {
+    data: Array<{ organisation_id: number }> | null;
+    error: unknown;
+  } = { data: [], error: null };
+  let staffAccessResult: {
+    data: OrganisationStaffAccess[] | null;
+    error: unknown;
+  } = { data: [], error: null };
 
-  if (claimsError || !userId) {
-    redirect("/login");
-  }
+  if (userId) {
+    let organisationsQuery = supabase
+      .from("organisations")
+      .select(organisationColumns, { count: "exact" })
+      .eq("status", "active")
+      .order("name")
+      .order("id")
+      .range(rangeStart, rangeStart + pageSize - 1);
 
-  let organisationsQuery = supabase
-    .from("organisations")
-    .select(organisationColumns, { count: "exact" })
-    .eq("status", "active")
-    .order("name")
-    .order("id")
-    .range(rangeStart, rangeStart + pageSize - 1);
+    if (searchTerm) {
+      organisationsQuery = organisationsQuery.textSearch(
+        "search_document",
+        createPrefixTextSearchQuery(searchTerm),
+        { config: "simple" },
+      );
+    }
 
-  if (searchTerm) {
-    organisationsQuery = organisationsQuery.textSearch(
-      "search_document",
-      createPrefixTextSearchQuery(searchTerm),
-      { config: "simple" },
-    );
-  }
-
-  const [organisationsResult, associationsResult, staffAccessResult] =
-    await Promise.all([
+    const [directory, associations, staffAccess] = await Promise.all([
       organisationsQuery,
       supabase
         .from("user_organisations")
@@ -115,8 +128,27 @@ export default async function OrganisationsPage({
         .select("id, organisation_id, role, status, created_at, updated_at")
         .eq("user_id", userId),
     ]);
+    organisationsResult = directory as typeof organisationsResult;
+    associationsResult = associations as typeof associationsResult;
+    staffAccessResult = staffAccess as typeof staffAccessResult;
+  } else {
+    try {
+      const catalog = await getPublicResultsCatalog({
+        query: searchTerm,
+        offset: rangeStart,
+        limit: pageSize,
+      });
+      organisationsResult = {
+        data: catalog?.organisations ?? [],
+        count: catalog?.total_count ?? 0,
+        error: null,
+      };
+    } catch (error) {
+      organisationsResult = { data: [], count: 0, error };
+    }
+  }
 
-  const organisations = (organisationsResult.data ?? []) as Organisation[];
+  const organisations = organisationsResult.data ?? [];
   const totalResults = organisationsResult.count ?? organisations.length;
   const pageCount = Math.ceil(totalResults / pageSize);
 
@@ -150,16 +182,19 @@ export default async function OrganisationsPage({
             Find a league organisation
           </h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Add an organisation to your dashboard for quick access to its public
-            league context, information, results area and contact details.
+            {isAuthenticated
+              ? "Add an organisation to your dashboard for quick access to its league context, information, results area and contact details."
+              : "Browse active organisations, their public seasons, published Competitions and released Results."}
           </p>
         </div>
-        <Link
-          href="/organisations/access"
-          className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
-        >
-          Manage an organisation
-        </Link>
+        {isAuthenticated ? (
+          <Link
+            href="/organisations/access"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
+          >
+            Manage an organisation
+          </Link>
+        ) : null}
       </div>
 
       <Card className="p-5 sm:p-7">
@@ -179,8 +214,9 @@ export default async function OrganisationsPage({
               Organisation discovery unavailable
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              The organisation database could not be loaded. Run the supplied
-              organisations SQL in Supabase, then refresh this page.
+              The organisation directory could not be loaded. Check that the
+              supplied public Results SQL has been run in Supabase, then refresh
+              this page.
             </p>
           </div>
         </Card>
@@ -245,13 +281,15 @@ export default async function OrganisationsPage({
                         View organisation →
                       </Link>
                     </div>
-                    <OrganisationDashboardButton
-                      organisationId={organisation.id}
-                      initiallyAdded={addedOrganisationIds.has(organisation.id)}
-                      managementRole={access?.role}
-                      managementStatus={access?.status}
-                      statusUnavailable={statusUnavailable}
-                    />
+                    {isAuthenticated ? (
+                      <OrganisationDashboardButton
+                        organisationId={organisation.id}
+                        initiallyAdded={addedOrganisationIds.has(organisation.id)}
+                        managementRole={access?.role}
+                        managementStatus={access?.status}
+                        statusUnavailable={statusUnavailable}
+                      />
+                    ) : null}
                   </div>
                 </Card>
               );

@@ -22,6 +22,8 @@ import {
   getActiveOrganisationBySlug,
   getOrganisationManagementContextBySlug,
 } from "@/lib/organisations";
+import { getPublicResultsCatalog } from "@/lib/public-results";
+import { getViewerId } from "@/lib/viewer";
 
 export const metadata: Metadata = {
   title: "Season",
@@ -112,23 +114,37 @@ export default async function LeagueSeasonDetailPage({
 }) {
   const { slug, seasonSlug } = await params;
   const { competitionDeleted, created } = await searchParams;
-  const [organisation, managementContext] = await Promise.all([
-    getActiveOrganisationBySlug(slug),
-    getOrganisationManagementContextBySlug(slug),
-  ]);
+  const viewerId = await getViewerId();
+  const isAuthenticated = Boolean(viewerId);
+  const publicCatalog = viewerId
+    ? null
+    : await getPublicResultsCatalog({
+        organisationSlug: slug,
+        seasonSlug,
+      });
+  const [organisation, managementContext] = viewerId
+    ? await Promise.all([
+        getActiveOrganisationBySlug(slug),
+        getOrganisationManagementContextBySlug(slug),
+      ])
+    : [publicCatalog?.organisation ?? null, null];
 
   if (!organisation) {
     notFound();
   }
 
-  const season = await getLeagueSeasonBySlug(organisation.id, seasonSlug);
+  const season = viewerId
+    ? await getLeagueSeasonBySlug(organisation.id, seasonSlug)
+    : (publicCatalog?.season ?? null);
 
   if (!season) {
     notFound();
   }
 
   const isOwner = managementContext?.access.role === "owner";
-  const competitions = await getCompetitions(season.id);
+  const competitions = viewerId
+    ? await getCompetitions(season.id)
+    : (publicCatalog?.competitions ?? []);
   const creationSucceeded = Array.isArray(created)
     ? created[0] === "1"
     : created === "1";
@@ -150,7 +166,7 @@ export default async function LeagueSeasonDetailPage({
 
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="leagues">
-      {creationSucceeded ? (
+      {isAuthenticated && creationSucceeded ? (
         <div
           className="mb-6 rounded-2xl border border-success/20 bg-success-subtle px-5 py-4 text-sm leading-6 text-success"
           role="status"
@@ -159,7 +175,7 @@ export default async function LeagueSeasonDetailPage({
           private draft until you move it to Open.
         </div>
       ) : null}
-      {competitionDeletionSucceeded ? (
+      {isAuthenticated && competitionDeletionSucceeded ? (
         <div
           className="mb-6 rounded-2xl border border-success/20 bg-success-subtle px-5 py-4 text-sm leading-6 text-success"
           role="status"

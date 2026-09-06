@@ -1,8 +1,12 @@
 import type { NextRequest } from "next/server";
 import { updateSession } from "@/lib/supabase/proxy";
+import { isPublicResultsPathname } from "@/lib/public-results-routes.mjs";
 
 export async function proxy(request: NextRequest) {
-  return updateSession(request);
+  return updateSession(
+    request,
+    isPublicResultsPathname(request.nextUrl.pathname),
+  );
 }
 
 export const config = {

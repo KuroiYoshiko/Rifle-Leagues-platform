@@ -9,7 +9,7 @@ import {
 
 // Disposable PostgreSQL only: no credentials, network, or application data.
 // Minimal source-schema fixture; the production derivation and standings SQL
-// run verbatim, including SECURITY DEFINER, auth checks and EXECUTE grants.
+// run verbatim, including SECURITY DEFINER, context checks and EXECUTE grants.
 const db = new PGlite();
 const viewer = "00000000-0000-0000-0000-000000000001";
 before(async () => {
@@ -100,6 +100,12 @@ async function fixture({ format = "individual", size = 1, mode = "points_scored"
 
 async function read(organisation = 1, season = 1, competition = 1) {
   await db.exec("set role authenticated");
+  try {
+    return (await db.query("select public.get_competition_aggregate_results($1,$2,$3) as data", [organisation, season, competition])).rows[0].data;
+  } finally { await db.exec("reset role").catch(() => {}); }
+}
+async function readAnonymously(organisation = 1, season = 1, competition = 1) {
+  await db.exec("set role anon");
   try {
     return (await db.query("select public.get_competition_aggregate_results($1,$2,$3) as data", [organisation, season, competition])).rows[0].data;
   } finally { await db.exec("reset role").catch(() => {}); }
@@ -483,6 +489,46 @@ test("saved scores on deadline day and future Rounds never leak, even to organis
   assert.equal(entrants(released)[0].participants[0].rounds[1].gun_score, 88.12);
 });
 
+test("Competition route renders public Results without authenticated controls", async () => {
+  await summerPairsRuntimeFixture();
+  const competition = (await db.query("select * from competitions where id=1")).rows[0];
+  const publicView = await renderAggregateResultsRoute({
+    competition,
+    viewerId: null,
+    readRpc: parameters => readAnonymously(
+      parameters.p_organisation_id,
+      parameters.p_league_season_id,
+      parameters.p_competition_id,
+    ),
+  });
+  assert.match(publicView.html, /<section id="results"/);
+  assert.doesNotMatch(publicView.html, /data-entry-controls|data-lifecycle-actions|Competition management/);
+  assert.match(publicView.html, /data-scoring-access="false"/);
+
+  const authenticatedView = await renderAggregateResultsRoute({
+    competition,
+    readRpc: parameters => read(
+      parameters.p_organisation_id,
+      parameters.p_league_season_id,
+      parameters.p_competition_id,
+    ),
+  });
+  assert.match(authenticatedView.html, /data-entry-controls="true"/);
+  assert.match(authenticatedView.html, /data-scoring-access="true"/);
+});
+
+test("anonymous viewers receive the same released-only Aggregate projection", async () => {
+  await fixture({ format: "pairs", size: 2, x: true });
+  const anonymous = await readAnonymously();
+  const authenticated = await read();
+  assert.deepEqual(anonymous, authenticated);
+  assert.equal(anonymous.released_round_count, 1);
+  assert.deepEqual(anonymous.rounds.map((round) => round.released), [true, false, false]);
+  assert.equal(entrants(anonymous)[0].club_name.length > 0, true);
+  assert.equal(entrants(anonymous)[0].participants.length, 2);
+  assert.ok(!JSON.stringify(anonymous).includes("88.12"));
+});
+
 test("published divisions isolate N and placements across clubs", async () => {
   await fixture();
   await db.exec(`
@@ -599,7 +645,7 @@ test("zero is a complete gun result; all-NSR and all-pending standings remain ti
   assert.ok(entrants(data).every((e) => e.rounds.every((r) => r.state === "pending" && r.ranking_points === null)));
 });
 
-test("auth/context gates, source grants and private derivation cannot be bypassed", async () => {
+test("public context gates, source grants and management functions cannot be bypassed", async () => {
   await fixture();
   // Use savepoints because expected SQL errors otherwise abort the fixture transaction.
   async function denied(sql, code) {
@@ -607,16 +653,21 @@ test("auth/context gates, source grants and private derivation cannot be bypasse
     await assert.rejects(db.exec(sql), (error) => error.code === code);
     await db.exec("rollback to savepoint denial");
   }
-  await denied("set role anon; select public.get_competition_aggregate_results(1,1,1)", "42501");
+  assert.equal((await readAnonymously()).status, "ready");
+  await denied("set role anon; select * from shooting_score_values", "42501");
+  await denied("set role anon; select * from competition_score_usages", "42501");
+  await denied("set role anon; select * from profiles", "42501");
+  await denied("set role anon; select private.derive_competition_round_results(1,1,1,null,false)", "42501");
+  await denied("set role anon; select public.get_competition_round_results(1,1,1)", "42501");
   await denied("set role authenticated; select * from shooting_score_values", "42501");
   await denied("set role authenticated; select private.derive_competition_round_results(1,1,1,null,false)", "42501");
   await denied("set role authenticated; select public.get_competition_round_results(1,1,1)", "42501");
-  await denied("set role authenticated; select public.get_competition_aggregate_results(2,1,1)", "P0002");
+  await denied("set role anon; select public.get_competition_aggregate_results(2,1,1)", "P0002");
   await db.query("select set_config('request.jwt.claim.sub', '', false)");
-  await denied("set role authenticated; select public.get_competition_aggregate_results(1,1,1)", "42501");
+  assert.equal((await read()).status, "ready");
   await db.query("select set_config('request.jwt.claim.sub', $1, false)", [viewer]);
   await db.exec("update competitions set status='draft'");
-  await denied("set role authenticated; select public.get_competition_aggregate_results(1,1,1)", "P0002");
+  await denied("set role anon; select public.get_competition_aggregate_results(1,1,1)", "P0002");
   await db.exec("update competitions set status='published', ranking_method='gun_score'");
-  await denied("set role authenticated; select public.get_competition_aggregate_results(1,1,1)", "22023");
+  await denied("set role anon; select public.get_competition_aggregate_results(1,1,1)", "22023");
 });
