@@ -10,6 +10,7 @@
     "test:aggregate": "node --test scripts/test-aggregate-results.mjs",
     "test:public-results": "node --test scripts/test-public-results.mjs",
     "test:saved-results": "node --test scripts/test-saved-public-results.mjs",
+    "test:club-operations": "node --test scripts/test-club-operational-summaries.mjs",
     "test:results": "npm run test:aggregate && npm run test:public-results && npm run test:saved-results"
   },
   "dependencies": {

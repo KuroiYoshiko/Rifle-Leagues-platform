@@ -9,8 +9,11 @@ import { MembershipRequestButton } from "@/components/membership-request-button"
 import { Badge, Card, ProgressBar, SectionHeader } from "@/components/ui";
 import {
   getClubLocation,
+  isClubManager,
   type ClubMembership,
 } from "@/lib/clubs";
+import { getClubOperationalSummaries } from "@/lib/club-operational-summaries";
+import { sortClubOperationalSummaries } from "@/lib/club-operational-summary-presentation";
 import {
   calculateProfileCompleteness,
   type Profile,
@@ -156,6 +159,21 @@ export default async function DashboardPage() {
       }),
     );
   const activeClubCount = activeMemberships.length;
+  const managedClubCount = activeMemberships.filter(isClubManager).length;
+  const managedClubSummaries = managedClubCount > 0
+    ? sortClubOperationalSummaries(await getClubOperationalSummaries())
+    : [];
+  const managedClubOrder = new Map(
+    managedClubSummaries.map((summary, index) => [summary.club_id, index]),
+  );
+  const dashboardMemberships = [...activeMemberships].sort(
+    (left, right) =>
+      (managedClubOrder.get(left.club_id) ?? Number.MAX_SAFE_INTEGER) -
+        (managedClubOrder.get(right.club_id) ?? Number.MAX_SAFE_INTEGER) ||
+      left.club.name.localeCompare(right.club.name, "en", {
+        sensitivity: "base",
+      }),
+  );
   const hasMembershipState = memberships.length > 0;
   const metadataFirstName = metadataValue(claims.user_metadata, "first_name");
   const firstName = profile.first_name?.trim() || metadataFirstName || "there";
@@ -164,7 +182,7 @@ export default async function DashboardPage() {
     !profileIsComplete && !hasMembershipState && !membershipsResult.error;
   const welcomeCopy =
     activeClubCount > 0
-      ? `You have ${activeClubCount} active club ${activeClubCount === 1 ? "membership" : "memberships"}. Competition features will appear here when they are ready.`
+      ? `You have ${activeClubCount} active club ${activeClubCount === 1 ? "membership" : "memberships"}. Club and Competition activity is summarised below.`
       : pendingMemberships.length > 0
         ? `You have ${pendingMemberships.length} club membership ${pendingMemberships.length === 1 ? "request" : "requests"} waiting for approval.`
         : rejectedMemberships.length > 0
@@ -316,7 +334,10 @@ export default async function DashboardPage() {
             </div>
           </Card>
         ) : activeClubCount > 0 ? (
-          <DashboardClubCards memberships={activeMemberships} />
+          <DashboardClubCards
+            memberships={dashboardMemberships}
+            operationalSummaries={managedClubSummaries}
+          />
         ) : pendingMemberships.length > 0 || rejectedMemberships.length > 0 ? (
           <div className="space-y-4">
             {pendingMemberships.map((membership) => (
@@ -444,36 +465,8 @@ export default async function DashboardPage() {
         )}
       </section>
 
-      {activeClubCount > 0 && !membershipsResult.error ? (
-        <section id="competitions" className="mt-10">
-          <SectionHeader
-            title="Competitions"
-            description="Competition activity connected to your club membership"
-          />
-          <Card className="p-6 sm:p-8">
-            <div className="flex items-start gap-4">
-              <span
-                className="grid size-11 shrink-0 place-items-center rounded-xl bg-surface-muted text-sm font-bold text-neutral-strong"
-                aria-hidden="true"
-              >
-                C
-              </span>
-              <div>
-                <h2 className="font-semibold text-foreground">
-                  No competition functionality yet
-                </h2>
-                <p className="mt-1.5 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  Entries, rounds, scores, standings and statistics will appear only
-                  after those features are implemented and real data exists.
-                </p>
-              </div>
-            </div>
-          </Card>
-        </section>
-      ) : null}
-
       <section id="settings" className="mt-10">
-        <SectionHeader title="Account" description="Manage the details linked to your account" />
+        <SectionHeader title="Account" />
         <Card className="flex flex-col gap-5 p-6 sm:flex-row sm:items-center sm:justify-between sm:p-7">
           <div>
             <h2 className="font-semibold text-foreground">Profile and settings</h2>

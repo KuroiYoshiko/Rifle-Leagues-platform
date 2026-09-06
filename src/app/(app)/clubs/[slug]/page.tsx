@@ -2,12 +2,15 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { ClubAbout } from "@/components/club-about";
-import {
-  ClubMembershipPanel,
-  ClubPageFrame,
-} from "@/components/club-page-frame";
+import { ClubOperationalSummaryCard } from "@/components/club-operational-summary";
+import { ClubPageFrame } from "@/components/club-page-frame";
 import { Card, SectionHeader } from "@/components/ui";
-import { getClubPageContextBySlug, isClubOwner } from "@/lib/clubs";
+import {
+  getClubPageContextBySlug,
+  isClubManager,
+  isClubOwner,
+} from "@/lib/clubs";
+import { getClubOperationalSummaries } from "@/lib/club-operational-summaries";
 import { getPublicClubResultsCatalog } from "@/lib/public-results";
 import { getViewerId } from "@/lib/viewer";
 
@@ -59,6 +62,10 @@ export default async function ClubOverviewPage({
 
   const { club, membership, informationCardCount } = context;
   const owner = isClubOwner(membership);
+  const manager = isClubManager(membership);
+  const operationalSummary = manager
+    ? (await getClubOperationalSummaries(club.id))[0] ?? null
+    : null;
   const relatedOrganisations = Array.from(
     new Map(
       (publicCatalog?.competitions ?? []).map((competition) => [
@@ -93,8 +100,8 @@ export default async function ClubOverviewPage({
         </div>
       ) : null}
 
-      {viewerId ? (
-        <ClubMembershipPanel club={club} membership={membership} />
+      {operationalSummary ? (
+        <ClubOperationalSummaryCard summary={operationalSummary} />
       ) : null}
 
       {club.about_content || owner ? (
@@ -110,10 +117,7 @@ export default async function ClubOverviewPage({
 
       {relatedOrganisations.length > 0 ? (
         <section className="mt-10" aria-labelledby="related-organisations-heading">
-          <SectionHeader
-            title="Related organisations"
-            description="Derived from this club’s published Competition participation"
-          />
+          <SectionHeader title="Related organisations" />
           <Card className="p-5 sm:p-6">
             <h2 id="related-organisations-heading" className="sr-only">
               Related organisations
@@ -135,10 +139,7 @@ export default async function ClubOverviewPage({
       ) : null}
 
       <section className="mt-10" aria-labelledby="club-details-heading">
-        <SectionHeader
-          title="Club details"
-          description="Published club discovery information"
-        />
+        <SectionHeader title="Club details" />
         <Card className="p-6 sm:p-8">
           <h2 id="club-details-heading" className="sr-only">
             Club details

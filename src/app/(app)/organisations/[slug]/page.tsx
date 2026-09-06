@@ -158,7 +158,6 @@ export default async function OrganisationOverviewPage({
         <section className="mt-10" aria-label="Season summary">
           <SectionHeader
             title="Season summary"
-            description="Current and next published seasons"
             action={
               <Link
                 href={`/organisations/${organisation.slug}/leagues`}

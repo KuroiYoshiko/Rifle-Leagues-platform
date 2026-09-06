@@ -71,12 +71,13 @@ export function Badge({
   tone = "neutral",
 }: {
   children: ReactNode;
-  tone?: "neutral" | "positive" | "warning" | "brand";
+  tone?: "neutral" | "positive" | "warning" | "danger" | "brand";
 }) {
   const tones = {
     neutral: "bg-surface-muted text-neutral-strong",
     positive: "bg-success-subtle text-success",
     warning: "bg-warning-subtle text-warning",
+    danger: "bg-danger-subtle text-danger",
     brand: "bg-brand-subtle text-brand-deep",
   };
 
