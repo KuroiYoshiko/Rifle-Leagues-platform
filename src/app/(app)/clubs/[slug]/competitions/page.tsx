@@ -12,12 +12,20 @@ import {
   type ClubCompetitionEntryCard,
 } from "@/lib/competition-entries";
 import { getClubPageContextBySlug, isClubManager } from "@/lib/clubs";
-import { getCompetitionEntryFormatLabel } from "@/lib/competitions";
+import {
+  getCompetitionEntryFormatLabel,
+  getCompetitionRankingMethodLabel,
+} from "@/lib/competitions";
 import { isCompetitionRoundWithinLocalCutoff } from "@/lib/competition-score-dates";
 import {
   getLeagueSeasonPresentationPhase,
   getLeagueToday,
 } from "@/lib/league-seasons";
+import {
+  getPublicClubResultsCatalog,
+  type PublicClubCompetition,
+} from "@/lib/public-results";
+import { getViewerId } from "@/lib/viewer";
 
 export const metadata: Metadata = {
   title: "Club competitions",
@@ -339,6 +347,121 @@ function PastCompetitionPagination({
   );
 }
 
+const publicPhasePresentation = {
+  ongoing: { label: "Current", tone: "positive" as const },
+  upcoming: { label: "Upcoming", tone: "brand" as const },
+  ended: { label: "Historical", tone: "neutral" as const },
+  unknown: { label: "Published", tone: "neutral" as const },
+};
+
+function PublicClubCompetitionCard({
+  competition,
+  today,
+}: {
+  competition: PublicClubCompetition;
+  today: string;
+}) {
+  const phase = getLeagueSeasonPresentationPhase(
+    {
+      starts_at: competition.season_starts_at,
+      ends_at: competition.season_ends_at,
+    },
+    today,
+  );
+  const phasePresentation = publicPhasePresentation[phase];
+  const competitionPath = `/organisations/${competition.organisation_slug}/leagues/${competition.season_slug}/competitions/${competition.competition_slug}`;
+  const destination = competition.has_released_results
+    ? `${competitionPath}#results`
+    : competitionPath;
+
+  return (
+    <Card className="p-6 sm:p-7">
+      <div className="grid gap-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
+        <div className="min-w-0">
+          <div className="flex flex-wrap gap-2">
+            <Badge tone={phasePresentation.tone}>{phasePresentation.label}</Badge>
+            {competition.has_released_results ? (
+              <Badge tone="brand">Released results</Badge>
+            ) : null}
+          </div>
+          <p className="mt-4 text-xs font-semibold uppercase tracking-[0.1em] text-brand-strong">
+            {competition.season_name}
+          </p>
+          <h2 className="mt-1 break-words text-xl font-semibold tracking-[-0.025em] text-foreground">
+            {competition.competition_name}
+          </h2>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {competition.organisation_name}
+          </p>
+          <p className="mt-3 text-sm text-neutral-strong">
+            {getCompetitionEntryFormatLabel(competition.entry_format)}
+            {competition.entry_format === "team"
+              ? ` · ${competition.team_size} per team`
+              : ""}
+            {` · ${getCompetitionRankingMethodLabel(competition.ranking_method)}`}
+          </p>
+        </div>
+        <Link
+          href={destination}
+          className="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle sm:w-auto"
+        >
+          {competition.has_released_results
+            ? "View released results"
+            : "View competition"}
+        </Link>
+      </div>
+    </Card>
+  );
+}
+
+function PublicClubCompetitions({
+  competitions,
+}: {
+  competitions: PublicClubCompetition[];
+}) {
+  if (competitions.length === 0) {
+    return (
+      <Card className="p-6 sm:p-8">
+        <h2 className="font-semibold text-foreground">
+          No public Competition participation yet
+        </h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
+          Submitted entries will appear here once their Competition, Season and
+          league organisation are public.
+        </p>
+      </Card>
+    );
+  }
+
+  const today = getLeagueToday();
+
+  return (
+    <section aria-labelledby="public-club-competitions-heading">
+      <div className="mb-5">
+        <h2
+          id="public-club-competitions-heading"
+          className="text-lg font-semibold tracking-[-0.025em] text-foreground"
+        >
+          Public Competitions
+        </h2>
+        <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
+          Published Competitions this club has entered across league organisations.
+          Results links open the canonical Competition page.
+        </p>
+      </div>
+      <div className="space-y-3">
+        {competitions.map((competition) => (
+          <PublicClubCompetitionCard
+            key={competition.competition_id}
+            competition={competition}
+            today={today}
+          />
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default async function ClubCompetitionsPage({
   params,
   searchParams,
@@ -348,7 +471,21 @@ export default async function ClubCompetitionsPage({
 }) {
   const { slug } = await params;
   const { pastPage } = await searchParams;
-  const context = await getClubPageContextBySlug(slug);
+  const viewerId = await getViewerId();
+  const authenticatedContext = viewerId
+    ? await getClubPageContextBySlug(slug)
+    : null;
+  let publicCatalog = viewerId
+    ? null
+    : await getPublicClubResultsCatalog({ clubSlug: slug });
+  const context = authenticatedContext ??
+    (publicCatalog?.club
+      ? {
+          club: publicCatalog.club,
+          membership: null,
+          informationCardCount: publicCatalog.information_cards?.length ?? 0,
+        }
+      : null);
 
   if (!context) {
     notFound();
@@ -357,9 +494,28 @@ export default async function ClubCompetitionsPage({
   const { club, membership, informationCardCount } = context;
   const membershipIsActive = membership?.status === "active";
   const clubManager = isClubManager(membership);
-  const entries = membershipIsActive
-    ? await getClubCompetitionEntries(club.id)
-    : [];
+  if (!membershipIsActive) {
+    publicCatalog ??= await getPublicClubResultsCatalog({ clubSlug: slug });
+
+    return (
+      <ClubPageFrame
+        club={club}
+        membership={membership}
+        informationCardCount={informationCardCount}
+        isAuthenticated={Boolean(viewerId)}
+        currentSection="competitions"
+      >
+        {viewerId ? (
+          <div className="mb-8">
+            <ClubMembershipPanel club={club} membership={membership} />
+          </div>
+        ) : null}
+        <PublicClubCompetitions competitions={publicCatalog?.competitions ?? []} />
+      </ClubPageFrame>
+    );
+  }
+
+  const entries = await getClubCompetitionEntries(club.id);
   const visibleEntries = entries.filter(
     (entry) => entry.entry_status !== "withdrawn",
   );
@@ -441,6 +597,7 @@ export default async function ClubCompetitionsPage({
       club={club}
       membership={membership}
       informationCardCount={informationCardCount}
+      isAuthenticated
       currentSection="competitions"
     >
       {membershipIsActive ? (

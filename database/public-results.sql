@@ -1,6 +1,7 @@
--- Run AFTER database/competition-aggregate-results.sql.
--- Safe to rerun on populated databases. This creates one narrow public catalog
--- projection; source tables, RLS policies, and management RPC grants are not
+-- Run AFTER database/club-foundation.sql, database/competition-entries.sql,
+-- and database/competition-aggregate-results.sql.
+-- Safe to rerun on populated databases. This creates narrow public catalogue
+-- projections; source tables, RLS policies, and management RPC grants are not
 -- changed.
 begin;
 
@@ -305,6 +306,157 @@ begin
 end;
 $$;
 
+create or replace function public.get_public_club_results_catalog(
+  p_club_slug text default null,
+  p_query text default null,
+  p_offset integer default 0,
+  p_limit integer default 10
+)
+returns jsonb
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+declare
+  v_club public.clubs%rowtype;
+  v_query text := nullif(pg_catalog.btrim(p_query), '');
+  v_result jsonb;
+begin
+  if p_offset is null or p_offset < 0
+    or p_limit is null or p_limit < 1 or p_limit > 50 then
+    raise exception 'Invalid public club catalog pagination.' using errcode = '22023';
+  end if;
+
+  if v_query is not null and char_length(v_query) > 100 then
+    raise exception 'Public club search is too long.' using errcode = '22023';
+  end if;
+
+  if p_club_slug is null then
+    select jsonb_build_object(
+      'total_count', (
+        select count(*)
+        from public.clubs as club
+        where club.status = 'active'
+          and (
+            v_query is null
+            or club.search_document @@ pg_catalog.websearch_to_tsquery('simple', v_query)
+          )
+      ),
+      'clubs', coalesce((
+        select jsonb_agg(jsonb_build_object(
+          'id', page.id,
+          'name', page.name,
+          'slug', page.slug,
+          'town', page.town,
+          'county', page.county,
+          'postcode', page.postcode,
+          'website', page.website,
+          'about_content', page.about_content
+        ) order by page.name, page.id)
+        from (
+          select club.id, club.name, club.slug, club.town, club.county,
+            club.postcode, club.website, club.about_content
+          from public.clubs as club
+          where club.status = 'active'
+            and (
+              v_query is null
+              or club.search_document @@ pg_catalog.websearch_to_tsquery('simple', v_query)
+            )
+          order by club.name, club.id
+          offset p_offset limit p_limit
+        ) as page
+      ), '[]'::jsonb)
+    ) into v_result;
+
+    return v_result;
+  end if;
+
+  if v_query is not null then
+    raise exception 'Search is not accepted with exact club context.' using errcode = '22023';
+  end if;
+
+  if char_length(p_club_slug) > 180
+    or p_club_slug !~ '^[a-z0-9]+(?:-[a-z0-9]+)*$' then
+    return null;
+  end if;
+
+  select club.* into v_club
+  from public.clubs as club
+  where club.slug = p_club_slug
+    and club.status = 'active';
+
+  if not found then return null; end if;
+
+  select jsonb_build_object(
+    'club', jsonb_build_object(
+      'id', v_club.id,
+      'name', v_club.name,
+      'slug', v_club.slug,
+      'town', v_club.town,
+      'county', v_club.county,
+      'postcode', v_club.postcode,
+      'website', v_club.website,
+      'about_content', v_club.about_content
+    ),
+    'information_cards', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'id', card.id,
+        'title', card.title,
+        'content', card.content,
+        'position', card.position,
+        'updated_at', card.updated_at
+      ) order by card.position, card.id)
+      from public.club_information_cards as card
+      where card.club_id = v_club.id
+    ), '[]'::jsonb),
+    'competitions', coalesce((
+      select jsonb_agg(jsonb_build_object(
+        'competition_id', competition.id,
+        'competition_name', competition.name,
+        'competition_slug', competition.slug,
+        'entry_format', competition.entry_format,
+        'team_size', competition.team_size,
+        'ranking_method', competition.ranking_method,
+        'effective_starts_at', case
+          when competition.start_date_mode = 'custom' then competition.custom_starts_at
+          else season.starts_at
+        end,
+        'season_name', season.name,
+        'season_slug', season.slug,
+        'season_status', season.status,
+        'season_starts_at', season.starts_at,
+        'season_ends_at', season.ends_at,
+        'organisation_name', organisation.name,
+        'organisation_slug', organisation.slug,
+        'has_released_results', exists (
+          select 1
+          from public.competition_rounds as competition_round
+          where competition_round.competition_id = competition.id
+            and (statement_timestamp() at time zone 'UTC')::date
+              > competition_round.deadline
+        )
+      ) order by season.starts_at desc nulls last,
+          organisation.name, competition.name, competition.id)
+      from public.club_competition_entries as entry
+      join public.competitions as competition
+        on competition.id = entry.competition_id
+       and competition.status = 'published'
+      join public.league_seasons as season
+        on season.id = competition.league_season_id
+       and season.status in ('open', 'active', 'completed')
+      join public.organisations as organisation
+        on organisation.id = season.organisation_id
+       and organisation.status = 'active'
+      where entry.club_id = v_club.id
+        and entry.status = 'submitted'
+    ), '[]'::jsonb)
+  ) into v_result;
+
+  return v_result;
+end;
+$$;
+
 revoke execute on function public.get_public_results_catalog(
   text, text, text, text, integer, integer
 ) from public, anon, authenticated;
@@ -312,9 +464,21 @@ grant execute on function public.get_public_results_catalog(
   text, text, text, text, integer, integer
 ) to anon, authenticated;
 
+revoke execute on function public.get_public_club_results_catalog(
+  text, text, integer, integer
+) from public, anon, authenticated;
+grant execute on function public.get_public_club_results_catalog(
+  text, text, integer, integer
+) to anon, authenticated;
+
 comment on function public.get_public_results_catalog(
   text, text, text, text, integer, integer
 ) is
   'Public discovery projection for active organisations, public seasons, published competitions, public competition configuration, and published division allocations. Omits contact, staff, membership, profile identifiers, entry-management state, draft data, and every score source field.';
+
+comment on function public.get_public_club_results_catalog(
+  text, text, integer, integer
+) is
+  'Public active-club discovery and exact club projection. Competition participation is derived only from submitted entries in published competitions under public seasons and active organisations. Omits membership, profile, contact, entry-management, draft, withdrawn, score-source, and unreleased score fields.';
 
 commit;

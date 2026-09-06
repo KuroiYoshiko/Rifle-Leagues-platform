@@ -7,6 +7,8 @@ import {
 } from "@/components/club-page-frame";
 import { Card, SectionHeader } from "@/components/ui";
 import { getClubPageContextBySlug, isClubOwner } from "@/lib/clubs";
+import { getPublicClubResultsCatalog } from "@/lib/public-results";
+import { getViewerId } from "@/lib/viewer";
 
 export const metadata: Metadata = {
   title: "Club overview",
@@ -34,7 +36,21 @@ export default async function ClubOverviewPage({
 }) {
   const { slug } = await params;
   const { registered } = await searchParams;
-  const context = await getClubPageContextBySlug(slug);
+  const viewerId = await getViewerId();
+  const authenticatedContext = viewerId
+    ? await getClubPageContextBySlug(slug)
+    : null;
+  const publicCatalog = viewerId
+    ? null
+    : await getPublicClubResultsCatalog({ clubSlug: slug });
+  const context = authenticatedContext ??
+    (publicCatalog?.club
+      ? {
+          club: publicCatalog.club,
+          membership: null,
+          informationCardCount: publicCatalog.information_cards?.length ?? 0,
+        }
+      : null);
 
   if (!context) {
     notFound();
@@ -51,6 +67,7 @@ export default async function ClubOverviewPage({
       club={club}
       membership={membership}
       informationCardCount={informationCardCount}
+      isAuthenticated={Boolean(viewerId)}
       currentSection="overview"
     >
       {registrationSucceeded && owner ? (
@@ -64,7 +81,9 @@ export default async function ClubOverviewPage({
         </div>
       ) : null}
 
-      <ClubMembershipPanel club={club} membership={membership} />
+      {viewerId ? (
+        <ClubMembershipPanel club={club} membership={membership} />
+      ) : null}
 
       {club.about_content || owner ? (
         <div className="mt-10">

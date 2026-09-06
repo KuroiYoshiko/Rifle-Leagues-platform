@@ -11,7 +11,7 @@ const require = createRequire(import.meta.url);
 // Compile the real application modules with the installed TypeScript compiler.
 // Only Next request context/navigation and unrelated page lookups are supplied
 // by the test. The Results loader, Supabase SSR client/SDK, Competition page and table are real.
-async function loadModule(relativePath, dependencies = {}) {
+export async function loadModule(relativePath, dependencies = {}) {
   const filename = new URL(`../../${relativePath}`, import.meta.url);
   const source = await readFile(filename, "utf8");
   const code = ts.transpileModule(source, { compilerOptions: {

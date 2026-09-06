@@ -28,6 +28,7 @@ export default async function ClubSettingsPage({
       club={club}
       membership={membership}
       informationCardCount={informationCardCount}
+      isAuthenticated
       currentSection="settings"
     >
       <section aria-labelledby="club-settings-heading">

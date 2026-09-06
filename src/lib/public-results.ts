@@ -1,5 +1,6 @@
 import { cache } from "react";
 import type { PublishedCompetitionDivisions } from "@/lib/competition-division-types";
+import type { Club } from "@/lib/clubs";
 import type {
   Competition,
   CompetitionRound,
@@ -19,6 +20,52 @@ export type PublicOrganisation = Pick<
   | "about_content"
   | "status"
 >;
+
+export type PublicClub = Pick<
+  Club,
+  | "id"
+  | "name"
+  | "slug"
+  | "town"
+  | "county"
+  | "postcode"
+  | "website"
+  | "about_content"
+>;
+
+export type PublicClubInformationCard = {
+  id: number;
+  title: string;
+  content: string;
+  position: number;
+  updated_at: string;
+};
+
+export type PublicClubCompetition = {
+  competition_id: number;
+  competition_name: string;
+  competition_slug: string;
+  entry_format: "individual" | "pairs" | "team";
+  team_size: number;
+  ranking_method: Competition["ranking_method"];
+  effective_starts_at: string | null;
+  season_name: string;
+  season_slug: string;
+  season_status: LeagueSeason["status"];
+  season_starts_at: string | null;
+  season_ends_at: string | null;
+  organisation_name: string;
+  organisation_slug: string;
+  has_released_results: boolean;
+};
+
+export type PublicClubResultsCatalog = {
+  total_count?: number;
+  clubs?: PublicClub[];
+  club?: PublicClub;
+  information_cards?: PublicClubInformationCard[];
+  competitions?: PublicClubCompetition[];
+};
 
 export type PublicResultsCatalog = {
   total_count?: number;
@@ -117,5 +164,40 @@ export const getPublicResultsCatalog = cache(
           }
         : null,
     };
+  },
+);
+
+type PublicClubResultsCatalogInput = {
+  clubSlug?: string;
+  query?: string;
+  offset?: number;
+  limit?: number;
+};
+
+export const getPublicClubResultsCatalog = cache(
+  async ({
+    clubSlug,
+    query,
+    offset = 0,
+    limit = 10,
+  }: PublicClubResultsCatalogInput): Promise<PublicClubResultsCatalog | null> => {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc(
+      "get_public_club_results_catalog",
+      {
+        p_club_slug: clubSlug ?? null,
+        p_query: query?.trim() || null,
+        p_offset: offset,
+        p_limit: limit,
+      },
+    );
+
+    if (error) {
+      throw new Error("Public club results could not be loaded.");
+    }
+
+    return data && typeof data === "object" && !Array.isArray(data)
+      ? (data as PublicClubResultsCatalog)
+      : null;
   },
 );

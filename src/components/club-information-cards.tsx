@@ -15,7 +15,9 @@ export function ClubInformationCards({
   isOwner,
 }: {
   club: Pick<Club, "id" | "name" | "slug">;
-  initialCards: ClubInformationCard[];
+  initialCards: Array<
+    Pick<ClubInformationCard, "id" | "title" | "content" | "position" | "updated_at">
+  >;
   isOwner: boolean;
 }) {
   return (
