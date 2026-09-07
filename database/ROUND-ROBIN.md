@@ -113,6 +113,19 @@ entrant headers, short dates without year and the existing collapsible Pair/Team
 participant breakdown. Configuration and Division pages explain the lifecycle;
 the score-entry page links to Results.
 
+Opponent labels are display-only and collision-checked within each Division.
+Pair/Team numbering is `competition_entrants.position`, unique only inside
+`club_competition_entry_id`; each club has its own entry per Competition. The
+labels `Pair 2`/`Team 2` therefore are not globally unique. Opponents retain the
+unit label plus the shortest unique word-prefix of the current Club name, e.g.
+`v Pair 2 · Basildon`. Shared prefixes expand to distinguish the Clubs.
+Individuals use `v I. Morgan` when unique, expanding to full name, Club context,
+and existing entrant labels/IDs only when needed to resolve collisions. Full
+opponent names and Club names remain in hover titles and screen-reader text.
+No abbreviation field, saved acronym or persistent squad identity is introduced.
+A later domain feature would be needed for stable Club Pair/Team identities
+reused across Competitions; current entrant positions do not provide that identity.
+
 Anonymous users use the same route and narrow RPC. It requires an active exact
 Organisation, public Season and published Competition with published allocations
 and fixtures. Future opponents/byes are intentionally visible as the public
@@ -135,7 +148,7 @@ grants are introduced; private helper execution is revoked from client roles.
 - Updated `src/components/competition-form.tsx`; exported the unchanged
   participant breakdown from `src/components/competition-aggregate-results.tsx`.
 - Added `scripts/helpers/canonical-database.mjs` and
-  `scripts/test-round-robin-results.mjs`; extended the existing route-test helper
+  `scripts/test-round-robin-results.mjs` and `scripts/test-round-robin-labels.mjs`; extended the existing route-test helper
   to load the new route dependencies. Existing Aggregate/Gun Score tests unchanged.
 - Updated `package.json` test commands and `README.md` deployment link.
 
@@ -218,6 +231,8 @@ existing local-scoring permission and Shoot-by cutoff.
 including the complete development script twice, marker rejection rollback,
 unchanged real Gun Score fixture payloads, schedule properties, release/X/NSR,
 Pair/Team derivation, standings and anonymous/management permissions.
+Six additional UI tests cover club-scoped numbering, prefix/name collisions,
+stable labels without data mutation, and accessible full opponent names.
 Existing Results suites (34 Aggregate, 14 Gun Score, 18 public, 8 saved) and
 16 club-operation tests pass. Lint, `tsc --noEmit`, production build and
 `git diff --check` pass. Browser checks inspected the actual rendered components

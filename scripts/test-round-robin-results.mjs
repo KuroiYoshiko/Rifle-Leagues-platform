@@ -241,7 +241,7 @@ test("Round End is inclusive; early scores, X and participant values stay hidden
     assert.ok(e.participants.every(p=>p.rounds[2].gun_score===null&&p.rounds[2].x_total===null));
   }
   const {html}=await renderAggregateResultsRoute({competition:{id:f.c,name:'Round Test',slug:'round-test',status:'published',ranking_method:'round_robin',entry_format:'pairs',team_size:2},viewerId:null,readRpc:()=>results(f)});
-  assert.match(html,/data-ranking-method="round_robin"/); assert.match(html,/vs Pair/); assert.match(html,/Participants/); assert.match(html,/Pending/); assert.match(html,/match pts/);
+  assert.match(html,/data-ranking-method="round_robin"/); assert.match(html,/v Pair/); assert.match(html,/Participants/); assert.match(html,/Pending/); assert.match(html,/match pts/);
   assert.doesNotMatch(html,/data-entry-controls|data-lifecycle-actions|100.*10 X/);
   await db.query('update competition_rounds set deadline=current_date-1 where id=$1',[f.roundIds[2]]);
   const released=await results(f);
