@@ -221,6 +221,31 @@ no database reset or reseed is required.
 
 ## Competition source scores and derived Round results
 
+### Competition Series backend foundation (Stage 1)
+
+After installing the current Competition configuration, lifecycle, source-score,
+division, Results and Round Robin foundations documented below, run these complete
+files in order:
+
+1. [`database/competition-series.sql`](database/competition-series.sql)
+2. [`database/competition-series-management.sql`](database/competition-series-management.sql)
+
+No existing SQL needs rerunning on an up-to-date installation. Both new files are
+additive and rerunnable; existing Competitions remain unlinked with unchanged IDs,
+configuration and participation. Run this upgrade last if reapplying earlier SQL.
+No reset, reseed, name-based association or live database application is automated.
+
+This adds strict organisation-scoped Series identity, atomic first-draft and
+continuation RPCs, manager draft authoring, source selection metadata and owner-only
+Series lifecycle. It also repairs unchanged-component upserts when editing a scored
+Competition's description. The Add Competition UI remains unchanged.
+
+See [`database/COMPETITION-SERIES.md`](database/COMPETITION-SERIES.md) for the exact
+RPC payloads, permission model, copy rules, deployment checks and Stage 2 checklist.
+Run `npm run test:series` for disposable PGlite coverage.
+
+### Source-score foundation
+
 After the Competition configuration and entry foundations above, run these
 focused additive files in this order:
 

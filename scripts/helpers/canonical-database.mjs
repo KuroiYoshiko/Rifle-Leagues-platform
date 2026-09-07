@@ -6,7 +6,7 @@ export async function sqlFile(name) {
 
 // Disposable PostgreSQL with the real canonical application schema, triggers,
 // constraints and grants. Only the Supabase-managed Auth surface is stubbed.
-export async function installCanonicalDatabase(db) {
+export async function installCanonicalDatabase(db, { competitionSeries = true } = {}) {
   await db.exec(`
     create role anon; create role authenticated; create role service_role;
     create schema auth;
@@ -25,6 +25,7 @@ export async function installCanonicalDatabase(db) {
     "competition-scores-deferred-trigger-security", "competition-scores-participant-formats",
     "competition-results", "competition-aggregate-results", "competition-gun-score-results", "public-results",
     "competition-round-robin", "competition-round-robin-results",
+    ...(competitionSeries ? ["competition-series", "competition-series-management"] : []),
   ]) {
     try { await db.exec(await sqlFile(name)); }
     catch (error) { throw new Error(`Schema ${name}: ${error.message}`, { cause: error }); }
