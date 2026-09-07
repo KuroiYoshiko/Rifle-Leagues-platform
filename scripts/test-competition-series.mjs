@@ -84,6 +84,10 @@ const typedConfig = `v.name,v.description,v.entry_format,v.team_size,v.shots_per
   array(select value::date from jsonb_array_elements_text(coalesce($2::jsonb->'round_shoot_by_dates','[]'::jsonb)))`;
 const existingUpdateSql = `select public.update_competition(1,1,$1,${typedConfig},$3)
   from jsonb_populate_record(null::public.competitions,$2::jsonb) v`;
+async function createOneOff(values) {
+  return (await db.query(`select public.create_competition(1,1,${typedConfig}) data
+    from jsonb_populate_record(null::public.competitions,$2::jsonb) v where $1::integer=1`, [1, values])).rows[0].data;
+}
 async function operational(first, method = "aggregate") {
   await publish(first);
   const entry = (await admin("insert into club_competition_entries(competition_id,club_id,status,submitted_at) values($1,1,'submitted',now()) returning id", [first.id])).rows[0].id;
@@ -132,6 +136,147 @@ test("failure after Competition creation leaves no orphan; Organisation mismatch
   assert.equal((await admin("select count(*)::int n from competition_series")).rows[0].n, 0);
   await rejected("select public.create_competition_series(1,3,'Mismatch',$1)", [await datedConfig("Mismatch")], /Season not found/);
   await rejected("insert into public.competition_series(organisation_id,name,slug,entry_format,team_size,sets_per_round) values(1,'Denied','denied','individual',1,1)", [], /permission denied/);
+});
+
+test("published one-off permits admin edits but rejects every sporting RPC change without rewriting components", async () => {
+  const values = await datedConfig("Published one-off", { score_components: [
+    { short_label: "A", maximum_score: 50, score_method: "points_scored" },
+    { short_label: "B", maximum_score: 50, score_method: "points_scored" },
+  ] });
+  const competition = await createOneOff(values);
+  await publish(competition);
+  const beforeComponents = (await admin(
+    "select to_jsonb(component) data from competition_score_components component where competition_id=$1 order by position",
+    [competition.id],
+  )).rows;
+
+  await db.query(existingUpdateSql, [competition.id, {
+    ...values,
+    name: "Published one-off renamed",
+    description: "Administrative correction",
+    entry_fee: 9,
+    local_scoring_enabled: false,
+  }, "published"]);
+  await flush();
+
+  const saved = (await admin(
+    "select name,description,entry_fee,local_scoring_enabled,status from competitions where id=$1",
+    [competition.id],
+  )).rows[0];
+  assert.equal(saved.name, "Published one-off renamed");
+  assert.equal(saved.description, "Administrative correction");
+  assert.equal(saved.entry_fee, "9.00");
+  assert.equal(saved.local_scoring_enabled, false);
+  assert.equal(saved.status, "published");
+  assert.deepEqual((await admin(
+    "select to_jsonb(component) data from competition_score_components component where competition_id=$1 order by position",
+    [competition.id],
+  )).rows, beforeComponents);
+
+  const thirdDeadline = (await admin("select (current_date+60)::text value")).rows[0].value;
+  const sportingChanges = [
+    { score_components: [
+      { short_label: "A", maximum_score: 60, score_method: "points_scored" },
+      { short_label: "B", maximum_score: 40, score_method: "points_scored" },
+    ] },
+    { score_components: [{ short_label: "Only", maximum_score: 100, score_method: "points_scored" }] },
+    { score_components: [
+      { short_label: "B", maximum_score: 50, score_method: "points_scored" },
+      { short_label: "A", maximum_score: 50, score_method: "points_scored" },
+    ] },
+    { score_components: [
+      { short_label: "A", maximum_score: 50, score_method: "points_scored" },
+      { short_label: "B", maximum_score: 50, score_method: "points_dropped" },
+    ] },
+    { shots_per_round: 20 },
+    { ranking_method: "gun_score" },
+    { uses_x_score: true },
+    { number_of_rounds: 3, round_deadlines: [...values.round_deadlines, thirdDeadline] },
+    { sets_per_round: 2 },
+    { entry_format: "pairs", team_size: 2 },
+  ];
+  for (const change of sportingChanges) {
+    await rejected(existingUpdateSql, [competition.id, {
+      ...values,
+      name: "Published one-off renamed",
+      description: "Administrative correction",
+      entry_fee: 9,
+      local_scoring_enabled: false,
+      ...change,
+    }, "published"], /Published Competition .* locked/);
+  }
+
+  await db.exec("reset role");
+  await rejected(
+    "update competitions set discipline_code='rifle_benchrest' where id=$1",
+    [competition.id],
+    /Published Competition sporting configuration is locked/,
+  );
+  await rejected(
+    "update competition_score_components set short_label='Direct mutation' where competition_id=$1 and position=1",
+    [competition.id],
+    /Published Competition Course of Fire is locked/,
+  );
+});
+
+test("published Best-N count is locked while a valid one-off draft remains structurally configurable", async () => {
+  const draftValues = await datedConfig("Configurable draft", { score_components: [
+    { short_label: "A", maximum_score: 50, score_method: "points_scored" },
+    { short_label: "B", maximum_score: 50, score_method: "points_scored" },
+  ] });
+  const draft = await createOneOff(draftValues);
+  const thirdDeadline = (await admin("select (current_date+60)::text value")).rows[0].value;
+  const changed = {
+    ...draftValues,
+    entry_format: "pairs",
+    team_size: 2,
+    sets_per_round: 2,
+    shots_per_round: 20,
+    score_components: [{ short_label: "Pair", maximum_score: 200, score_method: "points_dropped" }],
+    ranking_method: "gun_score",
+    uses_x_score: true,
+    number_of_rounds: 3,
+    round_deadlines: [...draftValues.round_deadlines, thirdDeadline],
+  };
+  await db.query(existingUpdateSql, [draft.id, changed, "draft"]);
+  await flush();
+  const configured = (await admin(
+    "select entry_format,team_size,sets_per_round,shots_per_round,ranking_method,uses_x_score,number_of_rounds from competitions where id=$1",
+    [draft.id],
+  )).rows[0];
+  assert.deepEqual(configured, {
+    entry_format: "pairs", team_size: 2, sets_per_round: 2, shots_per_round: 20,
+    ranking_method: "gun_score", uses_x_score: true, number_of_rounds: 3,
+  });
+
+  const bestValues = await datedConfig("Published Best N", {
+    ranking_method: "best_n_average", best_rounds_count: 1,
+  });
+  const best = await createOneOff(bestValues);
+  await publish(best);
+  await rejected(existingUpdateSql, [best.id, { ...bestValues, best_rounds_count: 2 }, "published"],
+    /Published Competition sporting configuration is locked/);
+});
+
+test("a draft Club entry with zero shooters is participation and blocks Return to Draft", async () => {
+  const values = await datedConfig("Entered Competition");
+  const competition = await createOneOff(values);
+  await publish(competition);
+  await admin(
+    "insert into club_competition_entries(competition_id,club_id,status) values($1,1,'draft')",
+    [competition.id],
+  );
+  assert.equal((await admin(
+    "select count(*)::int count from competition_entrant_participants participant join club_competition_entries entry on entry.id=participant.club_competition_entry_id where entry.competition_id=$1",
+    [competition.id],
+  )).rows[0].count, 0);
+  const lifecycle = (await db.query(
+    "select public.get_competition_lifecycle_state(1,1,$1) data",
+    [competition.id],
+  )).rows[0].data;
+  assert.equal(lifecycle.has_participation, true);
+  assert.equal(lifecycle.can_return_to_draft, false);
+  await rejected("select public.return_competition_to_draft(1,1,$1)", [competition.id], /participation data/);
 });
 
 test("first draft identity corrects atomically; publication finalises and Return to Draft never unlocks", async () => {
@@ -308,7 +453,7 @@ test("database invariants reject cross-Organisation, detach, contract mutation a
     ["update competitions set league_season_id=3 where id=$1", [first.id], /same Organisation/],
     ["update league_seasons set organisation_id=2 where id=1", [], /cannot change Organisation/],
     ["update competition_series_score_components set maximum_score=200 where competition_series_id=$1", [first.competition_series_id], /immutable/],
-    ["update competition_score_components set short_label=case position when 1 then 'B' else 'A' end where competition_id=$1", [first.id], /identity must match/],
+    ["update competition_score_components set short_label=case position when 1 then 'B' else 'A' end where competition_id=$1", [first.id], /locked|identity must match/],
   ]) await rejected(sql, args, pattern);
 });
 
@@ -323,7 +468,7 @@ test("scored description/fee/access edits preserve component IDs and values; act
   for (const change of [{ uses_x_score: true }, { sets_per_round: 2 }, { shots_per_round: 20 },
     { score_components: [{ short_label: "Prone", maximum_score: 200, score_method: "points_dropped" }] },
     { score_components: [{ short_label: "Changed", maximum_score: 100, score_method: "points_dropped" }] }]) {
-    await rejected(existingUpdateSql, [first.id, { ...values, ...change }, "published"], /cannot change after scores/);
+    await rejected(existingUpdateSql, [first.id, { ...values, ...change }, "published"], /locked|cannot change after scores/);
   }
   await actor("manager");
   await rejected(existingUpdateSql, [first.id, values, "published"], /permission/);
@@ -372,8 +517,7 @@ test("linked Aggregate and Gun Score public Results remain edition-owned and sur
 test("existing one-off RPC works for owner/manager, and manager cannot publish via legacy update", async () => {
   await actor("manager");
   const values = await datedConfig("One off", { best_rounds_count: null });
-  const result = (await db.query(`select public.create_competition(1,1,${typedConfig}) data
-    from jsonb_populate_record(null::public.competitions,$2::jsonb) v where $1::integer=1`, [1, values])).rows[0].data;
+  const result = await createOneOff(values);
   assert.equal((await admin("select competition_series_id from competitions where id=$1", [result.id])).rows[0].competition_series_id, null);
   await rejected(existingUpdateSql, [result.id, values, "published"], /permission/);
   await db.query(existingUpdateSql, [result.id, { ...values, description: "Manager draft edit" }, "draft"]);
@@ -396,6 +540,8 @@ test("additive and rerunnable upgrade preserves pre-existing one-offs, identifie
     for (let run = 0; run < 2; run++) {
       await isolated.exec(await sqlFile("competition-series"));
       await isolated.exec(await sqlFile("competition-series-management"));
+      await isolated.exec(await sqlFile("competition-published-configuration-lock"));
+      await isolated.exec(await sqlFile("competition-published-configuration-lock"));
       assert.deepEqual((await isolated.query(`select to_jsonb(c)-array['competition_series_id','configuration_source_competition_id',
         'configuration_source_version','discipline_code','discipline_detail'] data from competitions c`)).rows, before);
       assert.deepEqual((await isolated.query("select * from competition_rounds")).rows, rounds);

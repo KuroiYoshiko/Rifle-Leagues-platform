@@ -25,7 +25,10 @@ export async function installCanonicalDatabase(db, { competitionSeries = true } 
     "competition-scores-deferred-trigger-security", "competition-scores-participant-formats",
     "competition-results", "competition-aggregate-results", "competition-gun-score-results", "public-results",
     "competition-round-robin", "competition-round-robin-results",
-    ...(competitionSeries ? ["competition-series", "competition-series-management"] : []),
+    ...(competitionSeries ? [
+      "competition-series", "competition-series-management",
+      "competition-published-configuration-lock",
+    ] : []),
   ]) {
     try { await db.exec(await sqlFile(name)); }
     catch (error) { throw new Error(`Schema ${name}: ${error.message}`, { cause: error }); }

@@ -63,7 +63,7 @@ insert into public.competitions(league_season_id,name,slug,description,status,en
   scoring_method,maximum_score_per_round,shots_per_round,uses_x_score,number_of_rounds,entry_fee,
   created_by,updated_by,entry_window_mode,custom_entry_opens_at,custom_entry_closes_at,
   start_date_mode,custom_starts_at,sets_per_round,ranking_method,local_scoring_enabled)
-select c.season_id,s.name,s.slug,'DEVELOPMENT ONLY: round-robin-manual-fixture-v1','published',s.format,s.size,
+select c.season_id,s.name,s.slug,'DEVELOPMENT ONLY: round-robin-manual-fixture-v1','draft',s.format,s.size,
   s.mode,100,10,s.x,s.round_count,0,c.actor_id,c.actor_id,'custom',current_date-30,current_date-11,
   'custom',current_date+1,1,'round_robin',true from rr_context c cross join rr_specs s;
 create temporary table rr_competitions on commit drop as
@@ -74,6 +74,13 @@ select id,1,'Score',100,mode from rr_competitions;
 -- then move these DEV competitions into the past for released-results testing.
 insert into public.competition_rounds(competition_id,round_number,deadline)
 select c.id,r,current_date+1+r from rr_competitions c cross join lateral generate_series(1,c.round_count) r;
+do $$ declare c record; ctx record; begin
+  select * into ctx from rr_context;
+  perform set_config('request.jwt.claim.sub',ctx.actor_id::text,true);
+  for c in select * from rr_competitions loop
+    perform public.publish_competition(ctx.organisation_id,ctx.season_id,c.id);
+  end loop;
+end $$;
 create temporary table rr_units on commit drop as
 select c.id competition_id,c.slug,n entrant_number,m.club_id
 from rr_competitions c cross join lateral generate_series(1,c.entrant_count) n

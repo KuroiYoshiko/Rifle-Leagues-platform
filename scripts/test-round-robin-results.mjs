@@ -39,10 +39,11 @@ async function seedContext(database = db) {
 async function fixture({n=4, rounds=3, format="individual", size=1, mode="points_scored", x=false, publish=true, future=false}={}) {
   await seedContext();
   const c = (await db.query(`insert into competitions(league_season_id,name,slug,status,entry_format,team_size,scoring_method,maximum_score_per_round,shots_per_round,uses_x_score,number_of_rounds,entry_window_mode,custom_entry_opens_at,custom_entry_closes_at,start_date_mode,custom_starts_at,sets_per_round,ranking_method)
-    values(1,'Round Test','round-test','published',$1,$2,$3,100,10,$4,$5,'custom',current_date-50,current_date-40,'custom',current_date+1,1,'round_robin') returning id`,[format,size,mode,x,rounds])).rows[0].id;
+    values(1,'Round Test','round-test','draft',$1,$2,$3,100,10,$4,$5,'custom',current_date-50,current_date-40,'custom',current_date+1,1,'round_robin') returning id`,[format,size,mode,x,rounds])).rows[0].id;
   await db.query("insert into competition_score_components(competition_id,position,short_label,maximum_score,score_method) values($1,1,'Score',100,$2)",[c,mode]);
   const roundIds=[];
   for(let r=1;r<=rounds;r++) roundIds.push((await db.query("insert into competition_rounds(competition_id,round_number,deadline) values($1,$2,current_date+1+$2::integer) returning id",[c,r])).rows[0].id);
+  await db.query("select public.publish_competition(1,1,$1)", [c]);
   const entry = (await db.query("insert into club_competition_entries(competition_id,club_id,status,submitted_at) values($1,1,'submitted',now()) returning id",[c])).rows[0].id;
   const entrants=[]; const participants=[];
   // Tests needing > six slots create additional memberships only in disposable DB.
@@ -264,7 +265,7 @@ test("published schedules rerun without changes; drafts hidden; edit rebuild bef
   await db.query('update competitions set custom_starts_at=current_date where id=$1',[f.c]);
   await rejected('select public.edit_competition_divisions(1,1,$1)',[f.c],/frozen/);
   await rejected('update competitions set custom_starts_at=current_date+5 where id=$1',[f.c],/Start cannot change/);
-  await rejected('update competitions set number_of_rounds=4 where id=$1',[f.c],/structure/);
+  await rejected('update competitions set number_of_rounds=4 where id=$1',[f.c],/locked|structure/);
   await rejected('delete from competition_entrant_participants where competition_entrant_id=$1',[f.entrants[0]],/locked/);
   await rejected("update club_competition_entries set status='draft',submitted_at=null where competition_id=$1",[f.c],/locked/);
   await db.query('update competition_rounds set deadline=deadline+1 where id=$1',[f.roundIds[2]]);

@@ -5,18 +5,25 @@ templates, persistent Pair/Team identity, averages, payments or source-score reu
 
 ## Deployment
 
-On an installation with the current README Competition, source-score, lifecycle,
-division and Round Robin foundations, run these complete transactional files:
+On an installation that already has Competition Series Stage 1, run only:
+
+1. `database/competition-published-configuration-lock.sql`
+
+For a fresh installation with the current README Competition, source-score,
+lifecycle, division and Round Robin foundations, run these complete transactional
+files in order:
 
 1. `database/competition-series.sql`
 2. `database/competition-series-management.sql`
+3. `database/competition-published-configuration-lock.sql`
 
-Both are rerunnable. No existing SQL needs rerunning on an up-to-date installation.
-For a fresh installation run the existing foundations first, then these files last.
-If an earlier configuration/lifecycle file is reapplied later, rerun these two files
-in this order: earlier files can replace upgraded RPCs or column grants.
+All three are rerunnable. The hardening file does not require either Stage 1 file
+to be rerun on an up-to-date installation. For a fresh installation run the existing
+foundations first, then these files last.
+If an earlier configuration/lifecycle file is reapplied later, rerun these three files
+in this order: earlier files can replace upgraded RPCs or column grants/triggers.
 
-Neither script infers or links history, rewrites configuration, resets data or seeds
+None of these scripts infers or links history, rewrites configuration, resets data or seeds
 examples. Existing Competition IDs, slugs, timestamps, components and Rounds remain
 intact; all new fields start NULL. No script is applied automatically by the app.
 
@@ -185,6 +192,17 @@ score guards and fail. Description/fee/scoring-access edits preserve component I
 values and timestamps. Existing protected X/sets/shots changes remain rejected.
 Other existing operational editing permissions/guards are retained; this Stage
 does not redesign general Results or introduce average semantics.
+
+## Published sporting-configuration lock
+
+The final hardening file adds database triggers shared by one-off, historical and
+Series Competitions. While `status = 'published'`, entry format/team size,
+discipline, sets/shots metadata, derived legacy scoring fields, ranking/Best N, X,
+Round count, and all Course-of-Fire component mutations are rejected. Name,
+description, fee, scoring access and the existing guarded date/schedule paths remain
+available. Returning a participation-free one-off to draft unlocks its sporting
+configuration; a finalised Series edition remains subject to its permanent Series
+identity triggers even after Return to Draft.
 
 ## Verification and Stage 2 checklist
 

@@ -164,6 +164,15 @@ begin
 end;
 $$;
 
+-- This destructive, marker-scoped development reset deliberately stages its
+-- existing fixtures as drafts before replacing sporting configuration.
+update public.competitions as competition
+set status = 'draft'
+from gun_fixture_context as context,
+  gun_fixture_competition_specs as specification
+where competition.league_season_id = context.league_season_id
+  and competition.slug = specification.slug;
+
 insert into public.competitions (
   league_season_id,
   name,
@@ -195,7 +204,7 @@ select
   specification.name,
   specification.slug,
   'DEVELOPMENT ONLY: gun-score-manual-fixture-v1. Minimal manual Results fixture.',
-  'published',
+  'draft',
   specification.entry_format,
   specification.team_size,
   specification.scoring_method,
@@ -319,6 +328,11 @@ cross join (
     (2, -2, -3),
     (3, 14, 10)
 ) as schedule(round_number, day_offset, shoot_by_offset);
+
+update public.competitions as competition
+set status = 'published'
+from gun_fixture_competitions as fixture
+where competition.id = fixture.id;
 
 insert into public.club_competition_entries (
   competition_id,
