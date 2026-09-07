@@ -111,19 +111,14 @@ function ParticipantResultCell({ cell, usesX }: {
   );
 }
 
-function ParticipantBreakdown({ entrant, rounds, usesX, rankingMethod }: {
+export function ParticipantBreakdown({ entrant, rounds, usesX, rankingMethod, disclosureId }: {
   entrant: ResultsEntrant;
   rounds: Array<{ id: number; round_number: number }>;
   usesX: boolean;
   rankingMethod: ResultsRankingMethod;
+  disclosureId?: string;
 }) {
-  return (
-    <tr className="bg-surface-muted/40">
-      <td colSpan={rounds.length + 2} className="border-b border-border p-0">
-        <details>
-          <summary className="min-h-11 cursor-pointer content-center rounded px-3 py-2 text-xs font-semibold text-brand-strong outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand">
-            Participants <span className="sr-only">for {entrant.entrant_label}, {entrant.club_name}</span>
-          </summary>
+  const content = (
           <div className="border-t border-border bg-surface px-2 pb-2 sm:px-3">
             <table className="w-full border-separate border-spacing-0 text-xs tabular-nums">
               <caption className="sr-only">
@@ -163,7 +158,16 @@ function ParticipantBreakdown({ entrant, rounds, usesX, rankingMethod }: {
               </tbody>
             </table>
           </div>
-        </details>
+  );
+  return (
+    <tr id={disclosureId} className={disclosureId ? "hidden bg-surface-muted/40" : "bg-surface-muted/40"}>
+      <td colSpan={rounds.length + 2} className="border-b border-border p-0">
+        {disclosureId ? content : <details>
+          <summary className="min-h-11 cursor-pointer content-center rounded px-3 py-2 text-xs font-semibold text-brand-strong outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand">
+            Participants <span className="sr-only">for {entrant.entrant_label}, {entrant.club_name}</span>
+          </summary>
+          {content}
+        </details>}
       </td>
     </tr>
   );

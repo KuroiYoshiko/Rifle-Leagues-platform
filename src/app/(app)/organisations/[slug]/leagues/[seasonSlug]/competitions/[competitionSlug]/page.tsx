@@ -9,6 +9,8 @@ import {
 } from "@/components/competition-aggregate-results";
 import { getCompetitionAggregateResults } from "@/lib/competition-aggregate-results";
 import { getCompetitionGunScoreResults } from "@/lib/competition-gun-score-results";
+import { getCompetitionRoundRobinResults } from "@/lib/competition-round-robin-results";
+import { CompetitionRoundRobinResultsTable } from "@/components/competition-round-robin-results";
 import { CompetitionLifecycleActions } from "@/components/competition-lifecycle-actions";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { PublishedCompetitionDivisionsView } from "@/components/published-competition-divisions";
@@ -107,7 +109,7 @@ export default async function CompetitionDetailPage({
     competitionPublished: competition.status === "published",
     hasDivisionManagement: false,
   });
-  const [rounds, scoreComponents, entryContexts, divisionManagement, publishedDivisions, lifecycleState, aggregateResults, gunScoreResults] = await Promise.all([
+  const [rounds, scoreComponents, entryContexts, divisionManagement, publishedDivisions, lifecycleState, aggregateResults, gunScoreResults, roundRobinResults] = await Promise.all([
     viewerId
       ? getCompetitionRounds(competition.id)
       : Promise.resolve(publicCatalog?.rounds ?? []),
@@ -139,6 +141,9 @@ export default async function CompetitionDetailPage({
       : Promise.resolve(null),
     competition.status === "published" && competition.ranking_method === "gun_score"
       ? getCompetitionGunScoreResults(organisation.id, season.id, competition.id)
+      : Promise.resolve(null),
+    competition.status === "published" && competition.ranking_method === "round_robin"
+      ? getCompetitionRoundRobinResults(organisation.id, season.id, competition.id)
       : Promise.resolve(null),
   ]);
   const capabilities = getCompetitionViewerCapabilities({
@@ -204,7 +209,7 @@ export default async function CompetitionDetailPage({
   }
   if (fee) summaryItems.push(fee);
   const resultsDuplicateDivisionRoster =
-    aggregateResults?.status === "ready" || gunScoreResults?.status === "ready";
+    aggregateResults?.status === "ready" || gunScoreResults?.status === "ready" || roundRobinResults?.status === "ready";
 
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="leagues">
@@ -320,6 +325,8 @@ export default async function CompetitionDetailPage({
             <CompetitionAggregateResultsTable data={aggregateResults} />
           ) : gunScoreResults ? (
             <CompetitionGunScoreResultsTable data={gunScoreResults} />
+          ) : roundRobinResults ? (
+            <CompetitionRoundRobinResultsTable data={roundRobinResults} />
           ) : (
             <Card className="p-5 text-sm text-muted-foreground sm:p-6">
               {competition.ranking_method === "aggregate"
