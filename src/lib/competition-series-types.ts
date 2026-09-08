@@ -8,18 +8,6 @@ import type {
 } from "@/lib/competitions";
 import type { LeagueSeasonStatus } from "@/lib/league-seasons";
 
-export const COMPETITION_DISCIPLINES = [
-  "rifle_prone", "rifle_benchrest", "rifle_three_position", "air_pistol", "other",
-] as const;
-export type CompetitionDiscipline = (typeof COMPETITION_DISCIPLINES)[number];
-export const competitionDisciplineLabels: Record<CompetitionDiscipline, string> = {
-  rifle_prone: "Rifle — Prone",
-  rifle_benchrest: "Rifle — Benchrest",
-  rifle_three_position: "Rifle — 3 Position",
-  air_pistol: "Air Pistol",
-  other: "Other",
-};
-
 export type CompetitionSeries = {
   id: number;
   organisation_id: number;
@@ -28,8 +16,6 @@ export type CompetitionSeries = {
   archived_at: string | null;
   entry_format: CompetitionEntryFormat;
   team_size: number;
-  discipline_code: CompetitionDiscipline | null;
-  discipline_detail: string | null;
   sets_per_round: number;
   shots_per_round: number | null;
   identity_locked_at: string | null;
@@ -46,7 +32,7 @@ export type CompetitionSeriesScoreComponent = {
 };
 
 export type CompetitionSeriesSources = {
-  series: Pick<CompetitionSeries, "id" | "name" | "slug" | "identity_locked_at" | "discipline_code" | "discipline_detail">;
+  series: Pick<CompetitionSeries, "id" | "name" | "slug" | "identity_locked_at">;
   cutoff: string;
   provisional_cutoff: boolean;
   recommended_source_id: number | null;

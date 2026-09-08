@@ -42,8 +42,6 @@ export type Competition = {
   id: number;
   league_season_id: number;
   competition_series_id: number | null;
-  discipline_code: string | null;
-  discipline_detail: string | null;
   name: string;
   slug: string;
   description: string | null;
@@ -104,7 +102,7 @@ export type CompetitionLifecycleState = {
 };
 
 const competitionColumns =
-  "id, league_season_id, competition_series_id, discipline_code, discipline_detail, name, slug, description, status, entry_format, team_size, scoring_method, maximum_score_per_round, shots_per_round, uses_x_score, number_of_rounds, entry_fee, entry_window_mode, custom_entry_opens_at, custom_entry_closes_at, start_date_mode, custom_starts_at, sets_per_round, ranking_method, best_rounds_count, local_scoring_enabled, created_at, updated_at";
+  "id, league_season_id, competition_series_id, name, slug, description, status, entry_format, team_size, scoring_method, maximum_score_per_round, shots_per_round, uses_x_score, number_of_rounds, entry_fee, entry_window_mode, custom_entry_opens_at, custom_entry_closes_at, start_date_mode, custom_starts_at, sets_per_round, ranking_method, best_rounds_count, local_scoring_enabled, created_at, updated_at";
 const competitionRoundColumns =
   "id, competition_id, round_number, deadline, shoot_by_date, created_at, updated_at";
 const competitionScoreComponentColumns =

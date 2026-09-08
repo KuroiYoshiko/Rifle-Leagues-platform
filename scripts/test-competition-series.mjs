@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { after, afterEach, before, beforeEach, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { installCanonicalDatabase, sqlFile } from "./helpers/canonical-database.mjs";
@@ -47,7 +48,7 @@ async function rejected(sql, params, pattern) {
 }
 function config(name = "Prone edition", extra = {}) {
   return { name, description: "Original description", entry_format: "individual", team_size: 1,
-    discipline_code: "rifle_prone", sets_per_round: 1, shots_per_round: 10,
+    sets_per_round: 1, shots_per_round: 10,
     score_components: [{ short_label: "Prone", maximum_score: 100, score_method: "points_dropped" }],
     uses_x_score: false, number_of_rounds: 2, ranking_method: "aggregate", entry_fee: 7,
     entry_window_mode: "season_default", start_date_mode: "season_default", local_scoring_enabled: true,
@@ -207,11 +208,8 @@ test("published one-off permits admin edits but rejects every sporting RPC chang
   }
 
   await db.exec("reset role");
-  await rejected(
-    "update competitions set discipline_code='rifle_benchrest' where id=$1",
-    [competition.id],
-    /Published Competition sporting configuration is locked/,
-  );
+  await db.query("update competitions set discipline_code='rifle_benchrest' where id=$1", [competition.id]);
+  await flush();
   await rejected(
     "update competition_score_components set short_label='Direct mutation' where competition_id=$1 and position=1",
     [competition.id],
@@ -282,11 +280,11 @@ test("a draft Club entry with zero shooters is participation and blocks Return t
 test("first draft identity corrects atomically; publication finalises and Return to Draft never unlocks", async () => {
   const first = await create();
   await actor("manager");
-  const changed = await datedConfig("Series One", { discipline_code: "rifle_benchrest", entry_format: "pairs", team_size: 2,
-    score_components: [{ short_label: "Benchrest", maximum_score: 200, score_method: "points_scored" }] });
+  const changed = await datedConfig("Series One", { entry_format: "pairs", team_size: 2,
+    score_components: [{ short_label: "Benchrest", maximum_score: 100, score_method: "points_scored" }] });
   await update(first, changed); await flush();
   const series = (await db.query("select * from competition_series where id=$1", [first.competition_series_id])).rows[0];
-  assert.equal(series.discipline_code, "rifle_benchrest"); assert.equal(series.team_size, 2);
+  assert.equal(series.team_size, 2);
   assert.equal(series.identity_locked_at, null);
   await actor("owner"); await publish(first);
   const locked = (await db.query("select identity_locked_at from competition_series where id=$1", [series.id])).rows[0].identity_locked_at;
@@ -294,19 +292,41 @@ test("first draft identity corrects atomically; publication finalises and Return
   await flush();
   assert.deepEqual((await db.query("select identity_locked_at from competition_series where id=$1", [series.id])).rows[0].identity_locked_at, locked);
   for (const override of [
-    { entry_format: "individual", team_size: 1 }, { discipline_code: "rifle_prone" },
+    { entry_format: "individual", team_size: 1 },
     { sets_per_round: 2 }, { shots_per_round: 20 },
-    { score_components: [{ short_label: "Benchrest", maximum_score: 100, score_method: "points_scored" }] },
-    { score_components: [{ short_label: "Different", maximum_score: 200, score_method: "points_scored" }] },
-    { score_components: [{ short_label: "Benchrest", maximum_score: 200, score_method: "points_dropped" }] },
+    { score_components: [{ short_label: "Benchrest", maximum_score: 200, score_method: "points_scored" }] },
+    { score_components: [{ short_label: "Different", maximum_score: 100, score_method: "points_scored" }] },
+    { score_components: [{ short_label: "Benchrest", maximum_score: 100, score_method: "points_dropped" }] },
+    { score_components: [
+      { short_label: "A", maximum_score: 50, score_method: "points_scored" },
+      { short_label: "B", maximum_score: 50, score_method: "points_scored" },
+    ] },
   ]) await rejected("select public.update_competition_series_draft(1,1,$1,$2)", [first.id, { ...changed, ...override }], /identity must match/);
 });
 
-test("incomplete discipline cannot finalise; Other requires detail; continuation failure rolls back finalisation", async () => {
-  const first = await create({ values: await datedConfig("Incomplete", { discipline_code: null }) });
-  await rejected("select public.publish_competition(1,1,$1)", [first.id], /Complete discipline/);
-  await rejected("select public.create_competition_series(1,1,'Other',$1)", [await datedConfig("Other", { discipline_code: "other" })], /check constraint/);
-  await update(first, await datedConfig("Incomplete"));
+test("discipline metadata is absent by default and ignored by identity, finalisation and source versions", async () => {
+  const first = await create();
+  const initial = (await admin(
+    "select c.discipline_code competition_code,s.discipline_code series_code from competitions c join competition_series s on s.id=c.competition_series_id where c.id=$1",
+    [first.id],
+  )).rows[0];
+  assert.deepEqual(initial, { competition_code: null, series_code: null });
+  await publish(first);
+  const version = (await sources(first)).sources[0].configuration_version;
+  await admin("update competitions set discipline_code='rifle_benchrest' where id=$1", [first.id]);
+  await admin("update competition_series set discipline_code='other',discipline_detail='Legacy metadata' where id=$1", [first.competition_series_id]);
+  await flush();
+  assert.equal((await sources(first)).sources[0].configuration_version, version);
+  const next = await continueSeries(first, {}, version);
+  await flush();
+  assert.deepEqual((await admin(
+    "select discipline_code,discipline_detail from competitions where id=$1",
+    [next.id],
+  )).rows[0], { discipline_code: null, discipline_detail: null });
+});
+
+test("continuation validation failure rolls back Series finalisation", async () => {
+  const first = await create();
   const version = (await sources(first)).sources[0].configuration_version;
   await rejected("select public.continue_competition_series(1,2,$1,$2,$3,$4)",
     [first.competition_series_id, first.id, version, { name: "Bad", number_of_rounds: 0 }], /Number of rounds/);
@@ -550,6 +570,8 @@ test("additive and rerunnable upgrade preserves pre-existing one-offs, identifie
       await isolated.exec(await sqlFile("competition-published-configuration-lock"));
       await isolated.exec(await sqlFile("competition-series-stage-2-management"));
       await isolated.exec(await sqlFile("competition-series-stage-2-management"));
+      await isolated.exec(await sqlFile("competition-series-v1-identity-without-discipline"));
+      await isolated.exec(await sqlFile("competition-series-v1-identity-without-discipline"));
       assert.deepEqual((await isolated.query(`select to_jsonb(c)-array['competition_series_id','configuration_source_competition_id',
         'configuration_source_version','discipline_code','discipline_detail'] data from competitions c`)).rows, before);
       assert.deepEqual((await isolated.query("select * from competition_rounds")).rows, rounds);
@@ -586,7 +608,25 @@ test("development Series fixture is isolated and rerunnable", async () => {
     assert.equal((await isolated.query(
       "select identity_locked_at is not null locked from competition_series where slug='dev-short-range-prone-league'",
     )).rows[0].locked, true);
+    assert.equal((await isolated.query(
+      "select count(*)::int n from competition_series where discipline_code is not null or discipline_detail is not null",
+    )).rows[0].n, 0);
   } finally {
     await isolated.close();
   }
+});
+
+test("Stage 2 creation UI omits discipline and keeps Series-name prefilling one-way", async () => {
+  const [flow, form] = await Promise.all([
+    readFile(new URL("../src/components/competition-creation-flow.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/competition-form.tsx", import.meta.url), "utf8"),
+  ]);
+  assert.doesNotMatch(`${flow}\n${form}`, /discipline[ _/-]|discipline$/im);
+  for (const mode of ["continue_series", "new_series", "one_off"]) assert.match(flow, new RegExp(mode));
+  assert.match(form, /Competition series name/);
+  assert.match(form, /Used to identify this recurring Competition across Seasons\./);
+  assert.match(form, /if \(!competitionNameEditedRef\.current\) setCompetitionName\(value\)/);
+  const independentEdit = form.match(/function changeCompetitionName[\s\S]*?\n  }/)?.[0] ?? "";
+  assert.match(independentEdit, /competitionNameEditedRef\.current = true/);
+  assert.doesNotMatch(independentEdit, /setSeriesName/);
 });

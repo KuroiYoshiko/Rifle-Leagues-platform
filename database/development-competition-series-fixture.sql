@@ -46,11 +46,11 @@ begin
       and slug = 'dev-short-range-prone-league'
   ) then
     insert into public.competition_series (
-      organisation_id, name, slug, entry_format, team_size, discipline_code,
+      organisation_id, name, slug, entry_format, team_size,
       sets_per_round, shots_per_round, created_by, updated_by
     ) values (
       v_organisation_id, 'Short Range Prone League', 'dev-short-range-prone-league',
-      'individual', 1, 'rifle_prone', 1, 10, v_owner_id, v_owner_id
+      'individual', 1, 1, 10, v_owner_id, v_owner_id
     ) returning id into v_series_id;
 
     insert into public.competition_series_score_components (
@@ -62,14 +62,14 @@ begin
       entry_format, team_size, scoring_method, maximum_score_per_round,
       shots_per_round, uses_x_score, number_of_rounds, entry_fee,
       entry_window_mode, start_date_mode, sets_per_round, ranking_method,
-      best_rounds_count, local_scoring_enabled, discipline_code,
+      best_rounds_count, local_scoring_enabled,
       created_by, updated_by
     ) values (
       v_previous_season_id, v_series_id, 'Short Range Prone 2025',
       'dev-short-range-prone-2025', 'Development-only recommended Series source.',
       'draft', 'individual', 1, 'points_dropped', 100, 10, false, 4, 7.50,
       'season_default', 'season_default', 1, 'aggregate', null, true,
-      'rifle_prone', v_owner_id, v_owner_id
+      v_owner_id, v_owner_id
     ) returning id into v_competition_id;
 
     insert into public.competition_score_components (
@@ -88,14 +88,14 @@ begin
       entry_format, team_size, scoring_method, maximum_score_per_round,
       shots_per_round, uses_x_score, number_of_rounds, entry_fee,
       entry_window_mode, start_date_mode, sets_per_round, ranking_method,
-      best_rounds_count, local_scoring_enabled, discipline_code,
+      best_rounds_count, local_scoring_enabled,
       created_by, updated_by
     ) values (
       v_current_season_id, v_series_id, 'Short Range Prone Trial',
       'dev-short-range-prone-trial', 'Development-only explicit source override.',
       'draft', 'individual', 1, 'points_dropped', 100, 10, true, 4, 8.00,
       'season_default', 'season_default', 1, 'gun_score', null, false,
-      'rifle_prone', v_owner_id, v_owner_id
+      v_owner_id, v_owner_id
     ) returning id into v_competition_id;
 
     insert into public.competition_score_components (
@@ -114,10 +114,10 @@ begin
   ) then
     insert into public.competition_series (
       organisation_id, name, slug, archived_at, entry_format, team_size,
-      discipline_code, sets_per_round, shots_per_round, created_by, updated_by
+      sets_per_round, shots_per_round, created_by, updated_by
     ) values (
       v_organisation_id, 'Archived Empty Series', 'dev-archived-empty-series',
-      now(), 'individual', 1, 'rifle_benchrest', 1, 10, v_owner_id, v_owner_id
+      now(), 'individual', 1, 1, 10, v_owner_id, v_owner_id
     );
   end if;
 end;

@@ -16,15 +16,11 @@ import {
   type CompetitionStartDateMode,
   type CompetitionStatus,
 } from "@/lib/competitions";
-import {
-  COMPETITION_DISCIPLINES,
-  type CompetitionDiscipline,
-} from "@/lib/competition-series-types";
 import { formatLeagueSeasonDate } from "@/lib/league-seasons";
 import { createClient } from "@/lib/supabase/server";
 
 export type CompetitionField =
-  | "seriesName" | "discipline" | "name" | "description" | "entryFormat" | "teamSize" | "entryWindow"
+  | "seriesName" | "name" | "description" | "entryFormat" | "teamSize" | "entryWindow"
   | "competitionStart" | "setsPerRound" | "scoreComponents"
   | "shotsPerRound" | "numberOfRounds" | "entryFee" | "rankingMethod"
   | "bestRoundsCount" | "scoringAccess" | "xScoring" | "roundSchedule";
@@ -37,8 +33,6 @@ export type CompetitionScoreComponentValue = {
 
 export type CompetitionFormValues = {
   seriesName: string;
-  disciplineCode: string;
-  disciplineDetail: string;
   name: string;
   description: string;
   entryFormat: string;
@@ -125,8 +119,6 @@ function readValues(formData: FormData): CompetitionFormValues {
   const componentCount = Math.max(labels.length, maxima.length, methods.length);
   return {
     seriesName: String(formData.get("series_name") ?? "").trim(),
-    disciplineCode: String(formData.get("discipline_code") ?? "").trim(),
-    disciplineDetail: String(formData.get("discipline_detail") ?? "").trim(),
     name: String(formData.get("name") ?? "").trim(),
     description: String(formData.get("description") ?? "").trim(),
     entryFormat: String(formData.get("entry_format") ?? "individual").trim(),
@@ -168,7 +160,7 @@ function effectiveDates(values: CompetitionFormValues, season: SeasonBoundaryCon
 function validateStructuralValues(
   values: CompetitionFormValues,
   season: SeasonBoundaryContext,
-  options: { requireSeriesName?: boolean; requireDiscipline?: boolean } = {},
+  options: { requireSeriesName?: boolean } = {},
 ) {
   const errors: CompetitionFormState["fieldErrors"] = {};
   if (options.requireSeriesName) {
@@ -177,16 +169,6 @@ function validateStructuralValues(
     else if (seriesNameLength < 2 || seriesNameLength > 160) {
       errors.seriesName = "Use between 2 and 160 characters.";
     }
-  }
-  if (options.requireDiscipline && !values.disciplineCode) {
-    errors.discipline = "Select the Series discipline / position.";
-  } else if (values.disciplineCode &&
-    !COMPETITION_DISCIPLINES.includes(values.disciplineCode as CompetitionDiscipline)) {
-    errors.discipline = "Select a valid Series discipline / position.";
-  } else if (values.disciplineCode === "other" && !values.disciplineDetail) {
-    errors.discipline = "Describe the discipline when Other is selected.";
-  } else if ([...values.disciplineDetail].length > 200) {
-    errors.discipline = "Use 200 characters or fewer.";
   }
   const nameLength = [...values.name].length;
   if (!values.name) errors.name = "Enter the competition name.";
@@ -358,8 +340,6 @@ function getConfigurationValues(values: CompetitionFormValues) {
     description: values.description || null,
     entry_format: entryFormat,
     team_size: entryFormat === "individual" ? 1 : entryFormat === "pairs" ? 2 : Number(values.teamSize),
-    discipline_code: values.disciplineCode || null,
-    discipline_detail: values.disciplineDetail || null,
     sets_per_round: Number(values.setsPerRound),
     shots_per_round: values.shotsPerRound ? Number(values.shotsPerRound) : null,
     score_components: values.scoreComponents.map((component) => ({
@@ -674,7 +654,6 @@ export async function createCompetitionSeries(
   const { organisationId, leagueSeasonId, values, supabase, season } = prepared;
   const fieldErrors = validateStructuralValues(values, season, {
     requireSeriesName: true,
-    requireDiscipline: true,
   });
   if (Object.keys(fieldErrors).length) {
     return { status: "error", message: "Review the highlighted Series and Competition details and try again.", fieldErrors, values };

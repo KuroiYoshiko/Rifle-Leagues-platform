@@ -7,11 +7,7 @@ import {
   setCompetitionSeriesArchived,
   type CompetitionSeriesActionState,
 } from "@/app/(app)/organisations/[slug]/competition-series-actions";
-import {
-  competitionDisciplineLabels,
-  type CompetitionDiscipline,
-  type CompetitionSeriesManagementRow,
-} from "@/lib/competition-series-types";
+import type { CompetitionSeriesManagementRow } from "@/lib/competition-series-types";
 import { Badge, Card } from "@/components/ui";
 
 const initialState: CompetitionSeriesActionState = {};
@@ -39,16 +35,12 @@ function CompetitionSeriesRow({ organisation, series }: {
   const [renameState, renameAction, renaming] = useActionState(renameCompetitionSeries, initialState);
   const [archiveState, archiveAction, archiving] = useActionState(setCompetitionSeriesArchived, initialState);
   const [deleteState, deleteAction, deleting] = useActionState(deleteEmptyCompetitionSeries, initialState);
-  const discipline = series.discipline_code
-    ? competitionDisciplineLabels[series.discipline_code as CompetitionDiscipline]
-    : "Discipline not finalised";
   const common = <SeriesFields organisationId={organisation.id} organisationSlug={organisation.slug} seriesId={series.id} />;
 
   return <Card className="p-5 sm:p-6">
     <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-start">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2"><Badge tone={series.archived_at ? "neutral" : "positive"}>{series.archived_at ? "Archived" : "Active"}</Badge><span className="text-xs text-muted-foreground">{series.edition_count} edition{series.edition_count === 1 ? "" : "s"}</span></div>
-        <p className="mt-2 text-xs leading-5 text-muted-foreground">{discipline}{series.discipline_detail ? ` · ${series.discipline_detail}` : ""}</p>
         <form action={renameAction} className="mt-3 flex max-w-2xl flex-col gap-2 sm:flex-row">
           {common}
           <label className="min-w-0 flex-1"><span className="sr-only">Series name</span><input name="series_name" required minLength={2} maxLength={160} defaultValue={series.name} disabled={renaming} className="min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10 disabled:opacity-60" /></label>

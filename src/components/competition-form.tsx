@@ -22,9 +22,6 @@ import type {
   CompetitionStartDateMode,
 } from "@/lib/competitions";
 import {
-  COMPETITION_DISCIPLINES,
-  competitionDisciplineLabels,
-  type CompetitionDiscipline,
   type CompetitionSeries,
   type CompetitionSeriesScoreComponent,
   type CompetitionSeriesSources,
@@ -64,7 +61,6 @@ const scoringMethodLabels = {
 } as const;
 const fieldFocusIds: Partial<Record<CompetitionField, string>> = {
   seriesName: "series-name",
-  discipline: "discipline-code",
   name: "competition-name",
   description: "competition-description",
   teamSize: "competition-team-size",
@@ -85,13 +81,6 @@ const dateFormatter = new Intl.DateTimeFormat("en-GB", {
 
 function formatDate(value: string | null) {
   return value ? dateFormatter.format(new Date(`${value}T00:00:00Z`)) : "Not set";
-}
-
-function formatDiscipline(code: string | null, detail: string | null) {
-  const label = code && COMPETITION_DISCIPLINES.includes(code as CompetitionDiscipline)
-    ? competitionDisciplineLabels[code as CompetitionDiscipline]
-    : "Not set";
-  return detail ? `${label} · ${detail}` : label;
 }
 
 function addCalendarDays(value: string, days: number) {
@@ -121,27 +110,6 @@ function InfoHelp({ label, children }: { label: string; children: string }) {
     >i</summary>
     <p className="absolute right-0 z-20 mt-2 w-72 max-w-[calc(100vw-2rem)] rounded-xl border border-border bg-surface p-3 text-left text-xs font-normal leading-5 text-muted-foreground shadow-lg sm:left-0 sm:right-auto">{children}</p>
   </details>;
-}
-
-function DisciplineFields({
-  code,
-  detail,
-  pending,
-  error,
-  onCodeChange,
-  onDetailChange,
-}: {
-  code: string;
-  detail: string;
-  pending: boolean;
-  error?: string;
-  onCodeChange: (value: string) => void;
-  onDetailChange: (value: string) => void;
-}) {
-  return <div className="grid gap-4 sm:grid-cols-2">
-    <div><label htmlFor="discipline-code" className="text-sm font-semibold text-foreground">Discipline / position *</label><select id="discipline-code" name="discipline_code" value={code} onChange={(event) => onCodeChange(event.target.value)} disabled={pending} className={inputClassName}><option value="">Select discipline</option>{COMPETITION_DISCIPLINES.map((value) => <option key={value} value={value}>{competitionDisciplineLabels[value]}</option>)}</select><FieldError field="discipline" message={error} /></div>
-    <div><label htmlFor="discipline-detail" className="text-sm font-semibold text-foreground">Discipline detail{code === "other" ? " *" : " (optional)"}</label><input id="discipline-detail" name="discipline_detail" maxLength={200} value={detail} onChange={(event) => onDetailChange(event.target.value)} placeholder={code === "other" ? "Describe the discipline" : "Optional classification detail"} disabled={pending} className={inputClassName} /></div>
-  </div>;
 }
 
 function initialRoundValues(
@@ -218,6 +186,10 @@ export function CompetitionForm({
   const dirtyRef = useRef(false);
   const submittingRef = useRef(false);
   const submitted = state.values;
+  const initialCompetitionName = submitted?.name ?? defaults?.name ?? "";
+  const [seriesName, setSeriesName] = useState(submitted?.seriesName ?? "");
+  const [competitionName, setCompetitionName] = useState(initialCompetitionName);
+  const competitionNameEditedRef = useRef(Boolean(initialCompetitionName));
   const validationMessages = Array.from(new Set([
     ...Object.values(state.fieldErrors ?? {}).filter((message): message is string => Boolean(message)),
     ...(state.publishErrors ?? []),
@@ -267,12 +239,6 @@ export function CompetitionForm({
   );
   const [bestRoundsCount, setBestRoundsCount] = useState(
     submitted?.bestRoundsCount ?? String(defaults?.best_rounds_count ?? ""),
-  );
-  const [disciplineCode, setDisciplineCode] = useState(
-    submitted?.disciplineCode ?? defaults?.discipline_code ?? series?.discipline_code ?? "",
-  );
-  const [disciplineDetail, setDisciplineDetail] = useState(
-    submitted?.disciplineDetail ?? defaults?.discipline_detail ?? series?.discipline_detail ?? "",
   );
   const [roundDeadlines, setRoundDeadlines] = useState<string[]>(() =>
     submitted?.roundDeadlines.length
@@ -377,9 +343,6 @@ export function CompetitionForm({
   const scheduleGridClassName = useShootByDates
     ? "grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)]"
     : "grid-cols-[3rem_minmax(0,1fr)]";
-  const showDisciplineEditor = creationMode === "new_series" || Boolean(
-    editing && series && !seriesIdentityLocked && !sportingConfigurationLocked,
-  );
   const sourceRankingChanged = creationMode === "continue_series" &&
     sourceContext && rankingMethod !== sourceContext.metadata.ranking_method;
   const scheduleErrors = useMemo(() => {
@@ -435,6 +398,16 @@ export function CompetitionForm({
     if (value === "best_n_average") setUsesXScore(false);
   }
 
+  function changeSeriesName(value: string) {
+    setSeriesName(value);
+    if (!competitionNameEditedRef.current) setCompetitionName(value);
+  }
+
+  function changeCompetitionName(value: string) {
+    competitionNameEditedRef.current = true;
+    setCompetitionName(value);
+  }
+
   return <form
     ref={formRef}
     action={formAction}
@@ -463,10 +436,6 @@ export function CompetitionForm({
       </span>)}
       <input type="hidden" name="shots_per_round" value={defaults?.shots_per_round ?? series?.shots_per_round ?? ""} />
     </> : null}
-    {!showDisciplineEditor ? <>
-      <input type="hidden" name="discipline_code" value={disciplineCode} />
-      <input type="hidden" name="discipline_detail" value={disciplineDetail} />
-    </> : null}
     {sportingConfigurationLocked ? <>
       <input type="hidden" name="ranking_method" value={competition.ranking_method} />
       <input type="hidden" name="best_rounds_count" value={competition.best_rounds_count ?? ""} />
@@ -488,21 +457,18 @@ export function CompetitionForm({
     </p> : null}
 
     {creationMode === "new_series" ? <section className={sectionClassName} aria-labelledby="series-details-title">
-      <SectionTitle id="series-details-title" title="New Series" description="Name the recurring Competition and set its structured discipline / position." />
-      <div><label htmlFor="series-name" className="text-sm font-semibold text-foreground">Series name *</label><input id="series-name" name="series_name" required minLength={2} maxLength={160} defaultValue={submitted?.seriesName ?? ""} disabled={pending} className={inputClassName} /><FieldError field="seriesName" message={state.fieldErrors?.seriesName} /></div>
-      <DisciplineFields code={disciplineCode} detail={disciplineDetail} pending={pending} error={state.fieldErrors?.discipline} onCodeChange={setDisciplineCode} onDetailChange={setDisciplineDetail} />
+      <SectionTitle id="series-details-title" title="New Series" description="Set the recurring identity before configuring its first Competition edition." />
+      <div><label htmlFor="series-name" className="text-sm font-semibold text-foreground">Competition series name *</label><input id="series-name" name="series_name" required minLength={2} maxLength={160} value={seriesName} onChange={(event) => changeSeriesName(event.target.value)} disabled={pending} className={inputClassName} /><p className="mt-2 text-xs text-muted-foreground">Used to identify this recurring Competition across Seasons.</p><FieldError field="seriesName" message={state.fieldErrors?.seriesName} /></div>
     </section> : null}
 
     {editing && series && !seriesIdentityLocked ? <section className={sectionClassName} aria-labelledby="provisional-series-title">
       <SectionTitle id="provisional-series-title" title="Series format · Provisional" description={`This is the sole unpublished draft in ${series.name}. Its shooting identity can still be corrected before publication or continuation.`} />
-      <DisciplineFields code={disciplineCode} detail={disciplineDetail} pending={pending} error={state.fieldErrors?.discipline} onCodeChange={setDisciplineCode} onDetailChange={setDisciplineDetail} />
     </section> : null}
 
     {seriesIdentityLocked && series ? <section className={sectionClassName} aria-labelledby="locked-series-format-title">
       <SectionTitle id="locked-series-format-title" title="Series format" description={`Inherited from ${series.name}. This shooting format is shared by every edition in this Series. To change it, create a new Series.`} />
-      <dl className="grid gap-3 rounded-xl border border-brand/20 bg-brand-subtle p-4 text-sm sm:grid-cols-2 lg:grid-cols-4">
+      <dl className="grid gap-3 rounded-xl border border-brand/20 bg-brand-subtle p-4 text-sm sm:grid-cols-3">
         <div><dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Entry / team size</dt><dd className="mt-1 font-semibold text-foreground">{entryFormatLabels[series.entry_format]} · {series.team_size} shooter{series.team_size === 1 ? "" : "s"}</dd></div>
-        <div><dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Discipline</dt><dd className="mt-1 font-semibold text-foreground">{formatDiscipline(series.discipline_code, series.discipline_detail)}</dd></div>
         <div><dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Sets / Round</dt><dd className="mt-1 font-semibold text-foreground">{series.sets_per_round}</dd></div>
         <div><dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Shots / Round</dt><dd className="mt-1 font-semibold text-foreground">{series.shots_per_round ?? "Not set"}</dd></div>
       </dl>
@@ -512,7 +478,7 @@ export function CompetitionForm({
 
     <section className={sectionClassName} aria-labelledby="competition-details-title">
       <SectionTitle id="competition-details-title" title="Competition details" description="The name, description, format, and fee shown to clubs." />
-      <div><label htmlFor="competition-name" className="text-sm font-semibold text-foreground">Competition name *</label><input id="competition-name" name="name" required minLength={2} maxLength={160} defaultValue={submitted?.name ?? defaults?.name ?? ""} disabled={pending} className={inputClassName} /><FieldError field="name" message={state.fieldErrors?.name} /></div>
+      <div><label htmlFor="competition-name" className="text-sm font-semibold text-foreground">Competition name *</label><input id="competition-name" name="name" required minLength={2} maxLength={160} value={competitionName} onChange={(event) => changeCompetitionName(event.target.value)} disabled={pending} className={inputClassName} /><FieldError field="name" message={state.fieldErrors?.name} /></div>
       <div><label htmlFor="competition-description" className="text-sm font-semibold text-foreground">Description</label><textarea id="competition-description" name="description" rows={4} maxLength={2000} defaultValue={submitted?.description ?? defaults?.description ?? ""} disabled={pending} className={`${inputClassName} resize-y py-3`} /><p className="mt-2 text-xs text-muted-foreground">Optional plain text, up to 2,000 characters.</p><FieldError field="description" message={state.fieldErrors?.description} /></div>
       {!seriesIdentityLocked ? <><fieldset><legend className="text-sm font-semibold text-foreground">Entry format</legend><div className="mt-2 grid gap-3 sm:grid-cols-3">{([
         ["individual", "Individual", "1 shooter"], ["pairs", "Pairs", "2 shooters"], ["team", "Team", "3–20 shooters"],

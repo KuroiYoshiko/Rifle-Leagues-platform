@@ -6,8 +6,6 @@ import {
   type CompetitionCreationMode,
 } from "@/components/competition-form";
 import {
-  competitionDisciplineLabels,
-  type CompetitionDiscipline,
   type CompetitionSeriesCreationOption,
 } from "@/lib/competition-series-types";
 import type { LeagueSeason } from "@/lib/league-seasons";
@@ -33,16 +31,6 @@ const modes: Array<{
     detail: "Create a standalone Competition with no historical Series relationship.",
   },
 ];
-
-function disciplineLabel(option: CompetitionSeriesCreationOption) {
-  const code = option.series.discipline_code;
-  const label = code
-    ? competitionDisciplineLabels[code as CompetitionDiscipline]
-    : "Discipline not finalised";
-  return option.series.discipline_detail
-    ? `${label} · ${option.series.discipline_detail}`
-    : label;
-}
 
 function seasonStatusLabel(value: string) {
   return value.replaceAll("_", " ").replace(/^./, (letter) => letter.toUpperCase());
@@ -121,7 +109,7 @@ export function CompetitionCreationFlow({
       {seriesOptions.length ? <div className="max-w-xl"><label htmlFor="series-choice" className="text-sm font-semibold text-foreground">Active Series</label><select id="series-choice" value={selectedSeriesId} onChange={(event) => chooseSeries(event.target.value)} className="mt-2 min-h-12 w-full rounded-xl border border-border bg-surface px-4 text-sm text-foreground outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10"><option value="">Choose a Series</option>{seriesOptions.map((option) => <option key={option.series.id} value={option.series.id}>{option.series.name}</option>)}</select></div> : <p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">There are no active Competition Series to continue. Create a new Series instead.</p>}
 
       {selectedSeries ? <div className="space-y-4 rounded-xl border border-border bg-surface-muted p-4 sm:p-5">
-        <div><p className="text-xs font-semibold uppercase tracking-[0.1em] text-brand-strong">Selected Series</p><h3 className="mt-1 text-base font-semibold text-foreground">{selectedSeries.series.name}</h3><p className="mt-1 text-sm text-muted-foreground">{disciplineLabel(selectedSeries)}</p></div>
+        <div><p className="text-xs font-semibold uppercase tracking-[0.1em] text-brand-strong">Selected Series</p><h3 className="mt-1 text-base font-semibold text-foreground">{selectedSeries.series.name}</h3></div>
 
         {recommendedSource ? <div className="border-t border-border pt-4"><p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Recommended previous edition</p><dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2 lg:grid-cols-5"><div><dt className="text-muted-foreground">Competition</dt><dd className="font-semibold text-foreground">{recommendedSource.metadata.name}</dd></div><div><dt className="text-muted-foreground">Season</dt><dd className="font-semibold text-foreground">{recommendedSource.metadata.season_name} · {seasonStatusLabel(recommendedSource.metadata.season_status)}</dd></div><div><dt className="text-muted-foreground">Status</dt><dd className="font-semibold text-foreground">{getCompetitionStatusLabel(recommendedSource.metadata.status)}</dd></div><div><dt className="text-muted-foreground">Ranking</dt><dd className="font-semibold text-foreground">{getCompetitionRankingMethodLabel(recommendedSource.metadata.ranking_method)}</dd></div><div><dt className="text-muted-foreground">Rounds</dt><dd className="font-semibold text-foreground">{recommendedSource.metadata.number_of_rounds}</dd></div></dl></div> : <p className="border-t border-border pt-4 text-sm leading-6 text-muted-foreground">{selectedSeries.sourceInfo.ambiguous_latest_date ? "More than one edition is equally recent. Choose the source explicitly." : "There is no unambiguous recommended previous edition. Choose the source explicitly."}</p>}
 

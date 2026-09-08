@@ -4,14 +4,17 @@ Stage 1 only: no Add Competition UI, historical linking, public Series history,
 templates, persistent Pair/Team identity, averages, payments or source-score reuse.
 
 Stage 2 adds the authenticated Add Competition and minimum Series management UI.
-It does not change the Stage 1 identity, continuation, provenance, or lifecycle
-contracts described below.
+The V1 identity correction removes the earlier non-authoritative discipline fields
+from product behaviour while retaining their nullable database columns safely.
 
 ## Deployment
 
-On an installation that already has Competition Series Stage 1, run only:
+On an installation that already has Competition Series Stage 1, run in order:
 
 1. `database/competition-series-stage-2-management.sql`
+2. `database/competition-series-v1-identity-without-discipline.sql`
+
+If the Stage 2 management file was already applied, run only the second file.
 
 The previously deployed `database/competition-published-configuration-lock.sql`
 does not need to be rerun for Stage 2.
@@ -24,13 +27,14 @@ files in order:
 2. `database/competition-series-management.sql`
 3. `database/competition-published-configuration-lock.sql`
 4. `database/competition-series-stage-2-management.sql`
+5. `database/competition-series-v1-identity-without-discipline.sql`
 
-All four are rerunnable. The hardening file does not require either Stage 1 file
+All five are rerunnable. The hardening file does not require either Stage 1 file
 to be rerun on an up-to-date installation. For a fresh installation run the existing
 foundations first, then these files last.
-If an earlier configuration/lifecycle file is reapplied later, rerun these three files
-in this order, followed by `competition-series-stage-2-management.sql`: earlier
-files can replace upgraded RPCs or column grants/triggers.
+If an earlier configuration/lifecycle file is reapplied later, rerun the listed
+Competition Series files in this order. The identity correction must remain last
+because earlier files can replace upgraded RPCs or triggers.
 
 None of these scripts infers or links history, rewrites configuration, resets data or seeds
 examples. Existing Competition IDs, slugs, timestamps, components and Rounds remain
@@ -43,20 +47,19 @@ intact; all new fields start NULL. No script is applied automatically by the app
 Competition/component/Round records; existing Results never join Series tables.
 
 The Series contract includes entry format, normalised team size (1/2/3–20), sets,
-optional shots, discipline/detail and ordered labels, maxima and scoring methods.
+optional shots, and ordered Course-of-Fire labels, maxima and scoring methods.
 Series slugs are unique within an Organisation and immutable. Display names need
 not be unique. Multiple editions in one Season are allowed, while the existing
 Season-scoped Competition name/slug uniqueness still applies.
 
-Discipline codes are `rifle_prone`, `rifle_benchrest`, `rifle_three_position`,
-`air_pistol`, `other`. Optional detail is trimmed and limited to 200 characters;
-Other requires detail. Unknown discipline is allowed on a provisional first draft
-and on existing one-offs. Finalisation requires an explicit discipline and at least
-one component. Names are never parsed to assign discipline.
+The nullable `discipline_code` and `discipline_detail` columns remain only as
+deprecated metadata for additive compatibility. Current RPC writes ignore them;
+they are not required, copied, compared, finalised, versioned or exposed in the UI.
+Existing values are neither rewritten nor inferred from Competition or Series names.
+They have no average, Concurrent Shooting or other compatibility meaning.
 
 The sole unpublished first draft may correct identity. Existing `update_competition`
-updates its provisional contract atomically; the new draft RPC additionally accepts
-discipline snapshots. First publication or successful continuation sets a sticky
+updates its provisional contract atomically. First publication or successful continuation sets a sticky
 `identity_locked_at`. Returning to draft does not clear it. Subsequent identity
 changes fail, including changing only labels, scoring convention or nullable shots.
 
@@ -104,7 +107,7 @@ p_series_name text, p_configuration jsonb)`
 `p_configuration` is a full configuration object with these supported keys:
 
 - `name`, `description`, `entry_format`, `team_size`, `shots_per_round`
-- `discipline_code`, `discipline_detail`, `sets_per_round`, `score_components`
+- `sets_per_round`, `score_components`
 - `entry_fee`, `uses_x_score`, `number_of_rounds`, `local_scoring_enabled`
 - `entry_window_mode`, `custom_entry_opens_at`, `custom_entry_closes_at`
 - `start_date_mode`, `custom_starts_at`
@@ -116,20 +119,21 @@ Dates are ISO dates; schedules are arrays of dates/NULLs, with existing validati
 Unsupported keys (including status, IDs or participation) fail. Omitted structural
 defaults: Individual, size 1, one set, ten Rounds, empty components, X off,
 Aggregate, local scoring on, Season-default entry/start modes. Name is required.
-No default discipline is invented. The existing typed configuration validator is
-authoritative for fees, dates, maxima, X/Best N and publication completeness.
+The existing typed configuration validator is authoritative for fees, dates,
+maxima, X/Best N and publication completeness. Legacy clients may submit the two
+deprecated discipline keys during a rolling deployment, but they are discarded.
 
 Series, contract components, first draft, its components and supplied Rounds are
 one transaction. Failure even after creating the Competition leaves no orphan.
 
-### Edit a draft with discipline
+### Edit a draft
 
 `update_competition_series_draft(p_organisation_id bigint, p_league_season_id bigint,
 p_competition_id bigint, p_configuration jsonb)`
 
 Accepts the same full configuration payload (not a partial patch) and saves draft
-status only. Also works for unlinked drafts. Include discipline and all retained
-configuration values. It cannot publish or change Series membership. Existing
+status only. Also works for unlinked drafts. Include all retained configuration
+values. It cannot publish or change Series membership. Existing
 typed/legacy update RPCs remain supported; managers cannot use them to publish or
 edit a published Competition.
 
@@ -158,8 +162,9 @@ the existing X restriction still applies. No components or Round IDs are reused.
 Never copies entries, entrant/participant rows, divisions, assignments, source
 scores/values/usages, Results or Round Robin fixtures. New status is always draft.
 
-`configuration_source_version` is an opaque hash of the exact source Competition,
-ordered components, Rounds and inherited Season date context. This is stronger than
+`configuration_source_version` is an opaque hash of the source Competition excluding
+deprecated discipline metadata, plus ordered components, Rounds and inherited Season
+date context. This is stronger than
 `updated_at` alone (which can miss child-only changes or same-transaction edits).
 Pass the version from the source read RPC; do not calculate it in the client.
 A mismatch raises SQLSTATE `40001`: reload and ask the user to review, rather than
@@ -183,8 +188,8 @@ IDs only stabilise display ordering; they never resolve a historical ambiguity.
 The list includes explicit overrides with their status and date visible. Archived
 Series are rejected. Source versions/metadata are not added to anonymous Results.
 
-`src/lib/competition-series.ts` supplies authenticated Series/source loaders and
-discipline types for Stage 2. No selector, form, action UI or public history is added.
+`src/lib/competition-series.ts` supplies authenticated Series/source loaders for
+Stage 2. No public history is added.
 
 ### Owner-only Series lifecycle
 
@@ -206,7 +211,7 @@ does not redesign general Results or introduce average semantics.
 
 The final hardening file adds database triggers shared by one-off, historical and
 Series Competitions. While `status = 'published'`, entry format/team size,
-discipline, sets/shots metadata, derived legacy scoring fields, ranking/Best N, X,
+sets/shots metadata, derived legacy scoring fields, ranking/Best N, X,
 Round count, and all Course-of-Fire component mutations are rejected. Name,
 description, fee, scoring access and the existing guarded date/schedule paths remain
 available. Returning a participation-free one-off to draft unlocks its sporting

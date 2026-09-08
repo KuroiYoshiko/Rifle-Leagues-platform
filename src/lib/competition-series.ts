@@ -16,7 +16,7 @@ export * from "@/lib/competition-series-types";
 export const getCompetitionSeries = cache(async (organisationId: number) => {
   const supabase = await createClient();
   const { data, error } = await supabase.from("competition_series")
-    .select("id,organisation_id,name,slug,archived_at,entry_format,team_size,discipline_code,discipline_detail,sets_per_round,shots_per_round,identity_locked_at,created_at,updated_at")
+    .select("id,organisation_id,name,slug,archived_at,entry_format,team_size,sets_per_round,shots_per_round,identity_locked_at,created_at,updated_at")
     .eq("organisation_id", organisationId).order("name").order("id");
   if (error) throw new Error("Competition Series could not be loaded.");
   return (data ?? []) as CompetitionSeries[];
