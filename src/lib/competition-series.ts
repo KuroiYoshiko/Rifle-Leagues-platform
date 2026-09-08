@@ -56,13 +56,44 @@ export async function getCompetitionSeriesCreationOptions(
   const activeSeries = (await getCompetitionSeries(organisationId)).filter(
     (series) => !series.archived_at,
   );
+  if (!activeSeries.length) return [];
+
+  const supabase = await createClient();
+  const { data: targetEditions, error: targetEditionsError } = await supabase
+    .from("competitions")
+    .select("id,name,slug,competition_series_id")
+    .eq("league_season_id", leagueSeasonId)
+    .in("competition_series_id", activeSeries.map((series) => series.id))
+    .order("id");
+  if (targetEditionsError) {
+    throw new Error("Existing Competition Series editions could not be loaded.");
+  }
+  const targetEditionBySeries = new Map<number, { id: number; name: string; slug: string }>();
+  for (const edition of targetEditions ?? []) {
+    const seriesId = Number(edition.competition_series_id);
+    if (!targetEditionBySeries.has(seriesId)) {
+      targetEditionBySeries.set(seriesId, {
+        id: Number(edition.id),
+        name: String(edition.name),
+        slug: String(edition.slug),
+      });
+    }
+  }
 
   return Promise.all(activeSeries.map(async (series) => {
     const [components, sourceInfo] = await Promise.all([
       getCompetitionSeriesScoreComponents(series.id),
       getCompetitionSeriesSources(organisationId, leagueSeasonId, series.id),
     ]);
-    const sources = (await Promise.all(sourceInfo.sources.map(async (metadata) => {
+    const eligibleSourceInfo = {
+      ...sourceInfo,
+      recommended_source_id: sourceInfo.sources.some((source) =>
+        source.id === sourceInfo.recommended_source_id && source.season_id !== leagueSeasonId)
+        ? sourceInfo.recommended_source_id
+        : null,
+      sources: sourceInfo.sources.filter((source) => source.season_id !== leagueSeasonId),
+    };
+    const sources = (await Promise.all(eligibleSourceInfo.sources.map(async (metadata) => {
       const [competition, sourceComponents] = await Promise.all([
         getCompetitionById(metadata.id),
         getCompetitionScoreComponents(metadata.id),
@@ -72,7 +103,16 @@ export async function getCompetitionSeriesCreationOptions(
         : null;
     }))).filter((source): source is NonNullable<typeof source> => Boolean(source));
 
-    return { series, components, sourceInfo, sources };
+    return {
+      series,
+      targetEdition: targetEditionBySeries.get(series.id) ?? null,
+      components,
+      sourceInfo: {
+        ...eligibleSourceInfo,
+        selection_required: eligibleSourceInfo.recommended_source_id === null,
+      },
+      sources,
+    };
   }));
 }
 

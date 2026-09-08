@@ -457,6 +457,9 @@ function mutationMessage(error: CompetitionMutationError, fallback: string) {
     return "The source edition changed. Refresh this page and review it again before continuing.";
   }
   if (error.code === "P0002") return "That Competition, Season, or organisation is no longer available. Refresh and try again.";
+  if (error.code === "23505" && `${error.message ?? ""} ${error.details ?? ""}`.includes("competitions_series_season_unique")) {
+    return "This Series already has a Competition in the target Season.";
+  }
   if (error.code === "23505") return "A competition with this name already exists in this Season.";
   if ((error.code === "22023" || error.code === "23514") && error.message) return error.message;
   return fallback;

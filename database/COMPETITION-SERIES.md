@@ -13,8 +13,10 @@ On an installation that already has Competition Series Stage 1, run in order:
 
 1. `database/competition-series-stage-2-management.sql`
 2. `database/competition-series-v1-identity-without-discipline.sql`
+3. `database/competition-series-one-edition-per-season.sql`
 
-If the Stage 2 management file was already applied, run only the second file.
+If either earlier Stage 2 file was already applied, do not rerun it merely for
+this change; apply the remaining files in the listed order.
 
 The previously deployed `database/competition-published-configuration-lock.sql`
 does not need to be rerun for Stage 2.
@@ -28,13 +30,15 @@ files in order:
 3. `database/competition-published-configuration-lock.sql`
 4. `database/competition-series-stage-2-management.sql`
 5. `database/competition-series-v1-identity-without-discipline.sql`
+6. `database/competition-series-one-edition-per-season.sql`
 
-All five are rerunnable. The hardening file does not require either Stage 1 file
+All six are rerunnable. The hardening file does not require either Stage 1 file
 to be rerun on an up-to-date installation. For a fresh installation run the existing
 foundations first, then these files last.
 If an earlier configuration/lifecycle file is reapplied later, rerun the listed
-Competition Series files in this order. The identity correction must remain last
-because earlier files can replace upgraded RPCs or triggers.
+Competition Series files in this order. The two contract corrections must remain
+after the Stage 2 management file and in the listed order because earlier files
+can replace upgraded RPCs or triggers.
 
 None of these scripts infers or links history, rewrites configuration, resets data or seeds
 examples. Existing Competition IDs, slugs, timestamps, components and Rounds remain
@@ -68,6 +72,10 @@ component positions and Organisation ownership. The Series FK does not cascade
 delete editions. Linked editions cannot be detached/reassigned through this Stage.
 Archive blocks continuation but leaves existing editions and public Results intact.
 Only an empty Series can be deleted.
+
+A partial unique index enforces at most one non-NULL `competition_series_id` per
+`league_season_id`. Unlinked one-off Competitions are outside this invariant.
+Continuation source reads exclude every edition from the target Season.
 
 ## Authorisation and transactions
 

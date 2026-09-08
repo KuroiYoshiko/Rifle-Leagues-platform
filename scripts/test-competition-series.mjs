@@ -66,11 +66,11 @@ async function create({ name = "Series One", season = 1, org = 1, values } = {})
 async function sources(first, target = 2) {
   return (await db.query("select public.get_competition_series_sources(1,$1,$2) data", [target, first.competition_series_id])).rows[0].data;
 }
-async function continueSeries(first, overrides = {}, sourceVersion) {
-  const chooser = await sources(first);
-  return (await db.query("select public.continue_competition_series(1,2,$1,$2,$3,$4) data",
+async function continueSeries(first, overrides = {}, sourceVersion, target = 2) {
+  const chooser = await sources(first, target);
+  return (await db.query("select public.continue_competition_series(1,$5,$1,$2,$3,$4) data",
     [first.competition_series_id, first.id, sourceVersion ?? chooser.sources.find(s => s.id === first.id).configuration_version,
-      { name: "Next edition", ...overrides }])).rows[0].data;
+      { name: "Next edition", ...overrides }, target])).rows[0].data;
 }
 async function update(first, values) {
   return db.query("select public.update_competition_series_draft(1,1,$1,$2)", [first.id, values]);
@@ -349,8 +349,66 @@ test("continuation finalises first draft, gets new ID, inherits defaults, permit
   assert.equal(c.custom_entry_opens_at, null); assert.equal(c.custom_entry_closes_at, null); assert.equal(c.custom_starts_at, null);
   assert.equal((await db.query("select * from competition_rounds where competition_id=$1", [next.id])).rows.length, 0);
   assert.equal((await db.query("select identity_locked_at is not null locked from competition_series where id=$1", [first.competition_series_id])).rows[0].locked, true);
-  const third = await continueSeries(first, { name: "Third edition", ranking_method: "best_n_average", best_rounds_count: 5, number_of_rounds: 6 });
-  assert.notEqual(third.id, next.id); // multiple editions in one Season are intentional
+});
+
+test("one Series edition per Season is database-enforced while other Seasons and one-offs remain valid", async () => {
+  const first = await create();
+  const sameSeasonSources = await sources(first, 1);
+  assert.equal(sameSeasonSources.recommended_source_id, null);
+  assert.deepEqual(sameSeasonSources.sources, []);
+
+  const sourceVersion = (await sources(first, 2)).sources[0].configuration_version;
+  await rejected(
+    "select public.continue_competition_series(1,1,$1,$2,$3,$4)",
+    [first.competition_series_id, first.id, sourceVersion, { name: "Duplicate edition" }],
+    /competitions_series_season_unique|duplicate key/,
+  );
+  assert.equal((await admin(
+    "select count(*)::int n from competitions where competition_series_id=$1 and league_season_id=1",
+    [first.competition_series_id],
+  )).rows[0].n, 1);
+
+  const next = await continueSeries(first);
+  assert.notEqual(next.id, first.id);
+  assert.equal((await admin(
+    "select count(*)::int n from competitions where competition_series_id=$1 and league_season_id=2",
+    [first.competition_series_id],
+  )).rows[0].n, 1);
+
+  const oneOffA = await createOneOff(await datedConfig("One off A"));
+  const oneOffB = await createOneOff(await datedConfig("One off B"));
+  assert.notEqual(oneOffA.id, oneOffB.id);
+  assert.equal((await admin(
+    "select count(*)::int n from competitions where league_season_id=1 and competition_series_id is null",
+  )).rows[0].n, 2);
+
+  const index = (await admin(
+    "select indexdef from pg_indexes where schemaname='public' and indexname='competitions_series_season_unique'",
+  )).rows[0]?.indexdef ?? "";
+  assert.match(index, /CREATE UNIQUE INDEX/);
+  assert.match(index, /competition_series_id, league_season_id/);
+  assert.match(index, /WHERE \(competition_series_id IS NOT NULL\)/);
+  // The partial unique index, rather than a read-before-write check, is the
+  // concurrency authority for simultaneous continuation requests.
+});
+
+test("double-submit cannot create two editions of one Series in the target Season", async () => {
+  const first = await create();
+  const sourceVersion = (await sources(first, 2)).sources[0].configuration_version;
+  const request = (name) => db.query(
+    "select public.continue_competition_series(1,2,$1,$2,$3,$4) data",
+    [first.competition_series_id, first.id, sourceVersion, { name }],
+  );
+  const outcomes = await Promise.allSettled([
+    request("Double submit A"),
+    request("Double submit B"),
+  ]);
+  assert.equal(outcomes.filter(outcome => outcome.status === "fulfilled").length, 1);
+  assert.equal(outcomes.filter(outcome => outcome.status === "rejected").length, 1);
+  assert.match(
+    String(outcomes.find(outcome => outcome.status === "rejected")?.reason),
+    /competitions_series_season_unique|duplicate key/,
+  );
 });
 
 test("stale, foreign, archived and identity-override requests are rejected", async () => {
@@ -371,7 +429,7 @@ test("stale, foreign, archived and identity-override requests are rejected", asy
     [first.competition_series_id, first.id, fresh, { name: "Archived" }], /Archived/);
 });
 
-test("source version covers components, rounds and inherited Season dates; same-date sources require selection", async () => {
+test("source version covers components, rounds and inherited Season dates; same-date cross-Season sources require selection", async () => {
   const first = await create(); await publish(first);
   assert.equal((await sources(first)).recommended_source_id, first.id);
   const before = (await sources(first)).sources[0].configuration_version;
@@ -380,14 +438,16 @@ test("source version covers components, rounds and inherited Season dates; same-
   assert.notEqual(before, afterRound);
   await admin("update league_seasons set entry_opens_at=entry_opens_at-1 where id=1");
   assert.notEqual(afterRound, (await sources(first)).sources[0].configuration_version);
+  await admin(`insert into league_seasons(id,organisation_id,name,slug,status,entry_opens_at,entry_closes_at,starts_at,ends_at)
+    overriding system value values(4,1,'Other history','other-history','active',current_date-90,current_date-70,current_date-60,current_date+365)`);
   const second = await continueSeries(first, { name: "Second published", entry_window_mode: "season_default", start_date_mode: "season_default",
-    round_deadlines: (await datedConfig("dates")).round_deadlines });
-  // Same actual start in a second public Season, not merely the highest ID.
-  await admin("update league_seasons set starts_at=current_date-60,entry_opens_at=current_date-90,entry_closes_at=current_date-70,status='active' where id=2");
-  await db.query("select public.publish_competition(1,2,$1)", [second.id]); await flush();
+    round_deadlines: (await datedConfig("dates")).round_deadlines }, undefined, 4);
+  await db.query("select public.publish_competition(1,4,$1)", [second.id]); await flush();
   const chooser = (await db.query("select public.get_competition_series_sources(1,2,$1,current_date+100) data", [first.competition_series_id])).rows[0].data;
   assert.equal(chooser.recommended_source_id, null); assert.equal(chooser.ambiguous_latest_date, true);
   assert.equal(chooser.selection_required, true);
+  assert.ok(chooser.sources.some(source => source.id === first.id));
+  assert.ok(chooser.sources.some(source => source.id === second.id));
 });
 
 test("owner archive/restore/delete-empty; manager cannot invoke owner lifecycle or edit published editions", async () => {
@@ -426,16 +486,20 @@ test("recommendation excludes future, undated and draft history; explicit overri
   const future = await continueSeries(first, { name: "Future published", round_deadlines: (await datedConfig("Schedule")).round_deadlines });
   await admin("update league_seasons set status='open' where id=2");
   await db.query("select public.publish_competition(1,2,$1)", [future.id]); await flush();
-  const chooser = (await db.query("select public.get_competition_series_sources(1,2,$1,current_date+100) data", [first.competition_series_id])).rows[0].data;
+  await admin(`insert into league_seasons(id,organisation_id,name,slug,status,entry_opens_at,entry_closes_at,starts_at,ends_at)
+    overriding system value values
+      (4,1,'Explicit target','explicit-target','draft',current_date+101,current_date+110,current_date+120,current_date+365),
+      (5,1,'Undated history','undated-history','draft',null,null,null,null)`);
+  const chooser = (await db.query("select public.get_competition_series_sources(1,4,$1,current_date+100) data", [first.competition_series_id])).rows[0].data;
   assert.equal(chooser.recommended_source_id, first.id);
   assert.ok(chooser.sources.some(s => s.id === future.id && s.status === "published"));
-  const explicit = await continueSeries(future, { name: "Explicit future source" });
+  const explicit = await continueSeries(future, { name: "Explicit future source" }, undefined, 4);
   assert.equal(explicit.configuration_source_competition_id, future.id);
-  const undated = await continueSeries(first, { name: "Undated draft", start_date_mode: "custom" });
-  const undatedSource = (await sources(first)).sources.find(s => s.id === undated.id);
+  const undated = await continueSeries(first, { name: "Undated draft", start_date_mode: "custom" }, undefined, 5);
+  const undatedSource = (await sources(first, 4)).sources.find(s => s.id === undated.id);
   assert.equal(undatedSource.effective_starts_at, null);
-  await admin("insert into league_seasons(id,organisation_id,name,slug,status) overriding system value values(4,1,'Undated target','undated-target','draft')");
-  const provisional = await sources(first, 4);
+  await admin("insert into league_seasons(id,organisation_id,name,slug,status) overriding system value values(6,1,'Undated target','undated-target','draft')");
+  const provisional = await sources(first, 6);
   assert.equal(provisional.provisional_cutoff, true);
   assert.equal(provisional.recommended_source_id, first.id);
 });
@@ -572,6 +636,8 @@ test("additive and rerunnable upgrade preserves pre-existing one-offs, identifie
       await isolated.exec(await sqlFile("competition-series-stage-2-management"));
       await isolated.exec(await sqlFile("competition-series-v1-identity-without-discipline"));
       await isolated.exec(await sqlFile("competition-series-v1-identity-without-discipline"));
+      await isolated.exec(await sqlFile("competition-series-one-edition-per-season"));
+      await isolated.exec(await sqlFile("competition-series-one-edition-per-season"));
       assert.deepEqual((await isolated.query(`select to_jsonb(c)-array['competition_series_id','configuration_source_competition_id',
         'configuration_source_version','discipline_code','discipline_detail'] data from competitions c`)).rows, before);
       assert.deepEqual((await isolated.query("select * from competition_rounds")).rows, rounds);
@@ -629,4 +695,8 @@ test("Stage 2 creation UI omits discipline and keeps Series-name prefilling one-
   const independentEdit = form.match(/function changeCompetitionName[\s\S]*?\n  }/)?.[0] ?? "";
   assert.match(independentEdit, /competitionNameEditedRef\.current = true/);
   assert.doesNotMatch(independentEdit, /setSeriesName/);
+  assert.match(flow, /availableSeries\.map/);
+  assert.match(flow, /Already in this Season/);
+  assert.match(flow, /View existing Competition/);
+  assert.match(flow, /!option\.targetEdition/);
 });

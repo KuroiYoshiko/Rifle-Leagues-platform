@@ -55,6 +55,7 @@ export type CompetitionSeriesSources = {
 
 export type CompetitionSeriesCreationOption = {
   series: CompetitionSeries;
+  targetEdition: Pick<Competition, "id" | "name" | "slug"> | null;
   components: CompetitionSeriesScoreComponent[];
   sourceInfo: CompetitionSeriesSources;
   sources: Array<{

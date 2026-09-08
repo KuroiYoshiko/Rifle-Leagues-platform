@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import {
   CompetitionForm,
@@ -60,10 +61,18 @@ export function CompetitionCreationFlow({
   const [selectedSeriesId, setSelectedSeriesId] = useState("");
   const [selectedSourceId, setSelectedSourceId] = useState("");
   const [showSourceChooser, setShowSourceChooser] = useState(false);
+  const availableSeries = useMemo(
+    () => seriesOptions.filter((option) => !option.targetEdition),
+    [seriesOptions],
+  );
+  const existingSeries = useMemo(
+    () => seriesOptions.filter((option) => option.targetEdition),
+    [seriesOptions],
+  );
 
   const selectedSeries = useMemo(
-    () => seriesOptions.find((option) => option.series.id === Number(selectedSeriesId)) ?? null,
-    [selectedSeriesId, seriesOptions],
+    () => availableSeries.find((option) => option.series.id === Number(selectedSeriesId)) ?? null,
+    [availableSeries, selectedSeriesId],
   );
   const selectedSource = selectedSeries?.sources.find(
     (source) => source.metadata.id === Number(selectedSourceId),
@@ -80,7 +89,7 @@ export function CompetitionCreationFlow({
   }
 
   function chooseSeries(value: string) {
-    const option = seriesOptions.find((item) => item.series.id === Number(value));
+    const option = availableSeries.find((item) => item.series.id === Number(value));
     const recommended = option?.sourceInfo.recommended_source_id;
     setSelectedSeriesId(value);
     setSelectedSourceId(recommended ? String(recommended) : "");
@@ -106,7 +115,12 @@ export function CompetitionCreationFlow({
     {mode === "one_off" ? <CompetitionForm organisation={organisation} season={season} creationMode="one_off" /> : null}
 
     {mode === "continue_series" ? <div className="space-y-6">
-      {seriesOptions.length ? <div className="max-w-xl"><label htmlFor="series-choice" className="text-sm font-semibold text-foreground">Active Series</label><select id="series-choice" value={selectedSeriesId} onChange={(event) => chooseSeries(event.target.value)} className="mt-2 min-h-12 w-full rounded-xl border border-border bg-surface px-4 text-sm text-foreground outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10"><option value="">Choose a Series</option>{seriesOptions.map((option) => <option key={option.series.id} value={option.series.id}>{option.series.name}</option>)}</select></div> : <p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">There are no active Competition Series to continue. Create a new Series instead.</p>}
+      {availableSeries.length ? <div className="max-w-xl"><label htmlFor="series-choice" className="text-sm font-semibold text-foreground">Active Series</label><select id="series-choice" value={selectedSeriesId} onChange={(event) => chooseSeries(event.target.value)} className="mt-2 min-h-12 w-full rounded-xl border border-border bg-surface px-4 text-sm text-foreground outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10"><option value="">Choose a Series</option>{availableSeries.map((option) => <option key={option.series.id} value={option.series.id}>{option.series.name}</option>)}</select></div> : <p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">{seriesOptions.length ? "Every active Series already has a Competition in this Season." : "There are no active Competition Series to continue. Create a new Series instead."}</p>}
+
+      {existingSeries.length ? <div className="rounded-xl border border-border bg-surface-muted p-4"><p className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Already in this Season</p><div className="mt-3 divide-y divide-border">{existingSeries.map((option) => {
+        const edition = option.targetEdition!;
+        return <div key={option.series.id} className="flex flex-wrap items-center justify-between gap-3 py-3 first:pt-0 last:pb-0"><div><p className="text-sm font-semibold text-foreground">{option.series.name}</p><p className="mt-1 text-xs text-muted-foreground">{edition.name}</p></div><Link href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${edition.slug}`} className="text-sm font-semibold text-brand-strong hover:text-brand-deep hover:underline">View existing Competition</Link></div>;
+      })}</div></div> : null}
 
       {selectedSeries ? <div className="space-y-4 rounded-xl border border-border bg-surface-muted p-4 sm:p-5">
         <div><p className="text-xs font-semibold uppercase tracking-[0.1em] text-brand-strong">Selected Series</p><h3 className="mt-1 text-base font-semibold text-foreground">{selectedSeries.series.name}</h3></div>
