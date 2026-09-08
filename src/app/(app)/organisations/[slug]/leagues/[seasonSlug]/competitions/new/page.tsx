@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { CompetitionForm } from "@/components/competition-form";
+import { CompetitionCreationFlow } from "@/components/competition-creation-flow";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { Card, SectionHeader } from "@/components/ui";
 import { getLeagueSeasonBySlug } from "@/lib/league-seasons";
+import { getCompetitionSeriesCreationOptions } from "@/lib/competition-series";
 import { getOrganisationManagementContextBySlug } from "@/lib/organisations";
 
 export const metadata: Metadata = {
@@ -18,7 +19,7 @@ export default async function CreateCompetitionPage({
   const { slug, seasonSlug } = await params;
   const context = await getOrganisationManagementContextBySlug(slug);
 
-  if (!context || context.access.role !== "owner") {
+  if (!context) {
     notFound();
   }
 
@@ -30,6 +31,10 @@ export default async function CreateCompetitionPage({
   if (!season) {
     notFound();
   }
+  const seriesOptions = await getCompetitionSeriesCreationOptions(
+    context.organisation.id,
+    season.id,
+  );
 
   return (
     <OrganisationPageFrame
@@ -38,12 +43,13 @@ export default async function CreateCompetitionPage({
     >
       <SectionHeader
         title="Add competition"
-        description={`Configure a competition within ${season.name}`}
+        description={`Choose how this Competition belongs in ${season.name}`}
       />
       <Card className="min-w-0 p-5 sm:p-8">
-        <CompetitionForm
+        <CompetitionCreationFlow
           organisation={context.organisation}
           season={season}
+          seriesOptions={seriesOptions}
         />
       </Card>
       <p className="mt-4 text-xs leading-5 text-muted-foreground">

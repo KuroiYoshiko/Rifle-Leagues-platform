@@ -4,7 +4,10 @@ import Link from "next/link";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
 import {
   createCompetition,
+  createCompetitionSeries,
+  continueCompetitionSeries,
   updateCompetition,
+  updateCompetitionSeriesDraft,
   type CompetitionField,
   type CompetitionFormState,
   type CompetitionScoreComponentValue,
@@ -18,7 +21,19 @@ import type {
   CompetitionScoreComponent,
   CompetitionStartDateMode,
 } from "@/lib/competitions";
+import {
+  type CompetitionSeries,
+  type CompetitionSeriesScoreComponent,
+  type CompetitionSeriesSources,
+} from "@/lib/competition-series-types";
 import type { LeagueSeason } from "@/lib/league-seasons";
+
+export type CompetitionCreationMode = "continue_series" | "new_series" | "one_off";
+
+export type CompetitionSourceContext = {
+  metadata: CompetitionSeriesSources["sources"][number];
+  expectedVersion: string;
+};
 
 const initialState: CompetitionFormState = {};
 const inputClassName =
@@ -35,7 +50,17 @@ const rankingDescriptions: Record<CompetitionRankingMethod, string> = {
   round_robin: "Entrants compete head-to-head against another entrant in their division each round. A win earns 2 match points, a draw 1 and a loss 0. A bye requires a complete score to earn points.",
   gun_score: "Entrants are ranked directly by their recorded gun scores. No separate ranking points are awarded for finishing position.",
 };
+const entryFormatLabels: Record<CompetitionEntryFormat, string> = {
+  individual: "Individual",
+  pairs: "Pairs",
+  team: "Team",
+};
+const scoringMethodLabels = {
+  points_scored: "Points scored",
+  points_dropped: "Points dropped",
+} as const;
 const fieldFocusIds: Partial<Record<CompetitionField, string>> = {
+  seriesName: "series-name",
   name: "competition-name",
   description: "competition-description",
   teamSize: "competition-team-size",
@@ -125,16 +150,35 @@ export function CompetitionForm({
   competition,
   rounds = [],
   scoreComponents = [],
+  creationMode = "one_off",
+  initialCompetition,
+  series,
+  sourceContext,
 }: {
   organisation: { id: number; name: string; slug: string };
   season: LeagueSeason;
   competition?: Competition;
   rounds?: CompetitionRound[];
-  scoreComponents?: CompetitionScoreComponent[];
-}) {
+  scoreComponents?: Array<CompetitionScoreComponent | CompetitionSeriesScoreComponent>;
+  creationMode?: CompetitionCreationMode;
+  initialCompetition?: Competition;
+  series?: CompetitionSeries;
+  sourceContext?: CompetitionSourceContext;
+  }) {
   const editing = Boolean(competition);
+  const defaults = competition ?? initialCompetition;
+  const seriesIdentityLocked = Boolean(
+    series && (creationMode === "continue_series" || series.identity_locked_at),
+  );
+  const sportingConfigurationLocked = competition?.status === "published";
+  const identityControlsLocked = sportingConfigurationLocked || seriesIdentityLocked;
+  const selectedAction = editing
+    ? competition?.status === "draft" && series ? updateCompetitionSeriesDraft : updateCompetition
+    : creationMode === "new_series" ? createCompetitionSeries
+      : creationMode === "continue_series" ? continueCompetitionSeries
+        : createCompetition;
   const [state, formAction, pending] = useActionState(
-    editing ? updateCompetition : createCompetition,
+    selectedAction,
     initialState,
   );
   const formRef = useRef<HTMLFormElement>(null);
@@ -142,39 +186,43 @@ export function CompetitionForm({
   const dirtyRef = useRef(false);
   const submittingRef = useRef(false);
   const submitted = state.values;
+  const initialCompetitionName = submitted?.name ?? defaults?.name ?? "";
+  const [seriesName, setSeriesName] = useState(submitted?.seriesName ?? "");
+  const [competitionName, setCompetitionName] = useState(initialCompetitionName);
+  const competitionNameEditedRef = useRef(Boolean(initialCompetitionName));
   const validationMessages = Array.from(new Set([
     ...Object.values(state.fieldErrors ?? {}).filter((message): message is string => Boolean(message)),
     ...(state.publishErrors ?? []),
   ]));
   const [entryFormat, setEntryFormat] = useState<CompetitionEntryFormat>(
-    (submitted?.entryFormat as CompetitionEntryFormat | undefined) ?? competition?.entry_format ?? "individual",
+    (submitted?.entryFormat as CompetitionEntryFormat | undefined) ?? defaults?.entry_format ?? "individual",
   );
   const [entryWindowMode, setEntryWindowMode] = useState<CompetitionEntryWindowMode>(
-    (submitted?.entryWindowMode as CompetitionEntryWindowMode | undefined) ?? competition?.entry_window_mode ?? "season_default",
+    (submitted?.entryWindowMode as CompetitionEntryWindowMode | undefined) ?? defaults?.entry_window_mode ?? "season_default",
   );
   const [customEntryOpensAt, setCustomEntryOpensAt] = useState(
-    submitted?.customEntryOpensAt ?? competition?.custom_entry_opens_at ?? "",
+    submitted?.customEntryOpensAt ?? defaults?.custom_entry_opens_at ?? "",
   );
   const [customEntryClosesAt, setCustomEntryClosesAt] = useState(
-    submitted?.customEntryClosesAt ?? competition?.custom_entry_closes_at ?? "",
+    submitted?.customEntryClosesAt ?? defaults?.custom_entry_closes_at ?? "",
   );
   const [startDateMode, setStartDateMode] = useState<CompetitionStartDateMode>(
-    (submitted?.startDateMode as CompetitionStartDateMode | undefined) ?? competition?.start_date_mode ?? "season_default",
+    (submitted?.startDateMode as CompetitionStartDateMode | undefined) ?? defaults?.start_date_mode ?? "season_default",
   );
   const [customStartsAt, setCustomStartsAt] = useState(
-    submitted?.customStartsAt ?? competition?.custom_starts_at ?? "",
+    submitted?.customStartsAt ?? defaults?.custom_starts_at ?? "",
   );
   const [rankingMethod, setRankingMethod] = useState<CompetitionRankingMethod>(
-    (submitted?.rankingMethod as CompetitionRankingMethod | undefined) ?? competition?.ranking_method ?? "aggregate",
+    (submitted?.rankingMethod as CompetitionRankingMethod | undefined) ?? defaults?.ranking_method ?? "aggregate",
   );
   const [usesXScore, setUsesXScore] = useState(
-    submitted?.usesXScore ?? competition?.uses_x_score ?? false,
+    submitted?.usesXScore ?? defaults?.uses_x_score ?? false,
   );
   const [localScoringEnabled, setLocalScoringEnabled] = useState(
-    submitted?.localScoringEnabled ?? competition?.local_scoring_enabled ?? true,
+    submitted?.localScoringEnabled ?? defaults?.local_scoring_enabled ?? true,
   );
   const [setsPerRound, setSetsPerRound] = useState(
-    submitted?.setsPerRound ?? String(competition?.sets_per_round ?? 1),
+    submitted?.setsPerRound ?? String(defaults?.sets_per_round ?? 1),
   );
   const [components, setComponents] = useState<CompetitionScoreComponentValue[]>(() => {
     if (submitted?.scoreComponents) return submitted.scoreComponents;
@@ -187,10 +235,10 @@ export function CompetitionForm({
   });
   const [scoresPerSet, setScoresPerSet] = useState(String(Math.max(components.length, 1)));
   const [numberOfRounds, setNumberOfRounds] = useState(
-    submitted?.numberOfRounds ?? String(competition?.number_of_rounds ?? 10),
+    submitted?.numberOfRounds ?? String(defaults?.number_of_rounds ?? 10),
   );
   const [bestRoundsCount, setBestRoundsCount] = useState(
-    submitted?.bestRoundsCount ?? String(competition?.best_rounds_count ?? ""),
+    submitted?.bestRoundsCount ?? String(defaults?.best_rounds_count ?? ""),
   );
   const [roundDeadlines, setRoundDeadlines] = useState<string[]>(() =>
     submitted?.roundDeadlines.length
@@ -295,6 +343,8 @@ export function CompetitionForm({
   const scheduleGridClassName = useShootByDates
     ? "grid-cols-[3rem_minmax(0,1fr)_minmax(0,1fr)]"
     : "grid-cols-[3rem_minmax(0,1fr)]";
+  const sourceRankingChanged = creationMode === "continue_series" &&
+    sourceContext && rankingMethod !== sourceContext.metadata.ranking_method;
   const scheduleErrors = useMemo(() => {
     const errors: string[] = [];
     let previous: string | null = null;
@@ -348,6 +398,16 @@ export function CompetitionForm({
     if (value === "best_n_average") setUsesXScore(false);
   }
 
+  function changeSeriesName(value: string) {
+    setSeriesName(value);
+    if (!competitionNameEditedRef.current) setCompetitionName(value);
+  }
+
+  function changeCompetitionName(value: string) {
+    competitionNameEditedRef.current = true;
+    setCompetitionName(value);
+  }
+
   return <form
     ref={formRef}
     action={formAction}
@@ -358,22 +418,73 @@ export function CompetitionForm({
   >
     <input type="hidden" name="organisation_id" value={organisation.id} />
     <input type="hidden" name="league_season_id" value={season.id} />
+    <input type="hidden" name="creation_mode" value={editing ? "edit" : creationMode} />
     {competition ? <><input type="hidden" name="competition_id" value={competition.id} /><input type="hidden" name="current_status" value={competition.status} /></> : null}
+    {series ? <input type="hidden" name="competition_series_id" value={series.id} /> : null}
+    {sourceContext ? <>
+      <input type="hidden" name="configuration_source_competition_id" value={sourceContext.metadata.id} />
+      <input type="hidden" name="expected_source_version" value={sourceContext.expectedVersion} />
+    </> : null}
+    {identityControlsLocked ? <>
+      <input type="hidden" name="entry_format" value={defaults?.entry_format ?? series?.entry_format ?? "individual"} />
+      <input type="hidden" name="team_size" value={defaults?.team_size ?? series?.team_size ?? 1} />
+      <input type="hidden" name="sets_per_round" value={defaults?.sets_per_round ?? series?.sets_per_round ?? 1} />
+      {components.map((component, index) => <span key={`locked-component-${index}`}>
+        <input type="hidden" name="component_label" value={component.shortLabel} />
+        <input type="hidden" name="component_maximum" value={component.maximumScore} />
+        <input type="hidden" name="component_method" value={component.scoreMethod} />
+      </span>)}
+      <input type="hidden" name="shots_per_round" value={defaults?.shots_per_round ?? series?.shots_per_round ?? ""} />
+    </> : null}
+    {sportingConfigurationLocked ? <>
+      <input type="hidden" name="ranking_method" value={competition.ranking_method} />
+      <input type="hidden" name="best_rounds_count" value={competition.best_rounds_count ?? ""} />
+      <input type="hidden" name="uses_x_score" value={String(competition.uses_x_score)} />
+      <input type="hidden" name="number_of_rounds" value={competition.number_of_rounds} />
+    </> : null}
 
     {state.message ? <div className={`rounded-xl px-4 py-3 text-sm ${state.status === "error" ? "bg-danger-subtle text-danger" : "bg-success-subtle text-success"}`} role={state.status === "error" ? "alert" : "status"}>
       <p className="font-semibold">{state.message}</p>
       {validationMessages.length ? <ul className="mt-2 list-disc space-y-1 pl-5">{validationMessages.map((error) => <li key={error}>{error}</li>)}</ul> : null}
     </div> : null}
 
+    {sportingConfigurationLocked ? <p className="rounded-xl border border-warning/20 bg-warning-subtle px-4 py-3 text-sm leading-6 text-warning">
+      Sporting configuration is locked while this Competition is published. Administrative details and permitted dates remain editable.
+    </p> : null}
+
+    {creationMode === "continue_series" && sourceContext ? <p className="rounded-xl border border-brand/20 bg-brand-subtle px-4 py-3 text-sm leading-6 text-brand-deep">
+      Using settings from {sourceContext.metadata.season_name} / {sourceContext.metadata.name}. Dates and participation are not carried forward.
+    </p> : null}
+
+    {creationMode === "new_series" ? <section className={sectionClassName} aria-labelledby="series-details-title">
+      <SectionTitle id="series-details-title" title="New Series" description="Set the recurring identity before configuring its first Competition edition." />
+      <div><label htmlFor="series-name" className="text-sm font-semibold text-foreground">Competition series name *</label><input id="series-name" name="series_name" required minLength={2} maxLength={160} value={seriesName} onChange={(event) => changeSeriesName(event.target.value)} disabled={pending} className={inputClassName} /><p className="mt-2 text-xs text-muted-foreground">Used to identify this recurring Competition across Seasons.</p><FieldError field="seriesName" message={state.fieldErrors?.seriesName} /></div>
+    </section> : null}
+
+    {editing && series && !seriesIdentityLocked ? <section className={sectionClassName} aria-labelledby="provisional-series-title">
+      <SectionTitle id="provisional-series-title" title="Series format · Provisional" description={`This is the sole unpublished draft in ${series.name}. Its shooting identity can still be corrected before publication or continuation.`} />
+    </section> : null}
+
+    {seriesIdentityLocked && series ? <section className={sectionClassName} aria-labelledby="locked-series-format-title">
+      <SectionTitle id="locked-series-format-title" title="Series format" description={`Inherited from ${series.name}. This shooting format is shared by every edition in this Series. To change it, create a new Series.`} />
+      <dl className="grid gap-3 rounded-xl border border-brand/20 bg-brand-subtle p-4 text-sm sm:grid-cols-3">
+        <div><dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Entry / team size</dt><dd className="mt-1 font-semibold text-foreground">{entryFormatLabels[series.entry_format]} · {series.team_size} shooter{series.team_size === 1 ? "" : "s"}</dd></div>
+        <div><dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Sets / Round</dt><dd className="mt-1 font-semibold text-foreground">{series.sets_per_round}</dd></div>
+        <div><dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Shots / Round</dt><dd className="mt-1 font-semibold text-foreground">{series.shots_per_round ?? "Not set"}</dd></div>
+      </dl>
+      <div className="overflow-hidden rounded-xl border border-border bg-surface"><div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 border-b border-border bg-surface-muted px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground"><span>Component</span><span>Maximum</span><span>Scoring</span></div>{components.map((component, index) => <div key={index} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 border-b border-border px-4 py-3 text-sm last:border-b-0"><span className="font-semibold text-foreground">{component.shortLabel || `Score ${index + 1}`}</span><span className="text-foreground">Ex {component.maximumScore}</span><span className="text-muted-foreground">{scoringMethodLabels[component.scoreMethod as keyof typeof scoringMethodLabels]}</span></div>)}</div>
+      <p className="text-xs leading-5 text-muted-foreground">Component count, order, labels, maximum Ex, and points scored / dropped are inherited and cannot be changed for this edition.</p>
+    </section> : null}
+
     <section className={sectionClassName} aria-labelledby="competition-details-title">
       <SectionTitle id="competition-details-title" title="Competition details" description="The name, description, format, and fee shown to clubs." />
-      <div><label htmlFor="competition-name" className="text-sm font-semibold text-foreground">Competition name *</label><input id="competition-name" name="name" required minLength={2} maxLength={160} defaultValue={submitted?.name ?? competition?.name ?? ""} disabled={pending} className={inputClassName} /><FieldError field="name" message={state.fieldErrors?.name} /></div>
-      <div><label htmlFor="competition-description" className="text-sm font-semibold text-foreground">Description</label><textarea id="competition-description" name="description" rows={4} maxLength={2000} defaultValue={submitted?.description ?? competition?.description ?? ""} disabled={pending} className={`${inputClassName} resize-y py-3`} /><p className="mt-2 text-xs text-muted-foreground">Optional plain text, up to 2,000 characters.</p><FieldError field="description" message={state.fieldErrors?.description} /></div>
-      <fieldset><legend className="text-sm font-semibold text-foreground">Entry format</legend><div className="mt-2 grid gap-3 sm:grid-cols-3">{([
+      <div><label htmlFor="competition-name" className="text-sm font-semibold text-foreground">Competition name *</label><input id="competition-name" name="name" required minLength={2} maxLength={160} value={competitionName} onChange={(event) => changeCompetitionName(event.target.value)} disabled={pending} className={inputClassName} /><FieldError field="name" message={state.fieldErrors?.name} /></div>
+      <div><label htmlFor="competition-description" className="text-sm font-semibold text-foreground">Description</label><textarea id="competition-description" name="description" rows={4} maxLength={2000} defaultValue={submitted?.description ?? defaults?.description ?? ""} disabled={pending} className={`${inputClassName} resize-y py-3`} /><p className="mt-2 text-xs text-muted-foreground">Optional plain text, up to 2,000 characters.</p><FieldError field="description" message={state.fieldErrors?.description} /></div>
+      {!seriesIdentityLocked ? <><fieldset><legend className="text-sm font-semibold text-foreground">Entry format</legend><div className="mt-2 grid gap-3 sm:grid-cols-3">{([
         ["individual", "Individual", "1 shooter"], ["pairs", "Pairs", "2 shooters"], ["team", "Team", "3–20 shooters"],
-      ] as const).map(([value, title, detail]) => <RadioCard key={value} name="entry_format" value={value} checked={entryFormat === value} onChange={() => setEntryFormat(value)} title={title} detail={detail} disabled={pending} />)}</div><FieldError field="entryFormat" message={state.fieldErrors?.entryFormat} /></fieldset>
-      {entryFormat === "team" ? <div className="max-w-xs"><label htmlFor="competition-team-size" className="text-sm font-semibold text-foreground">Team size *</label><input id="competition-team-size" name="team_size" type="number" min={3} max={20} step={1} defaultValue={submitted?.teamSize ?? competition?.team_size ?? 3} disabled={pending} className={inputClassName} /><FieldError field="teamSize" message={state.fieldErrors?.teamSize} /></div> : <input type="hidden" name="team_size" value={entryFormat === "individual" ? 1 : 2} />}
-      <div className="max-w-xs"><label htmlFor="competition-entry-fee" className="text-sm font-semibold text-foreground">Entry fee (GBP)</label><input id="competition-entry-fee" name="entry_fee" type="number" min={0} max={10000} step="0.01" defaultValue={submitted?.entryFee ?? competition?.entry_fee ?? ""} disabled={pending} className={inputClassName} /><p className="mt-2 text-xs text-muted-foreground">Optional display value; no payment is collected here.</p><FieldError field="entryFee" message={state.fieldErrors?.entryFee} /></div>
+      ] as const).map(([value, title, detail]) => <RadioCard key={value} name="entry_format" value={value} checked={entryFormat === value} onChange={() => setEntryFormat(value)} title={title} detail={detail} disabled={pending || sportingConfigurationLocked} />)}</div><FieldError field="entryFormat" message={state.fieldErrors?.entryFormat} /></fieldset>
+      {entryFormat === "team" ? <div className="max-w-xs"><label htmlFor="competition-team-size" className="text-sm font-semibold text-foreground">Team size *</label><input id="competition-team-size" name="team_size" type="number" min={3} max={20} step={1} defaultValue={submitted?.teamSize ?? defaults?.team_size ?? 3} disabled={pending || sportingConfigurationLocked} className={inputClassName} /><FieldError field="teamSize" message={state.fieldErrors?.teamSize} /></div> : <input type="hidden" name="team_size" value={entryFormat === "individual" ? 1 : 2} />}</> : null}
+      <div className="max-w-xs"><label htmlFor="competition-entry-fee" className="text-sm font-semibold text-foreground">Entry fee (GBP)</label><input id="competition-entry-fee" name="entry_fee" type="number" min={0} max={10000} step="0.01" defaultValue={submitted?.entryFee ?? defaults?.entry_fee ?? ""} disabled={pending} className={inputClassName} /><p className="mt-2 text-xs text-muted-foreground">Optional display value; no payment is collected here.</p><FieldError field="entryFee" message={state.fieldErrors?.entryFee} /></div>
     </section>
 
     <section className={sectionClassName} aria-labelledby="entry-window-title">
@@ -396,38 +507,39 @@ export function CompetitionForm({
       <FieldError field="competitionStart" message={state.fieldErrors?.competitionStart} />
     </section>
 
-    <section className={sectionClassName} aria-labelledby="course-of-fire-title">
+    {!seriesIdentityLocked ? <section className={sectionClassName} aria-labelledby="course-of-fire-title">
       <SectionTitle id="course-of-fire-title" title="Course of Fire" description="Define how many sets and separate gun scores each shooter records in one round." />
       <div className="grid max-w-2xl gap-4 sm:grid-cols-2">
-        <div><div className="flex items-center"><label htmlFor="sets-per-round" className="text-sm font-semibold text-foreground">Sets per round *</label><InfoHelp label="Sets per round">How many times each shooter completes the full set of scores during one round. Most competitions use 1. A Double Dewar may use 2.</InfoHelp></div><input id="sets-per-round" name="sets_per_round" type="number" min={1} max={100} step={1} value={setsPerRound} onChange={(event) => setSetsPerRound(event.target.value)} disabled={pending} className={inputClassName} /><FieldError field="setsPerRound" message={state.fieldErrors?.setsPerRound} /></div>
-        <div><div className="flex items-center"><label htmlFor="scores-per-set" className="text-sm font-semibold text-foreground">Scores per set *</label><InfoHelp label="Scores per set">How many separate gun scores are recorded in each set. For example, 3P uses P, S and K: three scores per set.</InfoHelp></div><input id="scores-per-set" type="number" min={1} max={20} step={1} value={scoresPerSet} onChange={(event) => resizeComponents(event.target.value)} aria-invalid={Boolean(scoresPerSetError)} disabled={pending} className={inputClassName} />{scoresPerSetError ? <p className="mt-2 text-sm text-danger" role="alert">{scoresPerSetError}</p> : null}</div>
+        <div><div className="flex items-center"><label htmlFor="sets-per-round" className="text-sm font-semibold text-foreground">Sets per round *</label><InfoHelp label="Sets per round">How many times each shooter completes the full set of scores during one round. Most competitions use 1. A Double Dewar may use 2.</InfoHelp></div><input id="sets-per-round" name="sets_per_round" type="number" min={1} max={100} step={1} value={setsPerRound} onChange={(event) => setSetsPerRound(event.target.value)} disabled={pending || sportingConfigurationLocked} className={inputClassName} /><FieldError field="setsPerRound" message={state.fieldErrors?.setsPerRound} /></div>
+        <div><div className="flex items-center"><label htmlFor="scores-per-set" className="text-sm font-semibold text-foreground">Scores per set *</label><InfoHelp label="Scores per set">How many separate gun scores are recorded in each set. For example, 3P uses P, S and K: three scores per set.</InfoHelp></div><input id="scores-per-set" type="number" min={1} max={20} step={1} value={scoresPerSet} onChange={(event) => resizeComponents(event.target.value)} aria-invalid={Boolean(scoresPerSetError)} disabled={pending || sportingConfigurationLocked} className={inputClassName} />{scoresPerSetError ? <p className="mt-2 text-sm text-danger" role="alert">{scoresPerSetError}</p> : null}</div>
       </div>
       <div className="space-y-4">{components.map((component, index) => <fieldset key={index} className="rounded-xl border border-border bg-surface-muted p-4">
         <legend className="px-1 text-xs font-semibold uppercase tracking-[0.1em] text-brand-strong">Score {index + 1}</legend>
         <div className="grid gap-4 lg:grid-cols-3">
-          <div><div className="flex items-center"><label htmlFor={`component-label-${index}`} className="text-sm font-medium text-foreground">Label (optional)</label><InfoHelp label={`Score ${index + 1} label`}>Optional short heading shown for this score, e.g. P, S, K, 50m or 100yd.</InfoHelp></div><input id={`component-label-${index}`} name="component_label" maxLength={30} value={component.shortLabel} onChange={(event) => updateComponent(index, "shortLabel", event.target.value)} placeholder="50m" disabled={pending} className={inputClassName} /><p className="mt-2 text-xs leading-5 text-muted-foreground">Optional short heading shown for this score, e.g. P, S, K, 50m or 100yd.</p></div>
-          <div><label htmlFor={`component-maximum-${index}`} className="text-sm font-medium text-foreground">Maximum score (Ex) *</label><input id={`component-maximum-${index}`} name="component_maximum" type="text" inputMode="decimal" autoComplete="off" value={component.maximumScore} onChange={(event) => updateComponent(index, "maximumScore", event.target.value)} placeholder="200" disabled={pending} className={inputClassName} /><p className="mt-2 text-xs leading-5 text-muted-foreground">Maximum possible gun score for this score, e.g. 100 or 200. Up to two decimal places are supported.</p></div>
-          <div><label htmlFor={`component-method-${index}`} className="text-sm font-medium text-foreground">Score entry *</label><select id={`component-method-${index}`} name="component_method" value={component.scoreMethod} onChange={(event) => updateComponent(index, "scoreMethod", event.target.value)} disabled={pending} className={inputClassName}><option value="points_scored">Points scored</option><option value="points_dropped">Points dropped</option></select><p className="mt-2 text-xs leading-5 text-muted-foreground">Choose whether scorers enter the achieved points or the points dropped from the maximum.</p></div>
+          <div><div className="flex items-center"><label htmlFor={`component-label-${index}`} className="text-sm font-medium text-foreground">Label (optional)</label><InfoHelp label={`Score ${index + 1} label`}>Optional short heading shown for this score, e.g. P, S, K, 50m or 100yd.</InfoHelp></div><input id={`component-label-${index}`} name="component_label" maxLength={30} value={component.shortLabel} onChange={(event) => updateComponent(index, "shortLabel", event.target.value)} placeholder="50m" disabled={pending || sportingConfigurationLocked} className={inputClassName} /><p className="mt-2 text-xs leading-5 text-muted-foreground">Optional short heading shown for this score, e.g. P, S, K, 50m or 100yd.</p></div>
+          <div><label htmlFor={`component-maximum-${index}`} className="text-sm font-medium text-foreground">Maximum score (Ex) *</label><input id={`component-maximum-${index}`} name="component_maximum" type="text" inputMode="decimal" autoComplete="off" value={component.maximumScore} onChange={(event) => updateComponent(index, "maximumScore", event.target.value)} placeholder="200" disabled={pending || sportingConfigurationLocked} className={inputClassName} /><p className="mt-2 text-xs leading-5 text-muted-foreground">Maximum possible gun score for this score, e.g. 100 or 200. Up to two decimal places are supported.</p></div>
+          <div><label htmlFor={`component-method-${index}`} className="text-sm font-medium text-foreground">Score entry *</label><select id={`component-method-${index}`} name="component_method" value={component.scoreMethod} onChange={(event) => updateComponent(index, "scoreMethod", event.target.value)} disabled={pending || sportingConfigurationLocked} className={inputClassName}><option value="points_scored">Points scored</option><option value="points_dropped">Points dropped</option></select><p className="mt-2 text-xs leading-5 text-muted-foreground">Choose whether scorers enter the achieved points or the points dropped from the maximum.</p></div>
         </div>
       </fieldset>)}</div>
       <p className="rounded-xl bg-surface-muted px-4 py-3 text-sm text-muted-foreground">Total possible gun score per shooter / round: <span className="font-semibold text-foreground">Ex {derivedMaximum.toLocaleString("en-GB", { maximumFractionDigits: 2 })}</span></p>
       <FieldError field="scoreComponents" message={state.fieldErrors?.scoreComponents} />
-      <div className="max-w-xs"><label htmlFor="shots-per-round" className="text-sm font-semibold text-foreground">Shots per shooter / round (optional)</label><input id="shots-per-round" name="shots_per_round" type="number" min={1} max={10000} step={1} defaultValue={submitted?.shotsPerRound ?? competition?.shots_per_round ?? ""} disabled={pending} className={inputClassName} /><p className="mt-2 text-xs text-muted-foreground">Informational only. The number of recorded scores is defined by the Course of Fire above.</p><FieldError field="shotsPerRound" message={state.fieldErrors?.shotsPerRound} /></div>
-    </section>
+      <div className="max-w-xs"><label htmlFor="shots-per-round" className="text-sm font-semibold text-foreground">Shots per shooter / round (optional)</label><input id="shots-per-round" name="shots_per_round" type="number" min={1} max={10000} step={1} defaultValue={submitted?.shotsPerRound ?? defaults?.shots_per_round ?? ""} disabled={pending || sportingConfigurationLocked} className={inputClassName} /><p className="mt-2 text-xs text-muted-foreground">Informational only. The number of recorded scores is defined by the Course of Fire above.</p><FieldError field="shotsPerRound" message={state.fieldErrors?.shotsPerRound} /></div>
+    </section> : null}
 
     <section className={sectionClassName} aria-labelledby="ranking-title">
       <SectionTitle id="ranking-title" title="Ranking" description="Choose how released Competition Results are ranked." />
-      <div><div className="flex items-center"><label htmlFor="ranking-method" className="text-sm font-semibold text-foreground">Ranking method *</label><InfoHelp label="Ranking method">Choose how this Competition will convert recorded gun scores into standings. Aggregate, Gun Score and Round Robin results are available after Round End. Best N Average is not implemented yet.</InfoHelp></div><select id="ranking-method" name="ranking_method" value={rankingMethod} onChange={(event) => changeRankingMethod(event.target.value as CompetitionRankingMethod)} disabled={pending} className={inputClassName}><option value="aggregate">Aggregate points</option><option value="best_n_average">Best N rounds average</option><option value="round_robin">Round robin</option><option value="gun_score">Gun score</option></select><p className="mt-2 text-sm leading-6 text-muted-foreground">{rankingDescriptions[rankingMethod]}</p><FieldError field="rankingMethod" message={state.fieldErrors?.rankingMethod} /></div>
-      {rankingMethod === "best_n_average" ? <div className="max-w-xs"><label htmlFor="best-rounds-count" className="text-sm font-semibold text-foreground">Best rounds count *</label><input id="best-rounds-count" name="best_rounds_count" type="number" min={1} max={validRoundCount ?? 100} step={1} value={bestRoundsCount} onChange={(event) => setBestRoundsCount(event.target.value)} aria-invalid={Boolean(bestRoundsError || state.fieldErrors?.bestRoundsCount)} aria-describedby="best-rounds-range" disabled={pending} className={inputClassName} /><p id="best-rounds-range" className={`mt-2 text-xs ${bestRoundsError ? "text-danger" : "text-muted-foreground"}`} role={bestRoundsError ? "alert" : undefined}>{bestRoundsError ?? `Choose a value from 1 to ${validRoundCount ?? 100}.`}</p><FieldError field="bestRoundsCount" message={state.fieldErrors?.bestRoundsCount} /></div> : null}
+      <div><div className="flex items-center"><label htmlFor="ranking-method" className="text-sm font-semibold text-foreground">Ranking method *</label><InfoHelp label="Ranking method">Choose how this Competition will convert recorded gun scores into standings. Aggregate, Gun Score and Round Robin results are available after Round End. Best N Average is not implemented yet.</InfoHelp></div><select id="ranking-method" name="ranking_method" value={rankingMethod} onChange={(event) => changeRankingMethod(event.target.value as CompetitionRankingMethod)} disabled={pending || sportingConfigurationLocked} className={inputClassName}><option value="aggregate">Aggregate points</option><option value="best_n_average">Best N rounds average</option><option value="round_robin">Round robin</option><option value="gun_score">Gun score</option></select><p className="mt-2 text-sm leading-6 text-muted-foreground">{rankingDescriptions[rankingMethod]}</p><FieldError field="rankingMethod" message={state.fieldErrors?.rankingMethod} /></div>
+      {sourceRankingChanged ? <p className="rounded-xl border border-brand/20 bg-brand-subtle px-4 py-3 text-sm text-brand-deep">This edition uses a different ranking method from the previous edition.</p> : null}
+      {rankingMethod === "best_n_average" ? <div className="max-w-xs"><label htmlFor="best-rounds-count" className="text-sm font-semibold text-foreground">Best rounds count *</label><input id="best-rounds-count" name="best_rounds_count" type="number" min={1} max={validRoundCount ?? 100} step={1} value={bestRoundsCount} onChange={(event) => setBestRoundsCount(event.target.value)} aria-invalid={Boolean(bestRoundsError || state.fieldErrors?.bestRoundsCount)} aria-describedby="best-rounds-range" disabled={pending || sportingConfigurationLocked} className={inputClassName} /><p id="best-rounds-range" className={`mt-2 text-xs ${bestRoundsError ? "text-danger" : "text-muted-foreground"}`} role={bestRoundsError ? "alert" : undefined}>{bestRoundsError ?? `Choose a value from 1 to ${validRoundCount ?? 100}.`}</p><FieldError field="bestRoundsCount" message={state.fieldErrors?.bestRoundsCount} /></div> : null}
       {rankingMethod === "round_robin" ? <div className="space-y-3"><p className="rounded-xl border border-warning/20 bg-warning-subtle px-4 py-3 text-sm text-warning">Publish Round Robin divisions before Competition Start to generate fixtures. Before Start, use Edit divisions to rebuild the schedule. Divisions and opponents are frozen from Start.</p>{roundRobinDateError ? <p className="rounded-xl border border-danger/20 bg-danger-subtle px-4 py-3 text-sm text-danger" role="alert">{roundRobinDateError}</p> : null}</div> : null}
-      {rankingMethod === "best_n_average" ? <><input type="hidden" name="uses_x_score" value="false" /><p className="rounded-xl border border-border bg-surface-muted px-4 py-3 text-sm text-muted-foreground">X-based ranking is not currently defined for Best N Average competitions.</p></> : <><fieldset><legend className="text-sm font-semibold text-foreground">X scoring</legend><div className="mt-2 grid gap-3 sm:grid-cols-2"><RadioCard name="uses_x_score" value="false" checked={!usesXScore} onChange={() => setUsesXScore(false)} title="Not used" detail="Do not record X scores." disabled={pending} /><RadioCard name="uses_x_score" value="true" checked={usesXScore} onChange={() => setUsesXScore(true)} title="Record X scores" detail="Use higher X totals to resolve otherwise equal supported Results." disabled={pending} /></div></fieldset>{!usesXScore ? <p className="rounded-xl border border-warning/20 bg-warning-subtle px-4 py-3 text-sm leading-6 text-warning">X scores will not be recorded for this competition. They cannot be used for X-based tie resolution after scoring has started.</p> : null}</>}
+      {rankingMethod === "best_n_average" ? <><input type="hidden" name="uses_x_score" value="false" /><p className="rounded-xl border border-border bg-surface-muted px-4 py-3 text-sm text-muted-foreground">X-based ranking is not currently defined for Best N Average competitions.</p></> : <><fieldset><legend className="text-sm font-semibold text-foreground">X scoring</legend><div className="mt-2 grid gap-3 sm:grid-cols-2"><RadioCard name="uses_x_score" value="false" checked={!usesXScore} onChange={() => setUsesXScore(false)} title="Not used" detail="Do not record X scores." disabled={pending || sportingConfigurationLocked} /><RadioCard name="uses_x_score" value="true" checked={usesXScore} onChange={() => setUsesXScore(true)} title="Record X scores" detail="Use higher X totals to resolve otherwise equal supported Results." disabled={pending || sportingConfigurationLocked} /></div></fieldset>{!usesXScore ? <p className="rounded-xl border border-warning/20 bg-warning-subtle px-4 py-3 text-sm leading-6 text-warning">X scores will not be recorded for this competition. They cannot be used for X-based tie resolution after scoring has started.</p> : null}</>}
       <FieldError field="xScoring" message={state.fieldErrors?.xScoring} />
       <fieldset><legend className="text-sm font-semibold text-foreground">Score entry access</legend><div className="mt-2 grid gap-3 sm:grid-cols-2"><RadioCard name="local_scoring_enabled" value="true" checked={localScoringEnabled} onChange={() => setLocalScoringEnabled(true)} title="Club + organisation scoring" detail="Club officials may later score their own club." disabled={pending} /><RadioCard name="local_scoring_enabled" value="false" checked={!localScoringEnabled} onChange={() => setLocalScoringEnabled(false)} title="Organisation scoring only" detail="Only organisation scoring roles will score." disabled={pending} /></div><FieldError field="scoringAccess" message={state.fieldErrors?.scoringAccess} /></fieldset>
     </section>
 
     <section className={sectionClassName} aria-labelledby="rounds-title">
       <SectionTitle id="rounds-title" title="Rounds / stages" description="Round 1 End must be after Competition Start. Later Round End dates may be equal but cannot move backwards." />
-      <div className="max-w-xs"><label htmlFor="number-of-rounds" className="text-sm font-semibold text-foreground">Number of rounds *</label><input id="number-of-rounds" name="number_of_rounds" type="number" min={1} max={100} step={1} value={numberOfRounds} onChange={(event) => resizeSchedule(event.target.value)} disabled={pending} className={inputClassName} /><FieldError field="numberOfRounds" message={state.fieldErrors?.numberOfRounds} /></div>
+      <div className="max-w-xs"><label htmlFor="number-of-rounds" className="text-sm font-semibold text-foreground">Number of rounds *</label><input id="number-of-rounds" name="number_of_rounds" type="number" min={1} max={100} step={1} value={numberOfRounds} onChange={(event) => resizeSchedule(event.target.value)} disabled={pending || sportingConfigurationLocked} className={inputClassName} /><FieldError field="numberOfRounds" message={state.fieldErrors?.numberOfRounds} /></div>
       <div className="rounded-2xl border border-border bg-surface-muted p-4"><div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.5fr)_minmax(0,0.6fr)_auto] sm:items-end"><label className="text-sm font-medium text-foreground">First Round End<input type="date" value={firstDeadline} onChange={(event) => setFirstDeadline(event.target.value)} disabled={pending} className={inputClassName} /></label><label className="text-sm font-medium text-foreground">Repeat every<input type="number" min={1} max={repeatUnit === "days" ? 365 : 52} value={repeatEvery} onChange={(event) => setRepeatEvery(event.target.value)} disabled={pending} className={inputClassName} /></label><label className="text-sm font-medium text-foreground">Unit<select value={repeatUnit} onChange={(event) => setRepeatUnit(event.target.value as "days" | "weeks")} disabled={pending} className={inputClassName}><option value="days">days</option><option value="weeks">weeks</option></select></label><button type="button" onClick={generateSchedule} disabled={pending} className="min-h-12 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-50">Generate</button></div>{generatorError ? <p className="mt-3 text-sm text-danger" role="alert">{generatorError}</p> : null}</div>
       {roundDeadlines.length === 0 ? <p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">No schedule generated yet. A draft can be saved without one.</p> : <div className="space-y-3">
         <label className="inline-flex min-h-11 cursor-pointer items-center gap-3 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-foreground"><input type="checkbox" checked={useShootByDates} onChange={(event) => setUseShootByDates(event.target.checked)} disabled={pending} className="size-4 accent-primary" />Use Shoot-by dates</label>
@@ -451,7 +563,7 @@ export function CompetitionForm({
         <p>{state.message}</p>
         {validationMessages.length ? <ul className="mt-2 list-disc space-y-1 pl-5">{validationMessages.map((error) => <li key={error}>{error}</li>)}</ul> : null}
       </div> : null}
-      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Link href={detailPath} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-6 text-sm font-semibold text-neutral-strong">Cancel</Link>{competition?.status === "draft" ? <button type="submit" name="intent" value="publish" disabled={pending || Boolean(bestRoundsError) || Boolean(scoresPerSetError)} className="min-h-11 rounded-xl border border-brand px-6 text-sm font-semibold text-brand-deep disabled:opacity-50">{pending ? "Saving…" : "Publish competition"}</button> : null}<button type="submit" name="intent" value="save" disabled={pending || Boolean(bestRoundsError) || Boolean(scoresPerSetError)} className="min-h-11 rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "Saving…" : competition?.status === "published" ? "Save changes" : "Save draft"}</button></div>
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end"><Link href={detailPath} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-6 text-sm font-semibold text-neutral-strong">Cancel</Link><button type="submit" name="intent" value="save" disabled={pending || Boolean(bestRoundsError) || Boolean(scoresPerSetError)} className="min-h-11 rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground disabled:opacity-50">{pending ? "Saving…" : competition?.status === "published" ? "Save changes" : editing ? "Save draft" : creationMode === "new_series" ? "Create Series draft" : creationMode === "continue_series" ? "Create edition draft" : "Create one-off draft"}</button></div>
     </div>
   </form>;
 }

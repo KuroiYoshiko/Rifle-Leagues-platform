@@ -231,7 +231,7 @@ export default async function CompetitionDetailPage({
           {publishSucceeded
             ? "It is visible whenever the parent season is public."
             : competition.status === "draft"
-              ? "Only the active organisation owner can see it until it is published."
+              ? "Only active organisation management staff can see it until an owner publishes it."
               : "The published Competition remains visible."}
         </div>
       ) : null}
@@ -261,7 +261,7 @@ export default async function CompetitionDetailPage({
             ) : null}
             {competition.status === "draft" ? (
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                This draft is private to the active organisation owner.
+                This draft is private to active organisation management staff.
               </p>
             ) : null}
           </div>
@@ -276,6 +276,13 @@ export default async function CompetitionDetailPage({
               canDelete={lifecycleState.can_delete}
               editHref={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/edit`}
             />
+          ) : managementContext && competition.status === "draft" ? (
+            <Link
+              href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/edit`}
+              className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
+            >
+              Edit competition
+            </Link>
           ) : null}
         </div>
 
