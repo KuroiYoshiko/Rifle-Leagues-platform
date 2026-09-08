@@ -252,7 +252,7 @@ test("Policy versions validate an exact schema, are immutable, and future edits 
   )).rows[0].strategy, "current_then_preceding");
 });
 
-test("manual Policy returns manual-required and stores participant-owned provisional values per edition", async () => {
+test("manual Policy stores a resolved no-history state and optional participant-owned values per edition", async () => {
   const ex100 = await context();
   const manual = await policy("Manual", "manual", {});
   const firstTarget = await addCompetition({ season: 3, name: "Manual One" });
@@ -263,9 +263,22 @@ test("manual Policy returns manual-required and stores participant-owned provisi
   await bind(secondTarget, 4, ex100.id, manual.version_id);
 
   const preview = await calculate(firstTarget);
-  assert.equal(preview[0].manual_required, true);
+  assert.equal(preview[0].manual_required, false);
   assert.equal(preview[0].policy_branch, "manual");
   assert.equal(preview[0].starting_average, null);
+  assert.equal(preview[0].origin, "no_history");
+  assert.equal(preview[0].status, "provisional");
+  await db.query("select public.set_manual_competition_starting_average(1,3,$1,$2,null,'Ignored for null')",
+    [firstTarget, firstParticipant.participant]);
+  const noHistory = (await admin(`select starting_average,origin,status,manual_reason
+    from competition_participant_starting_averages
+    where competition_entrant_participant_id=$1`, [firstParticipant.participant])).rows[0];
+  assert.deepEqual(noHistory, {
+    starting_average: null,
+    origin: "no_history",
+    status: "provisional",
+    manual_reason: null,
+  });
   await db.query("select public.set_manual_competition_starting_average(1,3,$1,$2,97.8,'Legacy card')",
     [firstTarget, firstParticipant.participant]);
   await db.query("select public.set_manual_competition_starting_average(1,4,$1,$2,96.4,null)",
@@ -383,7 +396,7 @@ test("current_then_preceding uses all scores from exactly one chronological Comp
   targetParticipant.participant);
 });
 
-test("current_then_preceding falls back to manual when neither exact edition reaches its configured minimum", async () => {
+test("current_then_preceding records no history when neither exact edition reaches its configured minimum", async () => {
   const ex100 = await context();
   const strictPolicy = await policy("Strict", "current_then_preceding", {
     minimum_current_scores: 3, minimum_preceding_scores: 3, fallback: "manual",
@@ -402,9 +415,18 @@ test("current_then_preceding falls back to manual when neither exact edition rea
     await addScore({ competition: currentCompetition, participant: currentParticipant.participant, roundNumber, values: [score + 20] });
   }
   const preview = await calculate(targetCompetition);
-  assert.equal(preview[0].manual_required, true);
+  assert.equal(preview[0].manual_required, false);
   assert.equal(preview[0].policy_branch, "manual");
-  assert.equal((await admin("select count(*)::int n from competition_participant_starting_averages")).rows[0].n, 0);
+  assert.equal(preview[0].origin, "no_history");
+  assert.equal(preview[0].starting_average, null);
+  const snapshot = (await admin(`select starting_average,origin,status,qualifying_score_count
+    from competition_participant_starting_averages`)).rows[0];
+  assert.deepEqual(snapshot, {
+    starting_average: null,
+    origin: "no_history",
+    status: "provisional",
+    qualifying_score_count: 0,
+  });
 });
 
 test("current_then_preceding does not skip a scoreless immediately preceding eligible Competition", async () => {
@@ -424,8 +446,9 @@ test("current_then_preceding does not skip a scoreless immediately preceding eli
   await addScore({ competition: thirdHistory, participant: thirdParticipant.participant, roundNumber: 2, values: [82] });
   await addScore({ competition: currentHistory, participant: currentParticipant.participant, roundNumber: 1, values: [95] });
   const preview = await calculate(target);
-  assert.equal(preview[0].manual_required, true);
+  assert.equal(preview[0].manual_required, false);
   assert.equal(preview[0].policy_branch, "manual");
+  assert.equal(preview[0].origin, "no_history");
 });
 
 test("Pair and Team participants own separate Starting Averages; no group historical average is persisted", async () => {
@@ -529,7 +552,9 @@ test("Competition binding and contributes flag are authoritative; Series members
   await bind(target, 3, ex100.id, calculatedPolicy.version_id);
   await addScore({ competition: history, participant: historicalParticipant.participant, roundNumber: 1, values: [90] });
   await addScore({ competition: history, participant: historicalParticipant.participant, roundNumber: 2, values: [92] });
-  assert.equal((await calculate(target))[0].manual_required, true);
+  const noHistory = (await calculate(target))[0];
+  assert.equal(noHistory.manual_required, false);
+  assert.equal(noHistory.origin, "no_history");
 
   const dates = (await admin("select (current_date+125)::text a,(current_date+145)::text b")).rows[0];
   const configuration = {
@@ -726,9 +751,16 @@ test("Stage 2B projects Individual S/Av and derives complete Pair/Team means wit
     [pairCompetition, pair.participants[0]]);
   let pairProjection = await divisionAverageProjection(pairCompetition);
   assert.equal(pairProjection.entrants[0].starting_average, null);
-  assert.equal(pairProjection.entrants[0].state, "manual_required");
+  assert.equal(pairProjection.entrants[0].state, "recalculation_required");
   await rejected("select public.finalise_competition_starting_averages(1,3,$1)",
     [pairCompetition], /Every submitted participant needs a Starting Average/);
+  await calculate(pairCompetition);
+  pairProjection = await divisionAverageProjection(pairCompetition);
+  assert.equal(pairProjection.entrants[0].starting_average, null);
+  assert.equal(pairProjection.entrants[0].state, "no_average");
+  assert.deepEqual(pairProjection.entrants[0].participants.map(row => [
+    row.starting_average, row.state,
+  ]), [[98, "ready"], [null, "no_average"]]);
   await db.query(`select public.set_manual_competition_starting_average(1,3,$1,$2,97,null)`,
     [pairCompetition, pair.participants[1]]);
   pairProjection = await divisionAverageProjection(pairCompetition);
@@ -812,6 +844,35 @@ test("Stage 2B publication requires complete latest-reviewed S/Av and freezes at
     where competition_id=$1`, [competition])).rows[0].n, 1);
 });
 
+test("Stage 2B permits a reviewed no-history entrant and freezes its null S/Av without coercion", async () => {
+  const ex100 = await context();
+  const manual = await policy("Null Freeze Manual", "manual", {});
+  const competition = await addCompetition({ season: 3, name: "New Entrant Divisions" });
+  const participant = await addParticipant(competition);
+  await bind(competition, 3, ex100.id, manual.version_id);
+
+  const preview = await calculate(competition);
+  assert.equal(preview[0].origin, "no_history");
+  assert.equal(preview[0].starting_average, null);
+  const projection = await divisionAverageProjection(competition);
+  assert.equal(projection.entrants[0].state, "no_average");
+  assert.equal(projection.entrants[0].starting_average, null);
+  await saveReviewedDivision(competition, [participant.entrant], projection.current_fingerprint);
+  await db.query("select public.publish_competition_divisions(1,3,$1)", [competition]);
+
+  const frozen = (await admin(`select starting_average,origin,status
+    from competition_participant_starting_averages where competition_id=$1`, [competition])).rows[0];
+  assert.deepEqual(frozen, {
+    starting_average: null,
+    origin: "no_history",
+    status: "frozen",
+  });
+  await db.query("select public.edit_competition_divisions(1,3,$1)", [competition]);
+  await db.query("select public.publish_competition_divisions(1,3,$1)", [competition]);
+  assert.deepEqual((await admin(`select starting_average,origin,status
+    from competition_participant_starting_averages where competition_id=$1`, [competition])).rows[0], frozen);
+});
+
 test("Stage 2B divisionless finalisation freezes complete values and enforces contextual staff permissions", async () => {
   const ex100 = await context();
   const manual = await policy("Divisionless Manual", "manual", {});
@@ -842,6 +903,22 @@ test("Stage 2B divisionless finalisation freezes complete values and enforces co
     'manual','provisional',null,0,created_by,updated_by
     from competition_participant_starting_averages where competition_id=$1`,
   [competition, participant.participant + 1000], /permission denied|finalised/i);
+
+  await actor("owner");
+  const newEntrantCompetition = await addCompetition({ season: 3, name: "Divisionless New Entrant" });
+  await addParticipant(newEntrantCompetition);
+  await bind(newEntrantCompetition, 3, ex100.id, manual.version_id);
+  await calculate(newEntrantCompetition);
+  await actor("manager");
+  await db.query("select public.finalise_competition_starting_averages(1,3,$1)",
+    [newEntrantCompetition]);
+  assert.deepEqual((await admin(`select starting_average,origin,status
+    from competition_participant_starting_averages where competition_id=$1`,
+  [newEntrantCompetition])).rows[0], {
+    starting_average: null,
+    origin: "no_history",
+    status: "frozen",
+  });
 });
 
 test("Stage 2B leaves the existing division publication path unchanged without Average setup", async () => {
@@ -881,6 +958,15 @@ test("Stage 2A/2B UI uses Average RPCs, immutable versions, exact Ex choices and
   assert.match(workspace, /Latest Competition/);
   assert.match(workspace, /Preceding Competition/);
   assert.match(workspace, /Manual required/);
+  assert.match(workspace, /No previous average/);
+  assert.match(workspace, /Leave blank if this is a new entrant with no previous average/);
+  assert.match(workspace, /displayedOrigin === "manual" \? "Manual"/);
+  assert.match(workspace, /noHistory \? "No previous average"/);
+  assert.match(workspace, /name="starting_average" type="text"/);
+  assert.doesNotMatch(workspace, /name="starting_average" required/);
+  assert.match(workspace, /const notCalculated = !calculatedNow && displayedStatus === null && displayedAverage === null/);
+  assert.match(workspace, /notCalculated \? "—" : needsManual/);
+  assert.match(workspace, /notCalculated \? "—" : <>\{participant\.qualifyingScoreCount\}/);
   assert.match(workspace, /Starting Averages remain provisional/);
   assert.match(actions, /calculate_competition_starting_averages/);
   assert.match(actions, /set_manual_competition_starting_average/);
@@ -888,6 +974,8 @@ test("Stage 2A/2B UI uses Average RPCs, immutable versions, exact Ex choices and
   assert.match(workspace, /Finalise Starting Averages/);
   assert.match(workspace, /Starting Averages were finalised/);
   assert.match(divisionManager, /Order by Starting Average/);
+  assert.match(divisionManager, /No average/);
+  assert.match(divisionManager, /Number\.NEGATIVE_INFINITY/);
   assert.match(divisionManager, /Participant S\/Av breakdown/);
   assert.match(divisionManager, /Assignments were not moved/);
   assert.match(divisionActions, /save_and_publish_competition_divisions_with_average_review/);
@@ -903,6 +991,7 @@ test("all additive Average SQL files rerun cleanly over the canonical deployed c
     await isolated.exec(await sqlFile("competition-average-series-defaults"));
     await isolated.exec(await sqlFile("competition-averages-stage-2a"));
     await isolated.exec(await sqlFile("competition-averages-stage-2b"));
+    await isolated.exec(await sqlFile("competition-averages-optional-null"));
     assert.equal((await isolated.query(`select count(*)::int n from pg_catalog.pg_class
       where relname in ('average_contexts','average_policy_versions',
         'competition_participant_starting_averages','competition_series_average_defaults')`)).rows[0].n, 4);

@@ -48,6 +48,7 @@ function averageStateLabel(entrant: DivisionEntrant) {
   if (entrant.starting_average_state === "recalculation_required") {
     return "Recalculation required";
   }
+  if (entrant.starting_average_state === "no_average") return "No average";
   return entrant.starting_average_state === "ready" ? "Provisional" : null;
 }
 
@@ -107,6 +108,8 @@ function DraggableEntrantCard({
                     ? "positive"
                     : entrant.starting_average_state === "ready"
                       ? "brand"
+                      : entrant.starting_average_state === "no_average"
+                        ? "neutral"
                       : "warning"
                 }
               >
@@ -276,7 +279,10 @@ export function CompetitionDivisionManager({
   const [isPending, startTransition] = useTransition();
   const editable = workflowStatus === "draft";
   const unresolvedAverageCount = data.average.configured
-    ? data.entrants.filter((entrant) => entrant.starting_average === null).length
+    ? data.entrants.filter((entrant) =>
+        entrant.starting_average_state === "manual_required" ||
+        entrant.starting_average_state === "recalculation_required"
+      ).length
     : 0;
   const plannedDivisionCount =
     data.entrant_count > 0 ? Math.ceil(data.entrant_count / targetSize) : 0;

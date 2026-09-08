@@ -74,7 +74,7 @@ export type StartingAverageParticipant = {
   firstName: string | null;
   lastName: string | null;
   startingAverage: number | null;
-  origin: "calculated" | "manual" | null;
+  origin: "calculated" | "manual" | "no_history" | null;
   status: "provisional" | "frozen" | null;
   qualifyingScoreCount: number;
   sourceCompetitionId: number | null;

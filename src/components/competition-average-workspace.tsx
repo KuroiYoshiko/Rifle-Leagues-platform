@@ -100,17 +100,18 @@ function formatStartingAverage(value: number | null) {
   return value === null ? "—" : value.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 6 });
 }
 
-function previewRows(participants: StartingAverageParticipant[], manualPolicy: boolean): StartingAveragePreviewRow[] {
+function previewRows(participants: StartingAverageParticipant[]): StartingAveragePreviewRow[] {
   return participants.map((participant) => ({
     competitionEntrantParticipantId: participant.competitionEntrantParticipantId,
     shooterProfileId: participant.shooterProfileId,
     firstName: participant.firstName,
     lastName: participant.lastName,
     startingAverage: participant.startingAverage,
-    manualRequired: manualPolicy && participant.startingAverage === null,
-    origin: participant.origin ?? "manual",
+    manualRequired: false,
+    origin: participant.origin,
     status: participant.status,
-    policyBranch: participant.origin === "manual" ? "manual" : "current",
+    policyBranch: participant.origin === "manual" || participant.origin === "no_history"
+      ? "manual" : participant.origin === "calculated" ? "current" : null,
     qualifyingScoreCount: participant.qualifyingScoreCount,
     sourceCompetitionId: participant.sourceCompetitionId,
     sourceCompetitionName: participant.sourceCompetitionName,
@@ -124,7 +125,6 @@ function StartingAverageRow({
   competition,
   participant,
   basisMaximum,
-  manualPolicy,
   calculatedNow,
 }: {
   organisation: { id: number; slug: string };
@@ -132,35 +132,38 @@ function StartingAverageRow({
   competition: CompetitionIdentity;
   participant: StartingAveragePreviewRow;
   basisMaximum: number;
-  manualPolicy: boolean;
   calculatedNow: boolean;
 }) {
   const [state, action, pending] = useActionState(setManualStartingAverage, initialManualState);
-  const manualSaved = state.status === "success" && state.startingAverage !== undefined;
-  const displayedAverage = manualSaved ? state.startingAverage! : participant.startingAverage;
-  const displayedOrigin = manualSaved ? "manual" : participant.origin;
+  const manualSaved = state.status === "success" && "startingAverage" in state;
+  const displayedAverage = manualSaved ? state.startingAverage ?? null : participant.startingAverage;
+  const displayedOrigin = manualSaved ? state.origin ?? "no_history" : participant.origin;
   const displayedStatus = manualSaved ? "provisional" : participant.status;
-  const needsManual = participant.manualRequired || (manualPolicy && displayedAverage === null);
+  const notCalculated = !calculatedNow && displayedStatus === null && displayedAverage === null;
+  const needsManual = !notCalculated && participant.manualRequired;
+  const noHistory = !notCalculated && displayedOrigin === "no_history";
   return <div className="p-5">
     <div className="grid gap-3 text-sm md:grid-cols-[minmax(0,1.1fr)_0.5fr_minmax(0,1.5fr)_0.45fr_0.55fr] md:gap-4">
       <div><span className="text-xs text-muted-foreground md:hidden">Shooter · </span><span className="font-semibold text-foreground">{shooterName(participant.firstName, participant.lastName)}</span></div>
       <div><span className="text-xs text-muted-foreground md:hidden">S/Av · </span><span className="font-semibold tabular-nums text-foreground">{formatStartingAverage(displayedAverage)}</span></div>
-      <div><span className="text-xs text-muted-foreground md:hidden">Source · </span><span className={needsManual && !manualSaved ? "text-warning" : "text-foreground"}>{needsManual && !manualSaved ? "Manual required" : displayedOrigin === "manual" ? "Manual" : sourceLabel(participant, calculatedNow)}</span></div>
-      <div><span className="text-xs text-muted-foreground md:hidden">Scores used · </span><span className="text-foreground">{participant.qualifyingScoreCount} score{participant.qualifyingScoreCount === 1 ? "" : "s"}</span></div>
-      <div><Badge tone={displayedStatus === "frozen" ? "positive" : needsManual && !manualSaved ? "warning" : displayedAverage === null ? "neutral" : "brand"}>{displayedStatus === "frozen" ? "Frozen" : needsManual && !manualSaved ? "Needs input" : displayedAverage === null ? "Not calculated" : displayedOrigin === "manual" ? "Manual · Provisional" : "Calculated · Provisional"}</Badge></div>
+      <div><span className="text-xs text-muted-foreground md:hidden">Source · </span><span className={needsManual && !manualSaved ? "text-warning" : "text-foreground"}>{notCalculated ? "—" : needsManual && !manualSaved ? "Manual required" : noHistory ? "No previous average" : displayedOrigin === "manual" ? "Manual" : sourceLabel(participant, calculatedNow)}</span></div>
+      <div><span className="text-xs text-muted-foreground md:hidden">Scores used · </span><span className="text-foreground">{notCalculated ? "—" : <>{participant.qualifyingScoreCount} score{participant.qualifyingScoreCount === 1 ? "" : "s"}</>}</span></div>
+      <div><Badge tone={displayedStatus === "frozen" ? "positive" : needsManual && !manualSaved ? "warning" : displayedAverage === null ? "neutral" : "brand"}>{displayedStatus === "frozen" ? "Frozen" : needsManual && !manualSaved ? "Needs input" : notCalculated ? "Not calculated" : noHistory ? "No average" : displayedOrigin === "manual" ? "Manual · Provisional" : "Calculated · Provisional"}</Badge></div>
     </div>
-    {displayedStatus !== "frozen" && (needsManual || (displayedOrigin === "manual" && displayedStatus === "provisional")) ? <form action={action} className="mt-3 grid gap-3 rounded-xl bg-surface-muted p-3 sm:grid-cols-[minmax(8rem,0.35fr)_minmax(0,1fr)_auto] sm:items-end">
+    {displayedStatus !== "frozen" && (needsManual || displayedOrigin === "manual" || displayedOrigin === "no_history") ? <form action={action} className="mt-3 grid gap-3 rounded-xl bg-surface-muted p-3 sm:grid-cols-[minmax(8rem,0.35fr)_minmax(0,1fr)_auto] sm:items-end">
       <CompetitionFields organisation={organisation} season={season} competition={competition} />
       <input type="hidden" name="competition_entrant_participant_id" value={participant.competitionEntrantParticipantId} />
-      <label className="text-xs font-medium text-foreground">Starting Average<input name="starting_average" required type="text" inputMode="decimal" defaultValue={displayedAverage ?? ""} disabled={pending} placeholder="97.50" className={inputClassName} /><span className="mt-1 block text-[11px] text-muted-foreground">Scale: {formatAverageMaximum(basisMaximum)}</span></label>
+      <label className="text-xs font-medium text-foreground">Starting Average<input name="starting_average" type="text" inputMode="decimal" defaultValue={displayedAverage ?? ""} disabled={pending} placeholder="97.50" className={inputClassName} /></label>
       <label className="text-xs font-medium text-foreground">Reason (optional)<input name="manual_reason" maxLength={500} defaultValue={state.manualReason ?? participant.manualReason ?? ""} disabled={pending} className={inputClassName} /></label>
       <button type="submit" disabled={pending} className="min-h-11 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle disabled:opacity-60">{pending ? "Saving…" : "Save manual S/Av"}</button>
+      <p className="text-[11px] leading-5 text-muted-foreground sm:col-span-3">Scale: {formatAverageMaximum(basisMaximum)}. Leave blank if this is a new entrant with no previous average.</p>
       {state.message ? <p role={state.status === "error" ? "alert" : "status"} className={`text-xs sm:col-span-3 ${state.status === "error" ? "text-danger" : "text-success"}`}>{state.message}</p> : null}
     </form> : null}
   </div>;
 }
 
 function sourceLabel(row: StartingAveragePreviewRow, calculatedNow: boolean) {
+  if (row.origin === "no_history") return "No previous average";
   if (row.policyBranch === "manual" || row.origin === "manual") return "Manual";
   const prefix = calculatedNow
     ? row.policyBranch === "preceding" ? "Preceding Competition" : "Latest Competition"
@@ -176,8 +179,7 @@ function StartingAverageTable({ organisation, season, competition, management }:
 }) {
   const [state, action, pending] = useActionState(calculateCompetitionStartingAverages, initialCalculationState);
   const setting = management.setting;
-  const manualPolicy = setting?.policyVersion?.strategy === "manual";
-  const rows = state.rows ?? previewRows(management.participants, manualPolicy);
+  const rows = state.rows ?? previewRows(management.participants);
   const calculatedNow = Boolean(state.rows);
   const [finaliseState, finaliseAction, finalisePending] = useActionState(
     finaliseCompetitionStartingAverages,
@@ -185,7 +187,7 @@ function StartingAverageTable({ organisation, season, competition, management }:
   );
   const finalised = Boolean(management.finalisedAt) || management.hasFrozenStartingAverages;
   const allValuesPresent = rows.every(
-    (participant) => participant.startingAverage !== null,
+    (participant) => participant.status !== null,
   );
 
   if (!setting) return <section className="mt-10"><SectionHeader title="Starting Averages" /><Card className="bg-surface-muted p-6"><p className="text-sm text-muted-foreground">Add Competition Average setup before calculating Starting Averages.</p></Card></section>;
@@ -193,12 +195,12 @@ function StartingAverageTable({ organisation, season, competition, management }:
   if (!management.participants.length) return <section className="mt-10"><SectionHeader title="Starting Averages" /><Card className="bg-surface-muted p-6"><p className="text-sm text-muted-foreground">There are no submitted participants yet. Starting Averages can be calculated after entries are submitted.</p></Card></section>;
 
   return <section className="mt-10" aria-labelledby="starting-average-preview-heading">
-    <SectionHeader title="Starting Averages" description="Preview and manage each submitted shooter participant" action={finalised ? undefined : <form action={action}><CompetitionFields organisation={organisation} season={season} competition={competition} /><button type="submit" disabled={pending} className="min-h-11 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-60">{pending ? "Calculating…" : rows.some((row) => row.startingAverage !== null) ? "Recalculate Starting Averages" : "Calculate Starting Averages"}</button></form>} />
+    <SectionHeader title="Starting Averages" description="Preview and manage each submitted shooter participant" action={finalised ? undefined : <form action={action}><CompetitionFields organisation={organisation} season={season} competition={competition} /><button type="submit" disabled={pending} className="min-h-11 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-60">{pending ? "Calculating…" : rows.some((row) => row.status !== null) ? "Recalculate Starting Averages" : "Calculate Starting Averages"}</button></form>} />
     <p className={`mb-4 rounded-xl border px-4 py-3 text-sm ${finalised ? "border-success/20 bg-success-subtle text-success" : "border-warning/20 bg-warning-subtle text-warning"}`}>{finalised ? "Starting Averages were finalised for this Competition." : "Starting Averages remain provisional until divisions are first published or they are explicitly finalised for a Competition without divisions."}</p>
     <StatusMessage state={state} />
     <Card className="overflow-hidden">
       <div className="hidden grid-cols-[minmax(0,1.1fr)_0.5fr_minmax(0,1.5fr)_0.45fr_0.55fr] gap-4 border-b border-border bg-surface-muted px-5 py-3 text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground md:grid"><span>Shooter</span><span>S/Av</span><span>Source</span><span>Scores used</span><span>Status</span></div>
-      <div className="divide-y divide-border">{rows.map((row) => <StartingAverageRow key={row.competitionEntrantParticipantId} organisation={organisation} season={season} competition={competition} participant={row} basisMaximum={setting.context?.basis_maximum ?? competition.shooterMaximum} manualPolicy={manualPolicy} calculatedNow={calculatedNow} />)}</div>
+      <div className="divide-y divide-border">{rows.map((row) => <StartingAverageRow key={row.competitionEntrantParticipantId} organisation={organisation} season={season} competition={competition} participant={row} basisMaximum={setting.context?.basis_maximum ?? competition.shooterMaximum} calculatedNow={calculatedNow} />)}</div>
     </Card>
     {!finalised && management.divisionStatus === null ? <Card className="mt-5 p-5 sm:flex sm:items-center sm:justify-between sm:gap-5">
       <div><h3 className="text-sm font-semibold text-foreground">Competition without divisions</h3><p className="mt-1 text-xs leading-5 text-muted-foreground">Use this only if this Competition will not publish divisions. Finalisation permanently freezes every participant S/Av.</p></div>

@@ -82,7 +82,7 @@ test("development Average fixture runs twice and produces deterministic smoke ca
     assert.equal(completePair.starting_average, 96.5);
     assert.equal(completePair.state, "ready");
     assert.equal(incompletePair.starting_average, null);
-    assert.equal(incompletePair.state, "manual_required");
+    assert.equal(incompletePair.state, "no_average");
   } finally {
     await db.close();
   }

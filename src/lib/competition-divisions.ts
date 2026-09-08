@@ -45,7 +45,7 @@ export const getCompetitionDivisionManagement = cache(
           first_name?: string | null;
           last_name?: string | null;
           starting_average?: number | string | null;
-          origin?: "calculated" | "manual" | null;
+          origin?: "calculated" | "manual" | "no_history" | null;
           status?: "provisional" | "frozen" | null;
           state?: CompetitionDivisionManagement["entrants"][number]["starting_average_state"];
         }>;

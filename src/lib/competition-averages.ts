@@ -191,7 +191,9 @@ export const getCompetitionAverageManagement = cache(async (
     firstName: row.first_name ? String(row.first_name) : null,
     lastName: row.last_name ? String(row.last_name) : null,
     startingAverage: row.starting_average === null ? null : numberValue(row.starting_average),
-    origin: row.origin === "calculated" ? "calculated" : row.origin === "manual" ? "manual" : null,
+    origin: row.origin === "calculated" ? "calculated"
+      : row.origin === "manual" ? "manual"
+        : row.origin === "no_history" ? "no_history" : null,
     status: row.status === "frozen" ? "frozen" : row.status === "provisional" ? "provisional" : null,
     qualifyingScoreCount: numberValue(row.qualifying_score_count),
     sourceCompetitionId: row.source_competition_id === null ? null : numberValue(row.source_competition_id),

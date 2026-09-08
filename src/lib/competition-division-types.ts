@@ -5,7 +5,7 @@ export type DivisionParticipant = {
   last_name: string | null;
   slot_number: number;
   starting_average?: number | null;
-  starting_average_origin?: "calculated" | "manual" | null;
+  starting_average_origin?: "calculated" | "manual" | "no_history" | null;
   starting_average_status?: "provisional" | "frozen" | null;
   starting_average_state?: DivisionStartingAverageState;
 };
@@ -13,6 +13,7 @@ export type DivisionParticipant = {
 export type DivisionStartingAverageState =
   | "not_configured"
   | "ready"
+  | "no_average"
   | "manual_required"
   | "recalculation_required"
   | "frozen";

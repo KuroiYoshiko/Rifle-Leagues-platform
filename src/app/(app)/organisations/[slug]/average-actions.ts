@@ -16,9 +16,9 @@ export type StartingAveragePreviewRow = {
   lastName: string | null;
   startingAverage: number | null;
   manualRequired: boolean;
-  origin: "calculated" | "manual";
+  origin: "calculated" | "manual" | "no_history" | null;
   status: "provisional" | "frozen" | null;
-  policyBranch: "current" | "preceding" | "manual";
+  policyBranch: "current" | "preceding" | "manual" | null;
   qualifyingScoreCount: number;
   sourceCompetitionId: number | null;
   sourceCompetitionName: string | null;
@@ -30,7 +30,8 @@ export type StartingAverageCalculationState = AverageActionState & {
 };
 
 export type ManualStartingAverageState = AverageActionState & {
-  startingAverage?: number;
+  startingAverage?: number | null;
+  origin?: "manual" | "no_history";
   manualReason?: string | null;
 };
 
@@ -324,9 +325,13 @@ export async function calculateCompetitionStartingAverages(
       lastName: row.last_name ? String(row.last_name) : null,
       startingAverage: row.starting_average === null ? null : Number(row.starting_average),
       manualRequired: Boolean(row.manual_required),
-      origin: row.origin === "calculated" ? "calculated" : "manual",
+      origin: row.origin === "calculated" ? "calculated"
+        : row.origin === "manual" ? "manual"
+          : row.origin === "no_history" ? "no_history" : null,
       status: row.status === "frozen" ? "frozen" : row.status === "provisional" ? "provisional" : null,
-      policyBranch: row.policy_branch === "current" ? "current" : row.policy_branch === "preceding" ? "preceding" : "manual",
+      policyBranch: row.policy_branch === "current" ? "current"
+        : row.policy_branch === "preceding" ? "preceding"
+          : row.policy_branch === "manual" ? "manual" : null,
       qualifyingScoreCount: Number(row.qualifying_score_count ?? 0),
       sourceCompetitionId: sourceId,
       sourceCompetitionName: sourceId ? names.get(sourceId) ?? null : null,
@@ -344,10 +349,10 @@ export async function setManualStartingAverage(
   const prepared = await preparedCompetition(formData);
   const participantId = positiveInteger(formData.get("competition_entrant_participant_id"));
   const averageText = String(formData.get("starting_average") ?? "").trim();
-  const startingAverage = Number(averageText);
+  const startingAverage = averageText ? Number(averageText) : null;
   const reasonText = String(formData.get("manual_reason") ?? "").trim();
   if ("error" in prepared || !participantId) return { status: "error", message: "The participant could not be identified." };
-  if (!decimalPattern.test(averageText) || !Number.isFinite(startingAverage)) {
+  if (averageText && (!decimalPattern.test(averageText) || !Number.isFinite(startingAverage))) {
     return { status: "error", message: "Enter a numeric Starting Average with up to six decimal places." };
   }
   if (reasonText.length > 500) return { status: "error", message: "Manual reason must be 500 characters or fewer." };
@@ -360,12 +365,22 @@ export async function setManualStartingAverage(
     p_manual_reason: reasonText || null,
   });
   if (error) return { status: "error", message: averageError(error, "The manual Starting Average could not be saved. Check the Context scale and try again.") };
-  const result = data as { starting_average?: number | string; manual_reason?: string | null } | null;
+  const result = data as {
+    starting_average?: number | string | null;
+    origin?: "manual" | "no_history";
+    manual_reason?: string | null;
+  } | null;
+  const savedAverage = result?.starting_average === null || result?.starting_average === undefined
+    ? null : Number(result.starting_average);
+  const savedOrigin = result?.origin === "manual" ? "manual" : "no_history";
   refreshCompetition(formData);
   return {
     status: "success",
-    message: "Manual provisional Starting Average saved.",
-    startingAverage: Number(result?.starting_average ?? startingAverage),
+    message: savedOrigin === "manual"
+      ? "Manual provisional Starting Average saved."
+      : "No previous Starting Average recorded for this entrant.",
+    startingAverage: savedAverage,
+    origin: savedOrigin,
     manualReason: result?.manual_reason ?? (reasonText || null),
   };
 }
