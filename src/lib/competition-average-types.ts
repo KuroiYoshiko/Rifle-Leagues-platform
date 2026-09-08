@@ -86,6 +86,8 @@ export type CompetitionAverageManagement = {
   setting: CompetitionAverageSetting | null;
   participants: StartingAverageParticipant[];
   hasFrozenStartingAverages: boolean;
+  finalisedAt: string | null;
+  divisionStatus: "draft" | "published" | null;
 };
 
 export function getAveragePolicyStrategyLabel(strategy: AveragePolicyStrategy) {

@@ -81,6 +81,9 @@ function averageError(error: RpcError, fallback: string) {
   if (message.includes("frozen")) {
     return "These settings cannot be changed because a Starting Average is frozen.";
   }
+  if (message.includes("finalised")) {
+    return "Starting Averages were already finalised for this Competition.";
+  }
   if (message.includes("not found") || error.code === "P0002") {
     return "The selected Competition, Context, Policy, or Series is no longer available. Refresh and try again.";
   }
@@ -107,6 +110,7 @@ function refreshCompetition(formData: FormData) {
   revalidatePath(path);
   revalidatePath(`${path}/edit`);
   revalidatePath(`${path}/averages`);
+  revalidatePath(`${path}/divisions`);
 }
 
 function policyDefinition(formData: FormData) {
@@ -364,4 +368,28 @@ export async function setManualStartingAverage(
     startingAverage: Number(result?.starting_average ?? startingAverage),
     manualReason: result?.manual_reason ?? (reasonText || null),
   };
+}
+
+export async function finaliseCompetitionStartingAverages(
+  _state: AverageActionState,
+  formData: FormData,
+): Promise<AverageActionState> {
+  const prepared = await preparedCompetition(formData);
+  if ("error" in prepared) return { status: "error", message: prepared.error };
+  const { error } = await prepared.supabase.rpc("finalise_competition_starting_averages", {
+    p_organisation_id: prepared.organisationId,
+    p_league_season_id: prepared.seasonId,
+    p_competition_id: prepared.competitionId,
+  });
+  if (error) {
+    return {
+      status: "error",
+      message: averageError(
+        error,
+        "Starting Averages could not be finalised. Resolve every participant value and try again.",
+      ),
+    };
+  }
+  refreshCompetition(formData);
+  return { status: "success", message: "Starting Averages finalised." };
 }

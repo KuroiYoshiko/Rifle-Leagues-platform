@@ -13,6 +13,7 @@ import {
 import { Badge, Card } from "@/components/ui";
 import {
   getDivisionEntrantName,
+  getDivisionParticipantName,
   type CompetitionDivisionManagement,
   type DivisionEntrant,
 } from "@/lib/competition-division-types";
@@ -28,6 +29,26 @@ const UNASSIGNED = "unassigned";
 
 function entrantLabel(entrant: DivisionEntrant) {
   return getDivisionEntrantName(entrant) || `Entrant ${entrant.entry_position}`;
+}
+
+function formatStartingAverage(value: number | null | undefined) {
+  return value === null || value === undefined
+    ? "—"
+    : value.toLocaleString("en-GB", {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 6,
+      });
+}
+
+function averageStateLabel(entrant: DivisionEntrant) {
+  if (entrant.starting_average_state === "frozen") return "Frozen";
+  if (entrant.starting_average_state === "manual_required") {
+    return "Manual Starting Average required";
+  }
+  if (entrant.starting_average_state === "recalculation_required") {
+    return "Recalculation required";
+  }
+  return entrant.starting_average_state === "ready" ? "Provisional" : null;
 }
 
 function DraggableEntrantCard({
@@ -75,8 +96,48 @@ function DraggableEntrantCard({
           <p className="mt-0.5 truncate text-xs text-muted-foreground">
             {entrant.club_name}
           </p>
+          {entrant.starting_average_state !== "not_configured" ? (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+              <span className="font-semibold tabular-nums text-foreground">
+                S/Av {formatStartingAverage(entrant.starting_average)}
+              </span>
+              <Badge
+                tone={
+                  entrant.starting_average_state === "frozen"
+                    ? "positive"
+                    : entrant.starting_average_state === "ready"
+                      ? "brand"
+                      : "warning"
+                }
+              >
+                {averageStateLabel(entrant)}
+              </Badge>
+            </div>
+          ) : null}
         </div>
       </div>
+
+      {entrant.participants.length > 1 &&
+      entrant.starting_average_state !== "not_configured" ? (
+        <details className="mt-2 rounded-lg bg-surface-muted px-2.5 py-2 text-xs">
+          <summary className="cursor-pointer font-medium text-brand-deep">
+            Participant S/Av breakdown
+          </summary>
+          <ul className="mt-2 space-y-1.5 text-muted-foreground">
+            {entrant.participants.map((participant) => (
+              <li
+                key={`${entrant.id}-${participant.slot_number}`}
+                className="flex justify-between gap-3"
+              >
+                <span>{getDivisionParticipantName(participant)}</span>
+                <span className="shrink-0 tabular-nums text-foreground">
+                  {formatStartingAverage(participant.starting_average)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      ) : null}
 
       {editable ? (
         <label className="mt-2.5 block text-[11px] font-medium text-muted-foreground">
@@ -211,8 +272,12 @@ export function CompetitionDivisionManager({
   const [configured, setConfigured] = useState(Boolean(data.config));
   const [actionState, setActionState] = useState<DivisionActionState>({});
   const [dirty, setDirty] = useState(false);
+  const [orderByAverage, setOrderByAverage] = useState(false);
   const [isPending, startTransition] = useTransition();
   const editable = workflowStatus === "draft";
+  const unresolvedAverageCount = data.average.configured
+    ? data.entrants.filter((entrant) => entrant.starting_average === null).length
+    : 0;
   const plannedDivisionCount =
     data.entrant_count > 0 ? Math.ceil(data.entrant_count / targetSize) : 0;
 
@@ -223,8 +288,17 @@ export function CompetitionDivisionManager({
       const bucket = assignments[entrant.id];
       (buckets[bucket] ?? buckets[UNASSIGNED]).push(entrant);
     }
+    if (orderByAverage) {
+      for (const bucket of Object.values(buckets)) {
+        bucket.sort((left, right) =>
+          (right.starting_average ?? Number.NEGATIVE_INFINITY) -
+            (left.starting_average ?? Number.NEGATIVE_INFINITY) ||
+          left.id - right.id,
+        );
+      }
+    }
     return buckets;
-  }, [assignments, data.entrants, divisions]);
+  }, [assignments, data.entrants, divisions, orderByAverage]);
 
   const unassignedCount = entrantsByBucket[UNASSIGNED]?.length ?? 0;
   const showUnassigned = editable || unassignedCount > 0;
@@ -314,6 +388,7 @@ export function CompetitionDivisionManager({
       leagueSeasonId,
       competitionId,
       targetSize,
+      startingAverageFingerprint: data.average.current_fingerprint,
       divisions: divisions.map((division) => ({
         name: division.name.trim(),
         entrant_ids: (entrantsByBucket[division.key] ?? []).map(
@@ -383,6 +458,49 @@ export function CompetitionDivisionManager({
           </dl>
         </div>
       </Card>
+
+      {data.average.configured ? (
+        <div
+          className={`mt-5 rounded-2xl border px-5 py-4 ${
+            data.average.review_status === "stale"
+              ? "border-warning/20 bg-warning-subtle"
+              : "border-border bg-surface"
+          }`}
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-foreground">
+                Starting Average division review
+              </p>
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                {data.average.review_status === "finalised"
+                  ? "Starting Averages are frozen for this Competition. Returning divisions to draft does not thaw them."
+                  : data.average.review_status === "stale"
+                    ? "Starting Averages changed after this layout was reviewed. Assignments were not moved; review and save the draft again."
+                    : unresolvedAverageCount > 0
+                      ? `${unresolvedAverageCount} entrant${unresolvedAverageCount === 1 ? " is" : "s are"} unresolved. Calculate or enter every participant S/Av before publication.`
+                      : data.average.review_status === "current"
+                        ? "This draft was reviewed against the current participant S/Av values."
+                        : "Review the participant S/Av values, then save this draft before publication."
+                }
+              </p>
+            </div>
+            <button
+              type="button"
+              disabled={unresolvedAverageCount > 0}
+              onClick={() => setOrderByAverage((current) => !current)}
+              className="inline-flex min-h-10 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {orderByAverage ? "Use default card order" : "Order by Starting Average"}
+            </button>
+          </div>
+          {orderByAverage ? (
+            <p className="mt-2 text-xs text-muted-foreground">
+              Cards are ordered highest to lowest within each existing bucket. Division assignments are unchanged until you move and save them.
+            </p>
+          ) : null}
+        </div>
+      ) : null}
 
       {workflowStatus === "published" ? (
         <div className="mt-5 rounded-2xl border border-success/20 bg-success-subtle p-5 sm:flex sm:items-center sm:justify-between sm:gap-5">
@@ -558,7 +676,8 @@ export function CompetitionDivisionManager({
           </button>
           <button
             type="button"
-            disabled={isPending || divisions.length === 0 || unassignedCount > 0 || !data.entry_window_closed}
+            disabled={isPending || divisions.length === 0 || unassignedCount > 0 ||
+              unresolvedAverageCount > 0 || !data.entry_window_closed}
             onClick={() => runAction("publish")}
             className="inline-flex min-h-12 items-center justify-center rounded-xl bg-primary px-6 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep disabled:cursor-not-allowed disabled:opacity-50"
           >
@@ -574,6 +693,10 @@ export function CompetitionDivisionManager({
       ) : editable && unassignedCount > 0 ? (
         <p className="mt-3 text-right text-xs text-muted-foreground">
           Assign all {unassignedCount} remaining entrant{unassignedCount === 1 ? "" : "s"} before publishing.
+        </p>
+      ) : editable && unresolvedAverageCount > 0 ? (
+        <p className="mt-3 text-right text-xs text-warning">
+          Resolve every participant Starting Average before publishing divisions.
         </p>
       ) : null}
     </>

@@ -63,9 +63,28 @@ The primitive partitions by `shooting_score_source_id`. If future Concurrent Sho
 
 Calculated rows are provisional and record Context, immutable Policy version, source Competition, count, calculation time, and audit identity. `starting_average_score_sources` records only the exact physical source ID (nullable if later removed), source Competition/Round where retained, canonical achieved total, and maximum captured at calculation. Manual rows store an optional reason and have no calculated score provenance.
 
-Recalculation replaces calculated provisional rows and their provenance. A manual provisional row is retained while the Policy still resolves to manual, but is replaced if sufficient qualifying history later makes an automatic branch valid. Changing authoritative Competition Average settings deletes provisional snapshots; it is rejected once any snapshot is frozen. Frozen rows cannot be changed through the provisional update path. Stage 1 does not decide or integrate the division-publication freeze point.
+Recalculation replaces calculated provisional rows and their provenance. A manual provisional row is retained while the Policy still resolves to manual, but is replaced if sufficient qualifying history later makes an automatic branch valid. Changing authoritative Competition Average settings deletes provisional snapshots; it is rejected once any snapshot is frozen. Frozen rows cannot be changed through the provisional update path.
 
 Historical source corrections are visible on the next provisional calculation. They do not rewrite frozen S/Av or its captured provenance.
+
+## Stage 2B division projection and finalisation
+
+Division management continues to use participant-owned S/Av snapshots. It does not create a Pair or Team history entity:
+
+- an Individual entrant projection is its one submitted participant's S/Av;
+- a Pair or Team entrant projection is the database-numeric arithmetic mean of every submitted participant's S/Av;
+- if any participant value is missing, the entrant projection is null and is marked `manual_required` or `recalculation_required`; zero is never substituted;
+- the mean is not persisted and is rounded only for UI display.
+
+The organiser can order cards from highest to lowest projected S/Av inside the existing unassigned/division buckets. This is an assisted review view: it does not invent division capacities, change assignments, or publish. Existing drag/drop and select movement remains authoritative, and recalculation never reshuffles a saved layout.
+
+Each averages-enabled division draft stores an opaque fingerprint of the authoritative Competition binding, submitted participant roster, and exact participant snapshot identity/value/origin/calculation/source state that staff last saved and reviewed. Recalculation, manual input, roster changes, or binding changes make that review stale. The publication RPC rejects a missing or mismatched review rather than publishing against values different from those reviewed in the UI.
+
+The first successful division publication is one transaction. Under the existing Competition division advisory lock it validates the current submitted roster and complete allocation, locks the relevant entry/participant/snapshot rows, requires every submitted participant S/Av, verifies the reviewed fingerprint, changes every provisional snapshot to `frozen`, inserts one immutable `competition_starting_average_finalisations` marker, and publishes the division config. Any failure rolls back both freeze and publication. Competitions without Average setup take the existing publication path and are not blocked.
+
+Returning published divisions to draft changes only the division config. It never updates or removes the finalisation marker and never thaws participant snapshots. A later publication verifies and reuses the same frozen state. Normal calculation, manual input, and Average-binding changes cannot mutate finalised S/Av. There is no V1 override or resnapshot path.
+
+When a Competition will not publish divisions, the staff-only `finalise_competition_starting_averages` RPC provides the explicit freeze point. It is available only while no division config exists, requires a configured complete participant S/Av set, and uses the same atomic private freeze primitive without creating or altering divisions.
 
 ## Series defaults
 
@@ -73,11 +92,11 @@ Historical source corrections are visible on the next provisional calculation. T
 
 Changing or clearing a Series default never updates existing editions. No participants, prior S/Av values, candidates, provenance, or score usages are copied.
 
-## Stage 2A management workflow
+## Stage 2A/2B management workflow
 
 Organisation owners and managers configure Contexts, Policies, immutable Policy versions, and Series defaults under Organisation Management → Averages. The Competition creation flow optionally binds a new Series and its first edition, or a one-off Competition, to an existing active Context and latest selected Policy version. Continuing a Series shows its inherited default and relies on the Stage 1 copy-on-create trigger.
 
-Each published Competition has a staff-only Starting Averages workspace. It uses `calculate_competition_starting_averages` for the preview/recalculation result and `set_manual_competition_starting_average` for manual fallback. The application does not reproduce candidate, chronology, completeness, or policy logic. Values remain explicitly provisional; division seeding and freeze integration are deferred to Stage 2B.
+Each published Competition has a staff-only Starting Averages workspace. It uses `calculate_competition_starting_averages` for the preview/recalculation result and `set_manual_competition_starting_average` for manual fallback. The application does not reproduce candidate, chronology, completeness, or policy logic. Values remain explicitly provisional until first division publication or explicit divisionless finalisation. Afterwards the workspace shows Frozen values and removes recalculation/manual edit controls.
 
 Stage 2A adds two narrow RPCs. `create_competition_with_average_settings` composes the canonical private Competition save and Stage 1 setting RPC in one transaction so an averages-enabled one-off cannot be created without its authoritative binding. `get_competition_starting_average_management` returns only the staff-only participant and provisional S/Av projection needed by the workspace, because Organisation staff must not bypass the existing club-scoped participant RLS policies.
 
@@ -85,7 +104,7 @@ Stage 2A adds two narrow RPCs. `create_competition_with_average_settings` compos
 
 All public management tables have RLS. Direct anonymous/authenticated writes are revoked. Contextual active Organisation owners and managers use narrow `SECURITY DEFINER` RPCs with `search_path = ''`; `user_organisations` is never used for authorisation. Private derivation functions are not executable by API roles. Starting Average and provenance are management-only and are not added to public Results.
 
-The application does not persist or publicly expose Running Average. R/Av remains a live derived value for complete released scores in the current Competition and will reuse the same canonical completeness/release/source-deduplication rules in a later stage. Stage 2A also does not implement Pair/Team aggregate averages, Concurrent Shooting, division seeding/freezing, Results integration, or `ranking_method = best_n_average` standings. Competition Best N standings remain separate from historical Average Policy.
+The application does not persist or publicly expose Running Average. R/Av remains a live derived value for complete released scores in the current Competition and will reuse the same canonical completeness/release/source-deduplication rules in a later stage. Stage 2B also does not implement persistent Pair/Team averages, Concurrent Shooting, substitutions, promotion/relegation, Results integration, or `ranking_method = best_n_average` standings. Competition Best N standings remain separate from historical Average Policy.
 
 ## Existing database deployment order
 
@@ -94,5 +113,6 @@ Run these files after all existing Competition Series SQL:
 1. `database/competition-averages.sql`
 2. `database/competition-average-series-defaults.sql`
 3. `database/competition-averages-stage-2a.sql`
+4. `database/competition-averages-stage-2b.sql`
 
-For an existing database where Stage 1 is already deployed, run only file 3. All three files are additive and rerunnable. No reset or destructive rewrite of deployed migration history is required.
+For the already-deployed Stage 1 + Stage 2A database, run only file 4. All four files are additive and rerunnable. No reset or destructive rewrite of deployed migration history is required.

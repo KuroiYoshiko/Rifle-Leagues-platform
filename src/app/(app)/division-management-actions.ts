@@ -13,6 +13,7 @@ export type DivisionDraftInput = {
   leagueSeasonId: number;
   competitionId: number;
   targetSize: number;
+  startingAverageFingerprint: string | null;
   divisions: Array<{ name: string; entrant_ids: number[] }>;
 };
 
@@ -47,6 +48,8 @@ function validDraft(input: DivisionDraftInput) {
     validIdentity(input) &&
     positiveInteger(input.targetSize) !== null &&
     input.targetSize <= 1000 &&
+    (input.startingAverageFingerprint === null ||
+      /^[0-9a-f]{32}$/.test(input.startingAverageFingerprint)) &&
     Array.isArray(input.divisions) &&
     input.divisions.length <= 200 &&
     input.divisions.every((division) => {
@@ -88,6 +91,14 @@ function divisionError(
     return { status: "error", message: databaseMessage || fallback };
   }
 
+  if (code === "40001") {
+    return {
+      status: "error",
+      message:
+        "Starting Averages changed since this layout was reviewed. Refresh, review the values, and save again.",
+    };
+  }
+
   return { status: "error", message: fallback };
 }
 
@@ -111,12 +122,13 @@ export async function saveCompetitionDivisionDraft(
     return { status: "error", message: "Sign in again before saving." };
   }
 
-  const { error } = await supabase.rpc("save_competition_division_draft", {
+  const { error } = await supabase.rpc("save_competition_division_draft_with_average_review", {
     p_organisation_id: input.organisationId,
     p_league_season_id: input.leagueSeasonId,
     p_competition_id: input.competitionId,
     p_target_size: input.targetSize,
     p_divisions: input.divisions,
+    p_starting_average_fingerprint: input.startingAverageFingerprint,
   });
 
   if (error) {
@@ -146,12 +158,13 @@ export async function publishCompetitionDivisions(
     return { status: "error", message: "Sign in again before publishing." };
   }
 
-  const { error } = await supabase.rpc("save_and_publish_competition_divisions", {
+  const { error } = await supabase.rpc("save_and_publish_competition_divisions_with_average_review", {
     p_organisation_id: input.organisationId,
     p_league_season_id: input.leagueSeasonId,
     p_competition_id: input.competitionId,
     p_target_size: input.targetSize,
     p_divisions: input.divisions,
+    p_starting_average_fingerprint: input.startingAverageFingerprint,
   });
 
   if (error) {

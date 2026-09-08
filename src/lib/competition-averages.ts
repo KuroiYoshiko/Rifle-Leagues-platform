@@ -178,7 +178,11 @@ export const getCompetitionAverageManagement = cache(async (
     };
   })() : null;
 
-  const rpcData = participantResult.data as { participants?: Array<Record<string, unknown>> } | null;
+  const rpcData = participantResult.data as {
+    participants?: Array<Record<string, unknown>>;
+    finalised_at?: string | null;
+    division_status?: "draft" | "published" | null;
+  } | null;
   const participants = (rpcData?.participants ?? []).map((row): StartingAverageParticipant => ({
     competitionEntrantParticipantId: numberValue(row.competition_entrant_participant_id),
     competitionEntrantId: numberValue(row.competition_entrant_id),
@@ -199,5 +203,7 @@ export const getCompetitionAverageManagement = cache(async (
     setting,
     participants,
     hasFrozenStartingAverages: participants.some((participant) => participant.status === "frozen"),
+    finalisedAt: rpcData?.finalised_at ?? null,
+    divisionStatus: rpcData?.division_status ?? null,
   };
 });

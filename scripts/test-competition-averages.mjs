@@ -191,6 +191,16 @@ async function calculate(competition, season = 3) {
   return (await db.query("select public.calculate_competition_starting_averages(1,$1,$2) data",
     [season, competition])).rows[0].data;
 }
+async function divisionAverageProjection(competition, season = 3) {
+  return (await db.query(`select public.get_competition_division_average_projection(
+    1,$1,$2
+  ) data`, [season, competition])).rows[0].data;
+}
+async function saveReviewedDivision(competition, entrantIds, fingerprint, season = 3) {
+  return db.query(`select public.save_competition_division_draft_with_average_review(
+    1,$1,$2,10,$3,$4
+  )`, [season, competition, [{ name: "Division 1", entrant_ids: entrantIds }], fingerprint]);
+}
 
 test("Average Context is organisation-isolated and enforces strict same maximum without normalisation", async () => {
   const ex100 = await context();
@@ -603,11 +613,16 @@ test("historical corrections refresh provisional S/Av but never rewrite an alrea
     competition: history, participant: historicalParticipant.participant, roundNumber: 2, values: [94],
   });
   assert.equal((await calculate(target))[0].starting_average, 92);
+  let projection = await divisionAverageProjection(target);
+  await saveReviewedDivision(target, [targetParticipant.entrant], projection.current_fingerprint);
   await admin("update shooting_score_values set achieved_score=80 where shooting_score_source_id=$1", [secondSource]);
   assert.equal((await calculate(target))[0].starting_average, 85);
-  await admin(`update competition_participant_starting_averages
-    set status='frozen',frozen_at=clock_timestamp()
-    where competition_entrant_participant_id=$1`, [targetParticipant.participant]);
+  assert.equal((await admin(`select competition_entrant_id from competition_division_assignments
+    where competition_id=$1`, [target])).rows[0].competition_entrant_id, targetParticipant.entrant);
+  projection = await divisionAverageProjection(target);
+  assert.equal(projection.review_status, "stale");
+  await saveReviewedDivision(target, [targetParticipant.entrant], projection.current_fingerprint);
+  await db.query("select public.publish_competition_divisions(1,3,$1)", [target]);
   await admin("update shooting_score_values set achieved_score=70 where shooting_score_source_id=$1", [firstSource]);
   const afterFreeze = await calculate(target);
   assert.equal(afterFreeze[0].starting_average, 85);
@@ -690,13 +705,169 @@ test("Stage 2A participant management read is owner/manager-only and returns a m
   await rejected("select public.get_competition_starting_average_management(1,3,$1)", [competition], /permission denied/i);
 });
 
-test("Stage 2A UI uses Average RPCs, immutable versions, exact Ex choices and provisional participant workflow", async () => {
-  const [management, workspace, form, flow, actions] = await Promise.all([
+test("Stage 2B projects Individual S/Av and derives complete Pair/Team means without persisting an entrant average", async () => {
+  const ex100 = await context();
+  const manual = await policy("Projection Manual", "manual", {});
+  const individualCompetition = await addCompetition({ season: 3, name: "Individual Projection" });
+  const individual = await addParticipant(individualCompetition);
+  await bind(individualCompetition, 3, ex100.id, manual.version_id);
+  await db.query(`select public.set_manual_competition_starting_average(1,3,$1,$2,98.25,null)`,
+    [individualCompetition, individual.participant]);
+  const individualProjection = await divisionAverageProjection(individualCompetition);
+  assert.equal(individualProjection.entrants[0].starting_average, 98.25);
+  assert.equal(individualProjection.entrants[0].state, "ready");
+
+  const pairCompetition = await addCompetition({
+    season: 3, name: "Pair Projection", entryFormat: "pairs", teamSize: 2,
+  });
+  const pair = await addGroupParticipants(pairCompetition, ["member", "shooterB"]);
+  await bind(pairCompetition, 3, ex100.id, manual.version_id);
+  await db.query(`select public.set_manual_competition_starting_average(1,3,$1,$2,98,null)`,
+    [pairCompetition, pair.participants[0]]);
+  let pairProjection = await divisionAverageProjection(pairCompetition);
+  assert.equal(pairProjection.entrants[0].starting_average, null);
+  assert.equal(pairProjection.entrants[0].state, "manual_required");
+  await rejected("select public.finalise_competition_starting_averages(1,3,$1)",
+    [pairCompetition], /Every submitted participant needs a Starting Average/);
+  await db.query(`select public.set_manual_competition_starting_average(1,3,$1,$2,97,null)`,
+    [pairCompetition, pair.participants[1]]);
+  pairProjection = await divisionAverageProjection(pairCompetition);
+  assert.equal(pairProjection.entrants[0].starting_average, 97.5);
+  assert.deepEqual(pairProjection.entrants[0].participants.map(row => row.starting_average), [98, 97]);
+  assert.equal((await admin(`select count(*)::int n
+    from competition_participant_starting_averages where competition_id=$1`,
+  [pairCompetition])).rows[0].n, 2);
+  assert.equal((await admin(`select count(*)::int n from information_schema.columns
+    where table_schema='public' and table_name='competition_entrants'
+      and column_name like '%average%'`)).rows[0].n, 0);
+
+  const teamCompetition = await addCompetition({
+    season: 3, name: "Team Projection", entryFormat: "team", teamSize: 3,
+  });
+  const team = await addGroupParticipants(teamCompetition, ["member", "shooterB", "owner"]);
+  await bind(teamCompetition, 3, ex100.id, manual.version_id);
+  await db.query(`select public.set_manual_competition_starting_average(1,3,$1,$2,96,null)`,
+    [teamCompetition, team.participants[0]]);
+  await db.query(`select public.set_manual_competition_starting_average(1,3,$1,$2,94,null)`,
+    [teamCompetition, team.participants[1]]);
+  await db.query(`select public.set_manual_competition_starting_average(1,3,$1,$2,95,null)`,
+    [teamCompetition, team.participants[2]]);
+  const teamProjection = await divisionAverageProjection(teamCompetition);
+  assert.equal(teamProjection.entrants[0].starting_average, 95);
+  assert.equal(teamProjection.entrants[0].state, "ready");
+
+  await actor("manager");
+  assert.equal((await divisionAverageProjection(teamCompetition)).entrants[0].starting_average, 95);
+  for (const role of ["member", "foreignOwner"]) {
+    await actor(role);
+    await rejected(`select public.get_competition_division_average_projection(1,3,$1)`,
+      [teamCompetition], /owner or manager|permission/i);
+  }
+  await actor("owner");
+});
+
+test("Stage 2B publication requires complete latest-reviewed S/Av and freezes atomically", async () => {
+  const ex100 = await context();
+  const manual = await policy("Freeze Manual", "manual", {});
+  const competition = await addCompetition({ season: 3, name: "Freeze With Divisions" });
+  const participant = await addParticipant(competition);
+  await bind(competition, 3, ex100.id, manual.version_id);
+
+  let projection = await divisionAverageProjection(competition);
+  await saveReviewedDivision(competition, [participant.entrant], projection.current_fingerprint);
+  await rejected("select public.publish_competition_divisions(1,3,$1)", [competition],
+    /Every submitted participant needs a Starting Average/);
+  assert.equal((await admin(`select status from competition_division_configs
+    where competition_id=$1`, [competition])).rows[0].status, "draft");
+
+  await db.query(`select public.set_manual_competition_starting_average(1,3,$1,$2,97,null)`,
+    [competition, participant.participant]);
+  assert.equal((await admin(`select competition_entrant_id from competition_division_assignments
+    where competition_id=$1`, [competition])).rows[0].competition_entrant_id, participant.entrant);
+  await rejected("select public.publish_competition_divisions(1,3,$1)", [competition],
+    /changed since this division layout was reviewed/i);
+  assert.equal((await admin(`select status from competition_division_configs
+    where competition_id=$1`, [competition])).rows[0].status, "draft");
+  assert.equal((await admin(`select status from competition_participant_starting_averages
+    where competition_id=$1`, [competition])).rows[0].status, "provisional");
+  projection = await divisionAverageProjection(competition);
+  assert.equal(projection.review_status, "stale");
+  await saveReviewedDivision(competition, [participant.entrant], projection.current_fingerprint);
+  await db.query("select public.publish_competition_divisions(1,3,$1)", [competition]);
+
+  const frozen = (await admin(`select status,starting_average from competition_participant_starting_averages
+    where competition_id=$1`, [competition])).rows[0];
+  assert.equal(frozen.status, "frozen");
+  assert.equal(Number(frozen.starting_average), 97);
+  assert.equal((await admin(`select participant_count from competition_starting_average_finalisations
+    where competition_id=$1`, [competition])).rows[0].participant_count, 1);
+  await rejected(`select public.set_manual_competition_starting_average(1,3,$1,$2,96,null)`,
+    [competition, participant.participant], /Frozen Starting Averages|finalised/i);
+
+  await db.query("select public.edit_competition_divisions(1,3,$1)", [competition]);
+  assert.equal((await admin(`select status from competition_participant_starting_averages
+    where competition_id=$1`, [competition])).rows[0].status, "frozen");
+  await db.query("select public.publish_competition_divisions(1,3,$1)", [competition]);
+  assert.equal((await admin(`select count(*)::int n from competition_starting_average_finalisations
+    where competition_id=$1`, [competition])).rows[0].n, 1);
+});
+
+test("Stage 2B divisionless finalisation freezes complete values and enforces contextual staff permissions", async () => {
+  const ex100 = await context();
+  const manual = await policy("Divisionless Manual", "manual", {});
+  const competition = await addCompetition({ season: 3, name: "Divisionless" });
+  const participant = await addParticipant(competition);
+  await bind(competition, 3, ex100.id, manual.version_id);
+  await rejected("select public.finalise_competition_starting_averages(1,3,$1)",
+    [competition], /Every submitted participant needs a Starting Average/);
+  await db.query(`select public.set_manual_competition_starting_average(1,3,$1,$2,95.5,null)`,
+    [competition, participant.participant]);
+
+  for (const role of ["member", "foreignOwner"]) {
+    await actor(role);
+    await rejected("select public.finalise_competition_starting_averages(1,3,$1)",
+      [competition], /owner or manager|permission/i);
+  }
+  await actor("manager");
+  const result = (await db.query(
+    "select public.finalise_competition_starting_averages(1,3,$1) data", [competition],
+  )).rows[0].data;
+  assert.equal(result.status, "frozen");
+  assert.equal(result.participant_count, 1);
+  await rejected(`insert into competition_participant_starting_averages(
+    competition_id,competition_entrant_participant_id,shooter_profile_id,starting_average,
+    average_context_id,average_policy_version_id,origin,status,source_competition_id,
+    qualifying_score_count,created_by,updated_by
+  ) select $1,$2,shooter_profile_id,90,average_context_id,average_policy_version_id,
+    'manual','provisional',null,0,created_by,updated_by
+    from competition_participant_starting_averages where competition_id=$1`,
+  [competition, participant.participant + 1000], /permission denied|finalised/i);
+});
+
+test("Stage 2B leaves the existing division publication path unchanged without Average setup", async () => {
+  const competition = await addCompetition({ season: 3, name: "No Average Divisions" });
+  const participant = await addParticipant(competition);
+  const projection = await divisionAverageProjection(competition);
+  assert.equal(projection.configured, false);
+  assert.equal(projection.review_status, "not_configured");
+  await db.query(`select public.save_competition_division_draft(1,3,$1,10,$2)`,
+    [competition, [{ name: "Division 1", entrant_ids: [participant.entrant] }]]);
+  await db.query("select public.publish_competition_divisions(1,3,$1)", [competition]);
+  assert.equal((await admin(`select status from competition_division_configs
+    where competition_id=$1`, [competition])).rows[0].status, "published");
+  assert.equal((await admin(`select count(*)::int n from competition_starting_average_finalisations
+    where competition_id=$1`, [competition])).rows[0].n, 0);
+});
+
+test("Stage 2A/2B UI uses Average RPCs, immutable versions, exact Ex choices and the freeze workflow", async () => {
+  const [management, workspace, form, flow, actions, divisionManager, divisionActions] = await Promise.all([
     readFile(new URL("../src/components/average-management.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/competition-average-workspace.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/competition-form.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/competition-creation-flow.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/app/(app)/organisations/[slug]/average-actions.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/competition-division-manager.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/(app)/division-management-actions.ts", import.meta.url), "utf8"),
   ]);
   assert.match(management, /Which Competitions share average history/);
   assert.match(management, /How Starting Average is calculated/);
@@ -714,6 +885,12 @@ test("Stage 2A UI uses Average RPCs, immutable versions, exact Ex choices and pr
   assert.match(actions, /calculate_competition_starting_averages/);
   assert.match(actions, /set_manual_competition_starting_average/);
   assert.match(actions, /create_average_policy_version/);
+  assert.match(workspace, /Finalise Starting Averages/);
+  assert.match(workspace, /Starting Averages were finalised/);
+  assert.match(divisionManager, /Order by Starting Average/);
+  assert.match(divisionManager, /Participant S\/Av breakdown/);
+  assert.match(divisionManager, /Assignments were not moved/);
+  assert.match(divisionActions, /save_and_publish_competition_divisions_with_average_review/);
   assert.doesNotMatch(actions, /message:\s*error\.message/);
   assert.doesNotMatch(`${management}\n${workspace}\n${form}`, /average_policy_version_id[^"\n]*<|source_competition_id[^"\n]*</i);
 });
@@ -725,6 +902,7 @@ test("all additive Average SQL files rerun cleanly over the canonical deployed c
     await isolated.exec(await sqlFile("competition-averages"));
     await isolated.exec(await sqlFile("competition-average-series-defaults"));
     await isolated.exec(await sqlFile("competition-averages-stage-2a"));
+    await isolated.exec(await sqlFile("competition-averages-stage-2b"));
     assert.equal((await isolated.query(`select count(*)::int n from pg_catalog.pg_class
       where relname in ('average_contexts','average_policy_versions',
         'competition_participant_starting_averages','competition_series_average_defaults')`)).rows[0].n, 4);

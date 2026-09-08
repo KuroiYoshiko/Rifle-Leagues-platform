@@ -34,6 +34,7 @@ export async function installCanonicalDatabase(db, { competitionSeries = true } 
       "competition-averages",
       "competition-average-series-defaults",
       "competition-averages-stage-2a",
+      "competition-averages-stage-2b",
     ] : []),
   ]) {
     try { await db.exec(await sqlFile(name)); }

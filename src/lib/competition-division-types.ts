@@ -4,7 +4,18 @@ export type DivisionParticipant = {
   first_name: string | null;
   last_name: string | null;
   slot_number: number;
+  starting_average?: number | null;
+  starting_average_origin?: "calculated" | "manual" | null;
+  starting_average_status?: "provisional" | "frozen" | null;
+  starting_average_state?: DivisionStartingAverageState;
 };
+
+export type DivisionStartingAverageState =
+  | "not_configured"
+  | "ready"
+  | "manual_required"
+  | "recalculation_required"
+  | "frozen";
 
 export type DivisionEntrant = {
   id: number;
@@ -12,6 +23,23 @@ export type DivisionEntrant = {
   club_name: string;
   entry_position: number;
   participants: DivisionParticipant[];
+  starting_average: number | null;
+  starting_average_state: DivisionStartingAverageState;
+};
+
+export type DivisionAverageReviewStatus =
+  | "not_configured"
+  | "unreviewed"
+  | "current"
+  | "stale"
+  | "finalised";
+
+export type CompetitionDivisionAverageState = {
+  configured: boolean;
+  basis_maximum: number | null;
+  current_fingerprint: string | null;
+  review_status: DivisionAverageReviewStatus;
+  finalised_at: string | null;
 };
 
 export type CompetitionDivision = {
@@ -37,6 +65,7 @@ export type CompetitionDivisionManagement = {
     published_at: string | null;
     updated_at: string;
   } | null;
+  average: CompetitionDivisionAverageState;
   entrants: DivisionEntrant[];
   divisions: CompetitionDivision[];
 };
