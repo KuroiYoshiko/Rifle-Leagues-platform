@@ -23,7 +23,8 @@ export type CompetitionField =
   | "seriesName" | "name" | "description" | "entryFormat" | "teamSize" | "entryWindow"
   | "competitionStart" | "setsPerRound" | "scoreComponents"
   | "shotsPerRound" | "numberOfRounds" | "entryFee" | "rankingMethod"
-  | "bestRoundsCount" | "scoringAccess" | "xScoring" | "roundSchedule";
+  | "bestRoundsCount" | "scoringAccess" | "xScoring" | "roundSchedule"
+  | "startingAverages";
 
 export type CompetitionScoreComponentValue = {
   shortLabel: string;
@@ -53,6 +54,9 @@ export type CompetitionFormValues = {
   localScoringEnabled: boolean;
   roundDeadlines: string[];
   roundShootByDates: string[];
+  averageSetup: string;
+  averageContextId: string;
+  averagePolicyVersionId: string;
 };
 
 export type CompetitionFormState = {
@@ -143,7 +147,19 @@ function readValues(formData: FormData): CompetitionFormValues {
     localScoringEnabled: formData.get("local_scoring_enabled") !== "false",
     roundDeadlines: formData.getAll("round_deadline").map((value) => String(value).trim()),
     roundShootByDates: formData.getAll("round_shoot_by_date").map((value) => String(value).trim()),
+    averageSetup: String(formData.get("average_setup") ?? "none").trim(),
+    averageContextId: String(formData.get("average_context_id") ?? "").trim(),
+    averagePolicyVersionId: String(formData.get("average_policy_version_id") ?? "").trim(),
   };
+}
+
+function validateAverageSelection(values: CompetitionFormValues) {
+  if (values.averageSetup === "none") return undefined;
+  if (values.averageSetup !== "configured" || !readPositiveInteger(values.averageContextId) ||
+    !readPositiveInteger(values.averagePolicyVersionId)) {
+    return "Choose both an Average Context and Average Policy, or choose no Starting Average setup.";
+  }
+  return undefined;
 }
 
 function effectiveDates(values: CompetitionFormValues, season: SeasonBoundaryContext) {
@@ -461,6 +477,10 @@ function mutationMessage(error: CompetitionMutationError, fallback: string) {
     return "This Series already has a Competition in the target Season.";
   }
   if (error.code === "23505") return "A competition with this name already exists in this Season.";
+  if (error.message?.includes("Average Context") || error.message?.includes("Average Policy") ||
+    error.message?.includes("does not normalise") || error.message?.includes("exactly equal")) {
+    return "The selected Starting Average setup is no longer compatible or available. Refresh and choose an active exact-match Context and Policy.";
+  }
   if ((error.code === "22023" || error.code === "23514") && error.message) return error.message;
   return fallback;
 }
@@ -631,10 +651,21 @@ export async function createCompetition(_previousState: CompetitionFormState, fo
   if ("error" in prepared) return { status: "error", message: prepared.error, values: prepared.values };
   const { organisationId, leagueSeasonId, values, supabase, season } = prepared;
   const fieldErrors = validateStructuralValues(values, season);
+  const averageError = validateAverageSelection(values);
+  if (averageError) fieldErrors.startingAverages = averageError;
   if (Object.keys(fieldErrors).length) return { status: "error", message: "Review the highlighted Competition details and try again.", fieldErrors, values };
-  const { data, error } = await supabase.rpc("create_competition", {
-    p_organisation_id: organisationId, p_league_season_id: leagueSeasonId, ...getRpcValues(values),
-  });
+  const usesAverages = values.averageSetup === "configured";
+  const { data, error } = usesAverages
+    ? await supabase.rpc("create_competition_with_average_settings", {
+      p_organisation_id: organisationId,
+      p_league_season_id: leagueSeasonId,
+      p_configuration: getConfigurationValues(values),
+      p_average_context_id: Number(values.averageContextId),
+      p_average_policy_version_id: Number(values.averagePolicyVersionId),
+    })
+    : await supabase.rpc("create_competition", {
+      p_organisation_id: organisationId, p_league_season_id: leagueSeasonId, ...getRpcValues(values),
+    });
   if (error) {
     await reportMutationError("create", error, supabase, {
       organisationId,
@@ -658,16 +689,28 @@ export async function createCompetitionSeries(
   const fieldErrors = validateStructuralValues(values, season, {
     requireSeriesName: true,
   });
+  const averageError = validateAverageSelection(values);
+  if (averageError) fieldErrors.startingAverages = averageError;
   if (Object.keys(fieldErrors).length) {
     return { status: "error", message: "Review the highlighted Series and Competition details and try again.", fieldErrors, values };
   }
 
-  const { data, error } = await supabase.rpc("create_competition_series", {
-    p_organisation_id: organisationId,
-    p_league_season_id: leagueSeasonId,
-    p_series_name: values.seriesName,
-    p_configuration: getConfigurationValues(values),
-  });
+  const usesAverages = values.averageSetup === "configured";
+  const { data, error } = usesAverages
+    ? await supabase.rpc("create_competition_series_with_average_defaults", {
+      p_organisation_id: organisationId,
+      p_league_season_id: leagueSeasonId,
+      p_series_name: values.seriesName,
+      p_configuration: getConfigurationValues(values),
+      p_average_context_id: Number(values.averageContextId),
+      p_average_policy_version_id: Number(values.averagePolicyVersionId),
+    })
+    : await supabase.rpc("create_competition_series", {
+      p_organisation_id: organisationId,
+      p_league_season_id: leagueSeasonId,
+      p_series_name: values.seriesName,
+      p_configuration: getConfigurationValues(values),
+    });
   if (error) {
     await reportMutationError("create", error, supabase, { organisationId, leagueSeasonId });
     return {

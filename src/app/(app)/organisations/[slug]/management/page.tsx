@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { CompetitionSeriesManager } from "@/components/competition-series-manager";
+import { OrganisationManagementNavigation } from "@/components/organisation-management-navigation";
 import {
   OrganisationManagerActions,
   OrganisationRequestDecisionControls,
@@ -64,6 +65,10 @@ export default async function OrganisationManagementPage({
       organisation={organisation}
       currentSection="management"
     >
+      <OrganisationManagementNavigation
+        organisationSlug={organisation.slug}
+        current="overview"
+      />
       {error ? (
         <Card className="border-danger/20 p-6 sm:p-8">
           <div role="alert">

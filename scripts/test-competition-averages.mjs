@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
 import { after, afterEach, before, beforeEach, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { installCanonicalDatabase, sqlFile } from "./helpers/canonical-database.mjs";
@@ -615,12 +616,115 @@ test("historical corrections refresh provisional S/Av but never rewrite an alrea
     order by achieved_score_at_calculation`)).rows.map(row => Number(row.achieved_score_at_calculation)), [80, 90]);
 });
 
-test("both additive Average SQL files rerun cleanly over the canonical deployed chain", async () => {
+test("Stage 2A creates an averages-enabled one-off and its binding atomically", async () => {
+  const ex100 = await context();
+  const manual = await policy("One-off Manual", "manual", {});
+  const configuration = {
+    name: "Bound one off", description: null, entry_format: "individual", team_size: 1,
+    sets_per_round: 1, shots_per_round: 10,
+    score_components: [{ short_label: "Score", maximum_score: 100, score_method: "points_scored" }],
+    entry_fee: null, uses_x_score: false, number_of_rounds: 3,
+    local_scoring_enabled: true, entry_window_mode: "season_default",
+    custom_entry_opens_at: null, custom_entry_closes_at: null,
+    start_date_mode: "season_default", custom_starts_at: null,
+    ranking_method: "aggregate", best_rounds_count: null,
+    round_deadlines: [], round_shoot_by_dates: [],
+  };
+  const result = (await db.query(`select public.create_competition_with_average_settings(
+    1,3,$1,$2,$3
+  ) data`, [configuration, ex100.id, manual.version_id])).rows[0].data;
+  const saved = (await admin(`select competition_series_id from competitions where id=$1`, [result.id])).rows[0];
+  const binding = (await admin(`select average_context_id,average_policy_version_id,contributes_to_history
+    from competition_average_settings where competition_id=$1`, [result.id])).rows[0];
+  assert.equal(saved.competition_series_id, null);
+  assert.deepEqual(binding, {
+    average_context_id: ex100.id,
+    average_policy_version_id: manual.version_id,
+    contributes_to_history: true,
+  });
+
+  const before = (await admin("select count(*)::int n from competitions")).rows[0].n;
+  await rejected(`select public.create_competition_with_average_settings(1,3,$1,$2,$3)`, [
+    { ...configuration, name: "Wrong maximum", score_components: [
+      { short_label: "Score", maximum_score: 200, score_method: "points_scored" },
+    ] }, ex100.id, manual.version_id,
+  ], /must exactly equal.*does not normalise/i);
+  assert.equal((await admin("select count(*)::int n from competitions")).rows[0].n, before);
+});
+
+test("Stage 2A participant management read is owner/manager-only and returns a minimal display projection", async () => {
+  const ex100 = await context();
+  const manual = await policy("Management Manual", "manual", {});
+  const competition = await addCompetition({ season: 3, name: "Managed Averages" });
+  const participant = await addParticipant(competition);
+  await bind(competition, 3, ex100.id, manual.version_id);
+  await db.query(`select public.set_manual_competition_starting_average(1,3,$1,$2,97.5,'Legacy card')`,
+    [competition, participant.participant]);
+
+  for (const role of ["owner", "manager"]) {
+    await actor(role);
+    const data = (await db.query(`select public.get_competition_starting_average_management(1,3,$1) data`,
+      [competition])).rows[0].data;
+    assert.equal(data.participants.length, 1);
+    assert.deepEqual(data.participants[0], {
+      competition_entrant_participant_id: participant.participant,
+      competition_entrant_id: participant.entrant,
+      slot_number: 1,
+      shooter_profile_id: users.member,
+      first_name: "Primary",
+      last_name: "Shooter",
+      starting_average: 97.5,
+      origin: "manual",
+      status: "provisional",
+      qualifying_score_count: 0,
+      source_competition_id: null,
+      source_competition_name: null,
+      manual_reason: "Legacy card",
+    });
+  }
+  await actor("member");
+  await rejected("select public.get_competition_starting_average_management(1,3,$1)", [competition], /permission/i);
+  await actor("foreignOwner");
+  await rejected("select public.get_competition_starting_average_management(1,3,$1)", [competition], /permission/i);
+  await actor("anon");
+  await rejected("select public.get_competition_starting_average_management(1,3,$1)", [competition], /permission denied/i);
+});
+
+test("Stage 2A UI uses Average RPCs, immutable versions, exact Ex choices and provisional participant workflow", async () => {
+  const [management, workspace, form, flow, actions] = await Promise.all([
+    readFile(new URL("../src/components/average-management.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/competition-average-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/competition-form.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/competition-creation-flow.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/(app)/organisations/[slug]/average-actions.ts", import.meta.url), "utf8"),
+  ]);
+  assert.match(management, /Which Competitions share average history/);
+  assert.match(management, /How Starting Average is calculated/);
+  assert.match(management, /Create new version/);
+  assert.match(management, /Existing Competitions keep their selected version/);
+  assert.match(management, /Applies only to future editions/);
+  assert.match(form, /No Starting Average setup/);
+  assert.match(form, /context\.basis_maximum === derivedMaximum/);
+  assert.match(form, /scores are not proportionally converted/);
+  assert.match(flow, /inheritedAverageDefault=\{selectedAverageDefault\}/);
+  assert.match(workspace, /Latest Competition/);
+  assert.match(workspace, /Preceding Competition/);
+  assert.match(workspace, /Manual required/);
+  assert.match(workspace, /Starting Averages remain provisional/);
+  assert.match(actions, /calculate_competition_starting_averages/);
+  assert.match(actions, /set_manual_competition_starting_average/);
+  assert.match(actions, /create_average_policy_version/);
+  assert.doesNotMatch(actions, /message:\s*error\.message/);
+  assert.doesNotMatch(`${management}\n${workspace}\n${form}`, /average_policy_version_id[^"\n]*<|source_competition_id[^"\n]*</i);
+});
+
+test("all additive Average SQL files rerun cleanly over the canonical deployed chain", async () => {
   const isolated = new PGlite();
   try {
     await installCanonicalDatabase(isolated);
     await isolated.exec(await sqlFile("competition-averages"));
     await isolated.exec(await sqlFile("competition-average-series-defaults"));
+    await isolated.exec(await sqlFile("competition-averages-stage-2a"));
     assert.equal((await isolated.query(`select count(*)::int n from pg_catalog.pg_class
       where relname in ('average_contexts','average_policy_versions',
         'competition_participant_starting_averages','competition_series_average_defaults')`)).rows[0].n, 4);

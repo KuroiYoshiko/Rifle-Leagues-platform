@@ -1,4 +1,4 @@
-# Competition Averages Stage 1
+# Competition Averages
 
 Competition Series, Average Context, Average Policy, and Starting Average source are deliberately different concepts:
 
@@ -73,17 +73,26 @@ Historical source corrections are visible on the next provisional calculation. T
 
 Changing or clearing a Series default never updates existing editions. No participants, prior S/Av values, candidates, provenance, or score usages are copied.
 
+## Stage 2A management workflow
+
+Organisation owners and managers configure Contexts, Policies, immutable Policy versions, and Series defaults under Organisation Management → Averages. The Competition creation flow optionally binds a new Series and its first edition, or a one-off Competition, to an existing active Context and latest selected Policy version. Continuing a Series shows its inherited default and relies on the Stage 1 copy-on-create trigger.
+
+Each published Competition has a staff-only Starting Averages workspace. It uses `calculate_competition_starting_averages` for the preview/recalculation result and `set_manual_competition_starting_average` for manual fallback. The application does not reproduce candidate, chronology, completeness, or policy logic. Values remain explicitly provisional; division seeding and freeze integration are deferred to Stage 2B.
+
+Stage 2A adds two narrow RPCs. `create_competition_with_average_settings` composes the canonical private Competition save and Stage 1 setting RPC in one transaction so an averages-enabled one-off cannot be created without its authoritative binding. `get_competition_starting_average_management` returns only the staff-only participant and provisional S/Av projection needed by the workspace, because Organisation staff must not bypass the existing club-scoped participant RLS policies.
+
 ## Security and deferred scope
 
 All public management tables have RLS. Direct anonymous/authenticated writes are revoked. Contextual active Organisation owners and managers use narrow `SECURITY DEFINER` RPCs with `search_path = ''`; `user_organisations` is never used for authorisation. Private derivation functions are not executable by API roles. Starting Average and provenance are management-only and are not added to public Results.
 
-Stage 1 does not persist or publicly expose Running Average. R/Av remains a live derived value for complete released scores in the current Competition and will reuse the same canonical completeness/release/source-deduplication rules in Stage 2. Stage 1 also does not implement Pair/Team aggregate averages, Concurrent Shooting, divisions/results UI, or `ranking_method = best_n_average` standings. Competition Best N standings remain separate from historical Average Policy.
+The application does not persist or publicly expose Running Average. R/Av remains a live derived value for complete released scores in the current Competition and will reuse the same canonical completeness/release/source-deduplication rules in a later stage. Stage 2A also does not implement Pair/Team aggregate averages, Concurrent Shooting, division seeding/freezing, Results integration, or `ranking_method = best_n_average` standings. Competition Best N standings remain separate from historical Average Policy.
 
 ## Existing database deployment order
 
-Run these new files after all existing Competition Series SQL:
+Run these files after all existing Competition Series SQL:
 
 1. `database/competition-averages.sql`
 2. `database/competition-average-series-defaults.sql`
+3. `database/competition-averages-stage-2a.sql`
 
-Both files are additive and rerunnable. No reset or destructive rewrite of deployed migration history is required.
+For an existing database where Stage 1 is already deployed, run only file 3. All three files are additive and rerunnable. No reset or destructive rewrite of deployed migration history is required.

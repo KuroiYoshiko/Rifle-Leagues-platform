@@ -6,6 +6,10 @@ import { Card, SectionHeader } from "@/components/ui";
 import { getLeagueSeasonBySlug } from "@/lib/league-seasons";
 import { getCompetitionSeriesCreationOptions } from "@/lib/competition-series";
 import { getOrganisationManagementContextBySlug } from "@/lib/organisations";
+import {
+  getAverageConfiguration,
+  getCompetitionSeriesAverageDefaults,
+} from "@/lib/competition-averages";
 
 export const metadata: Metadata = {
   title: "Add competition",
@@ -31,10 +35,11 @@ export default async function CreateCompetitionPage({
   if (!season) {
     notFound();
   }
-  const seriesOptions = await getCompetitionSeriesCreationOptions(
-    context.organisation.id,
-    season.id,
-  );
+  const [seriesOptions, averageConfiguration, seriesAverageDefaults] = await Promise.all([
+    getCompetitionSeriesCreationOptions(context.organisation.id, season.id),
+    getAverageConfiguration(context.organisation.id),
+    getCompetitionSeriesAverageDefaults(context.organisation.id),
+  ]);
 
   return (
     <OrganisationPageFrame
@@ -50,6 +55,8 @@ export default async function CreateCompetitionPage({
           organisation={context.organisation}
           season={season}
           seriesOptions={seriesOptions}
+          averageConfiguration={averageConfiguration}
+          seriesAverageDefaults={seriesAverageDefaults}
         />
       </Card>
       <p className="mt-4 text-xs leading-5 text-muted-foreground">

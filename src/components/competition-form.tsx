@@ -27,6 +27,12 @@ import {
   type CompetitionSeriesSources,
 } from "@/lib/competition-series-types";
 import type { LeagueSeason } from "@/lib/league-seasons";
+import {
+  formatAverageMaximum,
+  getAveragePolicyStrategyLabel,
+  type AverageConfiguration,
+  type SeriesAverageDefault,
+} from "@/lib/competition-average-types";
 
 export type CompetitionCreationMode = "continue_series" | "new_series" | "one_off";
 
@@ -74,6 +80,7 @@ const fieldFocusIds: Partial<Record<CompetitionField, string>> = {
   rankingMethod: "ranking-method",
   bestRoundsCount: "best-rounds-count",
   roundSchedule: "round-deadline-0",
+  startingAverages: "average-context-id",
 };
 const dateFormatter = new Intl.DateTimeFormat("en-GB", {
   day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
@@ -154,6 +161,8 @@ export function CompetitionForm({
   initialCompetition,
   series,
   sourceContext,
+  averageConfiguration = { contexts: [], policies: [] },
+  inheritedAverageDefault,
 }: {
   organisation: { id: number; name: string; slug: string };
   season: LeagueSeason;
@@ -164,6 +173,8 @@ export function CompetitionForm({
   initialCompetition?: Competition;
   series?: CompetitionSeries;
   sourceContext?: CompetitionSourceContext;
+  averageConfiguration?: AverageConfiguration;
+  inheritedAverageDefault?: SeriesAverageDefault | null;
   }) {
   const editing = Boolean(competition);
   const defaults = competition ?? initialCompetition;
@@ -215,6 +226,11 @@ export function CompetitionForm({
   const [rankingMethod, setRankingMethod] = useState<CompetitionRankingMethod>(
     (submitted?.rankingMethod as CompetitionRankingMethod | undefined) ?? defaults?.ranking_method ?? "aggregate",
   );
+  const [averageSetup, setAverageSetup] = useState(
+    submitted?.averageSetup === "configured" ? "configured" : "none",
+  );
+  const [averageContextId, setAverageContextId] = useState(submitted?.averageContextId ?? "");
+  const [averagePolicyVersionId, setAveragePolicyVersionId] = useState(submitted?.averagePolicyVersionId ?? "");
   const [usesXScore, setUsesXScore] = useState(
     submitted?.usesXScore ?? defaults?.uses_x_score ?? false,
   );
@@ -334,6 +350,15 @@ export function CompetitionForm({
     }, 0);
     return Number.isFinite(sets) && sets > 0 ? sets * componentTotal : 0;
   }, [components, setsPerRound]);
+  const compatibleAverageContexts = useMemo(() => averageConfiguration.contexts.filter(
+    (context) => !context.archived_at && context.basis_maximum === derivedMaximum,
+  ), [averageConfiguration.contexts, derivedMaximum]);
+  const activeAveragePolicies = useMemo(() => averageConfiguration.policies.filter(
+    (policy) => !policy.archived_at,
+  ), [averageConfiguration.policies]);
+  const compatibleAverageContextId = compatibleAverageContexts.some(
+    (context) => String(context.id) === averageContextId,
+  ) ? averageContextId : "";
 
   const effectiveEntryClose = entryWindowMode === "custom" ? customEntryClosesAt : season.entry_closes_at;
   const effectiveStart = startDateMode === "custom" ? customStartsAt : season.starts_at;
@@ -524,6 +549,29 @@ export function CompetitionForm({
       <p className="rounded-xl bg-surface-muted px-4 py-3 text-sm text-muted-foreground">Total possible gun score per shooter / round: <span className="font-semibold text-foreground">Ex {derivedMaximum.toLocaleString("en-GB", { maximumFractionDigits: 2 })}</span></p>
       <FieldError field="scoreComponents" message={state.fieldErrors?.scoreComponents} />
       <div className="max-w-xs"><label htmlFor="shots-per-round" className="text-sm font-semibold text-foreground">Shots per shooter / round (optional)</label><input id="shots-per-round" name="shots_per_round" type="number" min={1} max={10000} step={1} defaultValue={submitted?.shotsPerRound ?? defaults?.shots_per_round ?? ""} disabled={pending || sportingConfigurationLocked} className={inputClassName} /><p className="mt-2 text-xs text-muted-foreground">Informational only. The number of recorded scores is defined by the Course of Fire above.</p><FieldError field="shotsPerRound" message={state.fieldErrors?.shotsPerRound} /></div>
+    </section> : null}
+
+    {!editing && creationMode !== "continue_series" ? <section className={sectionClassName} aria-labelledby="starting-averages-title">
+      <SectionTitle id="starting-averages-title" title="Starting averages" description="Optional. Choose an existing average history and calculation policy for this Competition." />
+      <fieldset><legend className="sr-only">Starting Average setup</legend><div className="grid gap-3 sm:grid-cols-2">
+        <RadioCard name="average_setup" value="none" checked={averageSetup === "none"} onChange={() => setAverageSetup("none")} title="No Starting Average setup" detail="Create this Competition without shooter Starting Averages." disabled={pending} />
+        <RadioCard name="average_setup" value="configured" checked={averageSetup === "configured"} onChange={() => setAverageSetup("configured")} title="Use existing Context + Policy" detail="Bind this edition to an explicit compatible history and calculation rule." disabled={pending || !compatibleAverageContexts.length || !activeAveragePolicies.length} />
+      </div></fieldset>
+      {averageSetup === "configured" ? <div className="grid gap-4 sm:grid-cols-2">
+        <label className="text-sm font-medium text-foreground">Average Context<select id="average-context-id" name="average_context_id" required value={compatibleAverageContextId} onChange={(event) => setAverageContextId(event.target.value)} disabled={pending} className={inputClassName}><option value="">Choose Context</option>{compatibleAverageContexts.map((context) => <option key={context.id} value={context.id}>{context.name} · {formatAverageMaximum(context.basis_maximum)}</option>)}</select></label>
+        <label className="text-sm font-medium text-foreground">Average Policy<select name="average_policy_version_id" required value={averagePolicyVersionId} onChange={(event) => setAveragePolicyVersionId(event.target.value)} disabled={pending} className={inputClassName}><option value="">Choose Policy</option>{activeAveragePolicies.map((policy) => <option key={policy.latestVersion.id} value={policy.latestVersion.id}>{policy.name} · {getAveragePolicyStrategyLabel(policy.latestVersion.strategy)}</option>)}</select></label>
+      </div> : null}
+      <p className="text-xs leading-5 text-muted-foreground">This Competition is {formatAverageMaximum(derivedMaximum)}. Only a Context with the exact same maximum is available; scores are not proportionally converted.</p>
+      {!compatibleAverageContexts.length || !activeAveragePolicies.length ? <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">No usable matching setup is available. <Link href={`/organisations/${organisation.slug}/management/averages`} className="font-semibold text-brand-strong hover:underline">Manage Organisation Averages</Link>, then return here.</p> : null}
+      <FieldError field="startingAverages" message={state.fieldErrors?.startingAverages} />
+    </section> : null}
+
+    {!editing && creationMode === "continue_series" ? <section className={sectionClassName} aria-labelledby="inherited-starting-averages-title">
+      <SectionTitle id="inherited-starting-averages-title" title="Starting averages" description={inheritedAverageDefault ? "Inherited from this Competition Series. The new edition receives its own authoritative binding." : "This Competition Series has no Starting Average defaults."} />
+      {inheritedAverageDefault ? <dl className="grid gap-4 rounded-xl bg-surface-muted p-4 text-sm sm:grid-cols-2">
+        <div><dt className="text-xs text-muted-foreground">Average Context</dt><dd className="mt-1 font-semibold text-foreground">{inheritedAverageDefault.context?.name ?? "Unavailable"}{inheritedAverageDefault.context ? ` · ${formatAverageMaximum(inheritedAverageDefault.context.basis_maximum)}` : ""}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Calculation</dt><dd className="mt-1 font-semibold text-foreground">{inheritedAverageDefault.policy && inheritedAverageDefault.policyVersion ? `${inheritedAverageDefault.policy.name} · ${getAveragePolicyStrategyLabel(inheritedAverageDefault.policyVersion.strategy)}` : "Unavailable"}</dd></div>
+      </dl> : <p className="rounded-xl border border-dashed border-border p-4 text-sm text-muted-foreground">No Starting Average setup will be copied. Continuing the Series still works normally.</p>}
     </section> : null}
 
     <section className={sectionClassName} aria-labelledby="ranking-title">
