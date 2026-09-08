@@ -33,12 +33,12 @@ function CompetitionCard({
   competition,
   organisationSlug,
   seasonSlug,
-  isOwner,
+  canManage,
 }: {
   competition: Competition;
   organisationSlug: string;
   seasonSlug: string;
-  isOwner: boolean;
+  canManage: boolean;
 }) {
   const detailPath = `/organisations/${organisationSlug}/leagues/${seasonSlug}/competitions/${competition.slug}`;
   const fee = formatCompetitionEntryFee(competition.entry_fee);
@@ -57,7 +57,7 @@ function CompetitionCard({
               {competition.status === "draft" ? "Draft" : "Published"}
             </Badge>
             {competition.status === "draft" ? (
-              <span className="text-xs text-muted-foreground">Owner only</span>
+              <span className="text-xs text-muted-foreground">Management only</span>
             ) : null}
           </div>
           <h3 className="mt-3 break-words text-lg font-semibold tracking-[-0.02em] text-foreground">
@@ -85,7 +85,7 @@ function CompetitionCard({
           href={detailPath}
           className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
         >
-          {isOwner ? "Manage" : "View"}
+          {canManage ? "Manage" : "View"}
         </Link>
       </div>
     </Card>
@@ -132,6 +132,7 @@ export default async function LeagueSeasonDetailPage({
   }
 
   const isOwner = managementContext?.access.role === "owner";
+  const canManageCompetitions = Boolean(managementContext);
   const competitions = viewerId
     ? await getCompetitions(season.id)
     : (publicCatalog?.competitions ?? []);
@@ -199,7 +200,7 @@ export default async function LeagueSeasonDetailPage({
             ) : null}
             {season.status === "draft" ? (
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                Only the active organisation owner can see this draft.
+                Only active organisation management staff can see this draft.
               </p>
             ) : null}
           </div>
@@ -245,12 +246,12 @@ export default async function LeagueSeasonDetailPage({
         <SectionHeader
           title="Competitions"
           description={
-            isOwner
+            canManageCompetitions
               ? `${competitions.length} competition${competitions.length === 1 ? "" : "s"} within this season`
               : "Published competitions within this season"
           }
           action={
-            isOwner ? (
+            canManageCompetitions ? (
               <Link
                 href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/new`}
                 className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep"
@@ -274,12 +275,12 @@ export default async function LeagueSeasonDetailPage({
                   id="competitions-heading"
                   className="font-semibold text-foreground"
                 >
-                  {isOwner
+                  {canManageCompetitions
                     ? "Add the first competition"
                     : "No published competitions yet"}
                 </h3>
                 <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-                  {isOwner
+                  {canManageCompetitions
                     ? "Configure its entry format, scoring details, and explicit round deadlines. It will begin as a private draft."
                     : "This season does not have any published competitions to show yet."}
                 </p>
@@ -294,7 +295,7 @@ export default async function LeagueSeasonDetailPage({
                 competition={competition}
                 organisationSlug={organisation.slug}
                 seasonSlug={season.slug}
-                isOwner={isOwner}
+                canManage={canManageCompetitions}
               />
             ))}
           </div>

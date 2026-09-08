@@ -3,11 +3,18 @@
 Stage 1 only: no Add Competition UI, historical linking, public Series history,
 templates, persistent Pair/Team identity, averages, payments or source-score reuse.
 
+Stage 2 adds the authenticated Add Competition and minimum Series management UI.
+It does not change the Stage 1 identity, continuation, provenance, or lifecycle
+contracts described below.
+
 ## Deployment
 
 On an installation that already has Competition Series Stage 1, run only:
 
-1. `database/competition-published-configuration-lock.sql`
+1. `database/competition-series-stage-2-management.sql`
+
+The previously deployed `database/competition-published-configuration-lock.sql`
+does not need to be rerun for Stage 2.
 
 For a fresh installation with the current README Competition, source-score,
 lifecycle, division and Round Robin foundations, run these complete transactional
@@ -16,12 +23,14 @@ files in order:
 1. `database/competition-series.sql`
 2. `database/competition-series-management.sql`
 3. `database/competition-published-configuration-lock.sql`
+4. `database/competition-series-stage-2-management.sql`
 
-All three are rerunnable. The hardening file does not require either Stage 1 file
+All four are rerunnable. The hardening file does not require either Stage 1 file
 to be rerun on an up-to-date installation. For a fresh installation run the existing
 foundations first, then these files last.
 If an earlier configuration/lifecycle file is reapplied later, rerun these three files
-in this order: earlier files can replace upgraded RPCs or column grants/triggers.
+in this order, followed by `competition-series-stage-2-management.sql`: earlier
+files can replace upgraded RPCs or column grants/triggers.
 
 None of these scripts infers or links history, rewrites configuration, resets data or seeds
 examples. Existing Competition IDs, slugs, timestamps, components and Rounds remain
@@ -205,6 +214,18 @@ configuration; a finalised Series edition remains subject to its permanent Serie
 identity triggers even after Return to Draft.
 
 ## Verification and Stage 2 checklist
+
+The Add Competition route now presents explicit Continue Series, New Series and
+one-off paths. Owners and managers can create and edit drafts. Only owners see
+publication/deletion lifecycle actions or Series rename/archive/restore/delete
+controls. `database/competition-series-stage-2-management.sql` adds the one narrow
+owner-only rename RPC needed by that UI; archive/restore/delete continue to use the
+Stage 1 RPCs above.
+
+For local manual testing after `development-demo-seed.sql`, optionally run
+`database/development-competition-series-fixture.sql`. It adds only marker-named,
+development-only Series/editions and is safe to rerun. It does not alter existing
+Aggregate, Gun Score, Round Robin, entry, division, or score fixtures.
 
 Run `npm run test:series`, `npm run test:results`, `npm run lint`, `npx tsc --noEmit`,
 `npm run build` and `git diff --check`. The canonical PGlite fixture installs these

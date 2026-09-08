@@ -1,58 +1,16 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
-import type { CompetitionEntryFormat, CompetitionRankingMethod, CompetitionStatus } from "@/lib/competitions";
-import type { LeagueSeasonStatus } from "@/lib/league-seasons";
+import {
+  getCompetitionById,
+  getCompetitionScoreComponents,
+} from "@/lib/competitions";
+import type {
+  CompetitionSeries,
+  CompetitionSeriesScoreComponent,
+  CompetitionSeriesSources,
+} from "@/lib/competition-series-types";
 
-export const COMPETITION_DISCIPLINES = [
-  "rifle_prone", "rifle_benchrest", "rifle_three_position", "air_pistol", "other",
-] as const;
-export type CompetitionDiscipline = (typeof COMPETITION_DISCIPLINES)[number];
-export const competitionDisciplineLabels: Record<CompetitionDiscipline, string> = {
-  rifle_prone: "Rifle — Prone",
-  rifle_benchrest: "Rifle — Benchrest",
-  rifle_three_position: "Rifle — 3 Position",
-  air_pistol: "Air Pistol",
-  other: "Other",
-};
-
-export type CompetitionSeries = {
-  id: number;
-  organisation_id: number;
-  name: string;
-  slug: string;
-  archived_at: string | null;
-  entry_format: CompetitionEntryFormat;
-  team_size: number;
-  discipline_code: CompetitionDiscipline | null;
-  discipline_detail: string | null;
-  sets_per_round: number;
-  shots_per_round: number | null;
-  identity_locked_at: string | null;
-  created_at: string;
-  updated_at: string;
-};
-
-export type CompetitionSeriesSources = {
-  series: Pick<CompetitionSeries, "id" | "name" | "slug" | "identity_locked_at" | "discipline_code" | "discipline_detail">;
-  cutoff: string;
-  provisional_cutoff: boolean;
-  recommended_source_id: number | null;
-  selection_required: boolean;
-  ambiguous_latest_date: boolean;
-  sources: Array<{
-    id: number;
-    name: string;
-    slug: string;
-    status: CompetitionStatus;
-    season_id: number;
-    season_name: string;
-    season_status: LeagueSeasonStatus;
-    effective_starts_at: string | null;
-    ranking_method: CompetitionRankingMethod;
-    number_of_rounds: number;
-    configuration_version: string;
-  }>;
-};
+export * from "@/lib/competition-series-types";
 
 // Management loaders only: no public catalogue changes and no service-role client.
 export const getCompetitionSeries = cache(async (organisationId: number) => {
@@ -77,3 +35,64 @@ export const getCompetitionSeriesSources = cache(async (
   if (error) throw new Error("Competition Series source editions could not be loaded.");
   return data as CompetitionSeriesSources;
 });
+
+export const getCompetitionSeriesScoreComponents = cache(async (
+  competitionSeriesId: number,
+) => {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("competition_series_score_components")
+    .select("competition_series_id,position,short_label,maximum_score,score_method")
+    .eq("competition_series_id", competitionSeriesId)
+    .order("position");
+  if (error) throw new Error("Competition Series format could not be loaded.");
+  return (data ?? []) as CompetitionSeriesScoreComponent[];
+});
+
+export async function getCompetitionSeriesCreationOptions(
+  organisationId: number,
+  leagueSeasonId: number,
+) {
+  const activeSeries = (await getCompetitionSeries(organisationId)).filter(
+    (series) => !series.archived_at,
+  );
+
+  return Promise.all(activeSeries.map(async (series) => {
+    const [components, sourceInfo] = await Promise.all([
+      getCompetitionSeriesScoreComponents(series.id),
+      getCompetitionSeriesSources(organisationId, leagueSeasonId, series.id),
+    ]);
+    const sources = (await Promise.all(sourceInfo.sources.map(async (metadata) => {
+      const [competition, sourceComponents] = await Promise.all([
+        getCompetitionById(metadata.id),
+        getCompetitionScoreComponents(metadata.id),
+      ]);
+      return competition
+        ? { metadata, competition, components: sourceComponents }
+        : null;
+    }))).filter((source): source is NonNullable<typeof source> => Boolean(source));
+
+    return { series, components, sourceInfo, sources };
+  }));
+}
+
+export async function getCompetitionSeriesManagementRows(organisationId: number) {
+  const series = await getCompetitionSeries(organisationId);
+  if (!series.length) return [];
+
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("competitions")
+    .select("competition_series_id")
+    .in("competition_series_id", series.map((item) => item.id));
+  if (error) throw new Error("Competition Series editions could not be counted.");
+
+  const counts = new Map<number, number>();
+  for (const competition of data ?? []) {
+    const seriesId = Number(competition.competition_series_id);
+    if (Number.isSafeInteger(seriesId)) {
+      counts.set(seriesId, (counts.get(seriesId) ?? 0) + 1);
+    }
+  }
+  return series.map((item) => ({ ...item, edition_count: counts.get(item.id) ?? 0 }));
+}

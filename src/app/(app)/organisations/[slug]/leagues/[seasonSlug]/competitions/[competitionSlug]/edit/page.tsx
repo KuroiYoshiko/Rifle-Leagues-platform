@@ -9,6 +9,7 @@ import {
   getCompetitionScoreComponents,
 } from "@/lib/competitions";
 import { getLeagueSeasonBySlug } from "@/lib/league-seasons";
+import { getCompetitionSeries } from "@/lib/competition-series";
 import { getOrganisationManagementContextBySlug } from "@/lib/organisations";
 
 export const metadata: Metadata = {
@@ -27,7 +28,7 @@ export default async function EditCompetitionPage({
   const { slug, seasonSlug, competitionSlug } = await params;
   const context = await getOrganisationManagementContextBySlug(slug);
 
-  if (!context || context.access.role !== "owner") {
+  if (!context) {
     notFound();
   }
 
@@ -43,11 +44,23 @@ export default async function EditCompetitionPage({
   if (!competition) {
     notFound();
   }
+  if (context.access.role === "manager" && competition.status !== "draft") {
+    notFound();
+  }
 
-  const [rounds, scoreComponents] = await Promise.all([
+  const [rounds, scoreComponents, seriesRows] = await Promise.all([
     getCompetitionRounds(competition.id),
     getCompetitionScoreComponents(competition.id),
+    competition.competition_series_id
+      ? getCompetitionSeries(context.organisation.id)
+      : Promise.resolve([]),
   ]);
+  const series = seriesRows.find(
+    (item) => item.id === competition.competition_series_id,
+  );
+  if (competition.competition_series_id && !series) {
+    notFound();
+  }
 
   return (
     <OrganisationPageFrame
@@ -65,6 +78,7 @@ export default async function EditCompetitionPage({
           competition={competition}
           rounds={rounds}
           scoreComponents={scoreComponents}
+          series={series}
         />
       </Card>
       <p className="mt-4 text-xs leading-5 text-muted-foreground">

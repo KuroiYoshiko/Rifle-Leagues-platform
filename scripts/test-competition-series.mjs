@@ -372,6 +372,11 @@ test("source version covers components, rounds and inherited Season dates; same-
 
 test("owner archive/restore/delete-empty; manager cannot invoke owner lifecycle or edit published editions", async () => {
   const first = await create();
+  await db.query("select public.rename_competition_series(1,$1,'Renamed Series')", [first.competition_series_id]);
+  assert.deepEqual((await db.query(
+    "select name,slug from competition_series where id=$1",
+    [first.competition_series_id],
+  )).rows[0], { name: "Renamed Series", slug: "series-one" });
   await actor("manager");
   for (const [sql, args] of [
     ["select public.publish_competition(1,1,$1)", [first.id]],
@@ -380,6 +385,7 @@ test("owner archive/restore/delete-empty; manager cannot invoke owner lifecycle 
     ["select public.set_competition_series_archived(1,$1,true)", [first.competition_series_id]],
     ["select public.set_competition_series_archived(1,$1,false)", [first.competition_series_id]],
     ["select public.delete_empty_competition_series(1,$1)", [first.competition_series_id]],
+    ["select public.rename_competition_series(1,$1,'Manager rename')", [first.competition_series_id]],
   ]) await rejected(sql, args, /permission/);
   await actor("owner"); await publish(first);
   await actor("manager");
@@ -542,6 +548,8 @@ test("additive and rerunnable upgrade preserves pre-existing one-offs, identifie
       await isolated.exec(await sqlFile("competition-series-management"));
       await isolated.exec(await sqlFile("competition-published-configuration-lock"));
       await isolated.exec(await sqlFile("competition-published-configuration-lock"));
+      await isolated.exec(await sqlFile("competition-series-stage-2-management"));
+      await isolated.exec(await sqlFile("competition-series-stage-2-management"));
       assert.deepEqual((await isolated.query(`select to_jsonb(c)-array['competition_series_id','configuration_source_competition_id',
         'configuration_source_version','discipline_code','discipline_detail'] data from competitions c`)).rows, before);
       assert.deepEqual((await isolated.query("select * from competition_rounds")).rows, rounds);
@@ -550,4 +558,35 @@ test("additive and rerunnable upgrade preserves pre-existing one-offs, identifie
       assert.equal((await isolated.query("select count(*)::int n from competition_series")).rows[0].n, 0);
     }
   } finally { await isolated.close(); }
+});
+
+test("development Series fixture is isolated and rerunnable", async () => {
+  const isolated = new PGlite();
+  try {
+    await installCanonicalDatabase(isolated);
+    await isolated.query("insert into auth.users(id) values($1)", [actors.owner]);
+    await isolated.exec(`
+      insert into organisations(id,name,slug,status) overriding system value values
+        (1,'Eastern Region','eastern-region-shooting-association','active');
+      insert into league_seasons(id,organisation_id,name,slug,status,entry_opens_at,entry_closes_at,starts_at,ends_at)
+        overriding system value values
+        (1,1,'Winter','eastern-winter-postal-league','completed',current_date-300,current_date-280,current_date-270,current_date-100),
+        (2,1,'Summer','eastern-summer-league','open',current_date-40,current_date-20,current_date-10,current_date+100);
+    `);
+    await isolated.query(
+      "insert into organisation_staff(organisation_id,user_id,role,status) values(1,$1,'owner','active')",
+      [actors.owner],
+    );
+    const fixture = await sqlFile("development-competition-series-fixture");
+    await isolated.exec(fixture);
+    await isolated.exec(fixture);
+    assert.deepEqual((await isolated.query(
+      "select count(*)::int series_count,(select count(*)::int from competitions) competition_count,(select count(*)::int from competition_score_components) component_count from competition_series",
+    )).rows[0], { series_count: 2, competition_count: 2, component_count: 2 });
+    assert.equal((await isolated.query(
+      "select identity_locked_at is not null locked from competition_series where slug='dev-short-range-prone-league'",
+    )).rows[0].locked, true);
+  } finally {
+    await isolated.close();
+  }
 });

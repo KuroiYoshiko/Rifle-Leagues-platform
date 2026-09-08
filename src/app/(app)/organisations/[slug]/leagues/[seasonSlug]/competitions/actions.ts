@@ -16,11 +16,15 @@ import {
   type CompetitionStartDateMode,
   type CompetitionStatus,
 } from "@/lib/competitions";
+import {
+  COMPETITION_DISCIPLINES,
+  type CompetitionDiscipline,
+} from "@/lib/competition-series-types";
 import { formatLeagueSeasonDate } from "@/lib/league-seasons";
 import { createClient } from "@/lib/supabase/server";
 
 export type CompetitionField =
-  | "name" | "description" | "entryFormat" | "teamSize" | "entryWindow"
+  | "seriesName" | "discipline" | "name" | "description" | "entryFormat" | "teamSize" | "entryWindow"
   | "competitionStart" | "setsPerRound" | "scoreComponents"
   | "shotsPerRound" | "numberOfRounds" | "entryFee" | "rankingMethod"
   | "bestRoundsCount" | "scoringAccess" | "xScoring" | "roundSchedule";
@@ -32,6 +36,9 @@ export type CompetitionScoreComponentValue = {
 };
 
 export type CompetitionFormValues = {
+  seriesName: string;
+  disciplineCode: string;
+  disciplineDetail: string;
   name: string;
   description: string;
   entryFormat: string;
@@ -117,6 +124,9 @@ function readValues(formData: FormData): CompetitionFormValues {
   const methods = formData.getAll("component_method").map(String);
   const componentCount = Math.max(labels.length, maxima.length, methods.length);
   return {
+    seriesName: String(formData.get("series_name") ?? "").trim(),
+    disciplineCode: String(formData.get("discipline_code") ?? "").trim(),
+    disciplineDetail: String(formData.get("discipline_detail") ?? "").trim(),
     name: String(formData.get("name") ?? "").trim(),
     description: String(formData.get("description") ?? "").trim(),
     entryFormat: String(formData.get("entry_format") ?? "individual").trim(),
@@ -155,8 +165,29 @@ function effectiveDates(values: CompetitionFormValues, season: SeasonBoundaryCon
   };
 }
 
-function validateStructuralValues(values: CompetitionFormValues, season: SeasonBoundaryContext) {
+function validateStructuralValues(
+  values: CompetitionFormValues,
+  season: SeasonBoundaryContext,
+  options: { requireSeriesName?: boolean; requireDiscipline?: boolean } = {},
+) {
   const errors: CompetitionFormState["fieldErrors"] = {};
+  if (options.requireSeriesName) {
+    const seriesNameLength = [...values.seriesName].length;
+    if (!values.seriesName) errors.seriesName = "Enter the Series name.";
+    else if (seriesNameLength < 2 || seriesNameLength > 160) {
+      errors.seriesName = "Use between 2 and 160 characters.";
+    }
+  }
+  if (options.requireDiscipline && !values.disciplineCode) {
+    errors.discipline = "Select the Series discipline / position.";
+  } else if (values.disciplineCode &&
+    !COMPETITION_DISCIPLINES.includes(values.disciplineCode as CompetitionDiscipline)) {
+    errors.discipline = "Select a valid Series discipline / position.";
+  } else if (values.disciplineCode === "other" && !values.disciplineDetail) {
+    errors.discipline = "Describe the discipline when Other is selected.";
+  } else if ([...values.disciplineDetail].length > 200) {
+    errors.discipline = "Use 200 characters or fewer.";
+  }
   const nameLength = [...values.name].length;
   if (!values.name) errors.name = "Enter the competition name.";
   else if (nameLength < 2 || nameLength > 160) errors.name = "Use between 2 and 160 characters.";
@@ -320,6 +351,60 @@ function getRpcValues(values: CompetitionFormValues) {
   };
 }
 
+function getConfigurationValues(values: CompetitionFormValues) {
+  const entryFormat = values.entryFormat as CompetitionEntryFormat;
+  return {
+    name: values.name,
+    description: values.description || null,
+    entry_format: entryFormat,
+    team_size: entryFormat === "individual" ? 1 : entryFormat === "pairs" ? 2 : Number(values.teamSize),
+    discipline_code: values.disciplineCode || null,
+    discipline_detail: values.disciplineDetail || null,
+    sets_per_round: Number(values.setsPerRound),
+    shots_per_round: values.shotsPerRound ? Number(values.shotsPerRound) : null,
+    score_components: values.scoreComponents.map((component) => ({
+      short_label: component.shortLabel || null,
+      maximum_score: Number(component.maximumScore),
+      score_method: component.scoreMethod,
+    })),
+    entry_fee: values.entryFee ? Number(values.entryFee) : null,
+    uses_x_score: values.usesXScore,
+    number_of_rounds: Number(values.numberOfRounds),
+    local_scoring_enabled: values.localScoringEnabled,
+    entry_window_mode: values.entryWindowMode,
+    custom_entry_opens_at: values.entryWindowMode === "custom" ? values.customEntryOpensAt || null : null,
+    custom_entry_closes_at: values.entryWindowMode === "custom" ? values.customEntryClosesAt || null : null,
+    start_date_mode: values.startDateMode,
+    custom_starts_at: values.startDateMode === "custom" ? values.customStartsAt || null : null,
+    ranking_method: values.rankingMethod,
+    best_rounds_count: values.rankingMethod === "best_n_average" && values.bestRoundsCount
+      ? Number(values.bestRoundsCount) : null,
+    round_deadlines: values.roundDeadlines.map((date) => date || null),
+    round_shoot_by_dates: values.roundShootByDates.map((date) => date || null),
+  };
+}
+
+function getEditionValues(values: CompetitionFormValues) {
+  const configuration = getConfigurationValues(values);
+  return {
+    name: configuration.name,
+    description: configuration.description,
+    entry_fee: configuration.entry_fee,
+    uses_x_score: configuration.uses_x_score,
+    number_of_rounds: configuration.number_of_rounds,
+    local_scoring_enabled: configuration.local_scoring_enabled,
+    entry_window_mode: configuration.entry_window_mode,
+    custom_entry_opens_at: configuration.custom_entry_opens_at,
+    custom_entry_closes_at: configuration.custom_entry_closes_at,
+    start_date_mode: configuration.start_date_mode,
+    custom_starts_at: configuration.custom_starts_at,
+    ranking_method: configuration.ranking_method,
+    best_rounds_count: configuration.best_rounds_count,
+    round_deadlines: configuration.round_deadlines,
+    round_shoot_by_dates: configuration.round_shoot_by_dates,
+  };
+}
+
 function readRpcResult(value: unknown): CompetitionRpcResult | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   const item = value as Record<string, unknown>;
@@ -384,6 +469,12 @@ function mutationMessage(error: CompetitionMutationError, fallback: string) {
   }
   if (error.code === "42501" && error.message === "Authentication is required.") {
     return "Sign in again before saving the Competition.";
+  }
+  if (error.code === "42501" && error.message?.includes("Organisation author permission")) {
+    return "Active owner or manager access is required to save this Competition.";
+  }
+  if (error.code === "40001") {
+    return "The source edition changed. Refresh this page and review it again before continuing.";
   }
   if (error.code === "P0002") return "That Competition, Season, or organisation is no longer available. Refresh and try again.";
   if (error.code === "23505") return "A competition with this name already exists in this Season.";
@@ -572,6 +663,125 @@ export async function createCompetition(_previousState: CompetitionFormState, fo
   if (!result) return { status: "error", message: "The Competition was created, but its page could not be opened automatically.", values };
   revalidateCompetitionRoutes(result);
   redirect(`/organisations/${result.organisation_slug}/leagues/${result.season_slug}/competitions/${result.competition_slug}?created=1`);
+}
+
+export async function createCompetitionSeries(
+  _previousState: CompetitionFormState,
+  formData: FormData,
+): Promise<CompetitionFormState> {
+  const prepared = await prepare(formData);
+  if ("error" in prepared) return { status: "error", message: prepared.error, values: prepared.values };
+  const { organisationId, leagueSeasonId, values, supabase, season } = prepared;
+  const fieldErrors = validateStructuralValues(values, season, {
+    requireSeriesName: true,
+    requireDiscipline: true,
+  });
+  if (Object.keys(fieldErrors).length) {
+    return { status: "error", message: "Review the highlighted Series and Competition details and try again.", fieldErrors, values };
+  }
+
+  const { data, error } = await supabase.rpc("create_competition_series", {
+    p_organisation_id: organisationId,
+    p_league_season_id: leagueSeasonId,
+    p_series_name: values.seriesName,
+    p_configuration: getConfigurationValues(values),
+  });
+  if (error) {
+    await reportMutationError("create", error, supabase, { organisationId, leagueSeasonId });
+    return {
+      status: "error",
+      message: mutationMessage(error, "The Series and its first draft could not be created."),
+      values,
+    };
+  }
+  const result = readRpcResult(data);
+  if (!result) return { status: "error", message: "The Series was created, but its Competition page could not be opened automatically.", values };
+  revalidateCompetitionRoutes(result);
+  revalidatePath(`/organisations/${result.organisation_slug}/management`);
+  redirect(`/organisations/${result.organisation_slug}/leagues/${result.season_slug}/competitions/${result.competition_slug}?created=1`);
+}
+
+export async function continueCompetitionSeries(
+  _previousState: CompetitionFormState,
+  formData: FormData,
+): Promise<CompetitionFormState> {
+  const seriesId = readPositiveInteger(formData.get("competition_series_id"));
+  const sourceCompetitionId = readPositiveInteger(formData.get("configuration_source_competition_id"));
+  const expectedSourceVersion = String(formData.get("expected_source_version") ?? "").trim();
+  const prepared = await prepare(formData);
+  if ("error" in prepared || !seriesId || !sourceCompetitionId || !expectedSourceVersion) {
+    return {
+      status: "error",
+      message: "error" in prepared ? prepared.error : "Choose a valid Series source edition and try again.",
+      values: prepared.values,
+    };
+  }
+  const { organisationId, leagueSeasonId, values, supabase, season } = prepared;
+  const fieldErrors = validateStructuralValues(values, season);
+  if (Object.keys(fieldErrors).length) {
+    return { status: "error", message: "Review the highlighted Competition details and try again.", fieldErrors, values };
+  }
+
+  const { data, error } = await supabase.rpc("continue_competition_series", {
+    p_organisation_id: organisationId,
+    p_league_season_id: leagueSeasonId,
+    p_competition_series_id: seriesId,
+    p_configuration_source_competition_id: sourceCompetitionId,
+    p_expected_source_version: expectedSourceVersion,
+    p_edition_values: getEditionValues(values),
+  });
+  if (error) {
+    await reportMutationError("create", error, supabase, { organisationId, leagueSeasonId });
+    return {
+      status: "error",
+      message: mutationMessage(error, "The new Series edition could not be created."),
+      values,
+    };
+  }
+  const result = readRpcResult(data);
+  if (!result) return { status: "error", message: "The edition was created, but its page could not be opened automatically.", values };
+  revalidateCompetitionRoutes(result);
+  revalidatePath(`/organisations/${result.organisation_slug}/management`);
+  redirect(`/organisations/${result.organisation_slug}/leagues/${result.season_slug}/competitions/${result.competition_slug}?created=1`);
+}
+
+export async function updateCompetitionSeriesDraft(
+  _previousState: CompetitionFormState,
+  formData: FormData,
+): Promise<CompetitionFormState> {
+  const competitionId = readPositiveInteger(formData.get("competition_id"));
+  const prepared = await prepare(formData);
+  if ("error" in prepared || !competitionId) {
+    return {
+      status: "error",
+      message: "error" in prepared ? prepared.error : "The Competition could not be identified.",
+      values: prepared.values,
+    };
+  }
+  const { organisationId, leagueSeasonId, values, supabase, season } = prepared;
+  const fieldErrors = validateStructuralValues(values, season);
+  if (Object.keys(fieldErrors).length) {
+    return { status: "error", message: "Review the highlighted Competition details and try again.", fieldErrors, values };
+  }
+  const { data, error } = await supabase.rpc("update_competition_series_draft", {
+    p_organisation_id: organisationId,
+    p_league_season_id: leagueSeasonId,
+    p_competition_id: competitionId,
+    p_configuration: getConfigurationValues(values),
+  });
+  if (error) {
+    await reportMutationError("update", error, supabase, { organisationId, leagueSeasonId, competitionId });
+    return {
+      status: "error",
+      message: mutationMessage(error, "The Competition draft could not be saved."),
+      values,
+    };
+  }
+  const result = readRpcResult(data);
+  if (!result) return { status: "error", message: "The Competition was saved, but its refreshed details could not be verified.", values };
+  revalidateCompetitionRoutes(result);
+  revalidatePath(`/organisations/${result.organisation_slug}/management`);
+  redirect(`/organisations/${result.organisation_slug}/leagues/${result.season_slug}/competitions/${result.competition_slug}?saved=1`);
 }
 
 export async function updateCompetition(_previousState: CompetitionFormState, formData: FormData): Promise<CompetitionFormState> {
