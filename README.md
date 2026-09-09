@@ -233,6 +233,19 @@ files in order:
 No existing SQL needs rerunning on an up-to-date installation. Both new files are
 additive and rerunnable; existing Competitions remain unlinked with unchanged IDs,
 configuration and participation. Run this upgrade last if reapplying earlier SQL.
+
+### Concurrent Shooting backend foundation (Stage 1)
+
+After all existing Competition, score, Series, and Average migrations through
+`database/competition-averages-stage-3.sql`, run
+[`database/concurrent-shooting.sql`](database/concurrent-shooting.sql). It adds
+opt-in Organisation/Season-scoped groups, explicit physical Round mappings,
+strict server-derived Course-of-Fire signatures, lifecycle guards, source
+association/version fields, and generic append-only score audit storage. It
+creates no links and does not change existing score entry or Results.
+
+See [the Concurrent Shooting architecture and deployment boundary](database/CONCURRENT-SHOOTING.md).
+Run `npm run test:concurrent` for its disposable PostgreSQL regression suite.
 No reset, reseed, name-based association or live database application is automated.
 
 This adds strict organisation-scoped Series identity, atomic first-draft and
@@ -465,7 +478,8 @@ and `git diff --check`.
 Countback and later tie-break criteria are intentionally deferred: the repository
 does not define them precisely. Also deferred: Best N Average, Round Robin, Gun
 Score standings, promotion/relegation, Starting Average, payments, Concurrent
-Shooting, organisation-wide result search, and live push updates to open Results.
+Shooting score orchestration, organisation-wide result search, and live push
+updates to open Results.
 
 ## Club competition entries
 
