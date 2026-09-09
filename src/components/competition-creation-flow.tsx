@@ -10,6 +10,10 @@ import {
   type CompetitionSeriesCreationOption,
 } from "@/lib/competition-series-types";
 import type { LeagueSeason } from "@/lib/league-seasons";
+import type {
+  AverageConfiguration,
+  SeriesAverageDefault,
+} from "@/lib/competition-average-types";
 
 const modes: Array<{
   value: CompetitionCreationMode;
@@ -52,10 +56,14 @@ export function CompetitionCreationFlow({
   organisation,
   season,
   seriesOptions,
+  averageConfiguration,
+  seriesAverageDefaults,
 }: {
   organisation: { id: number; name: string; slug: string };
   season: LeagueSeason;
   seriesOptions: CompetitionSeriesCreationOption[];
+  averageConfiguration: AverageConfiguration;
+  seriesAverageDefaults: SeriesAverageDefault[];
 }) {
   const [mode, setMode] = useState<CompetitionCreationMode | null>(null);
   const [selectedSeriesId, setSelectedSeriesId] = useState("");
@@ -79,6 +87,9 @@ export function CompetitionCreationFlow({
   ) ?? null;
   const recommendedSource = selectedSeries?.sources.find(
     (source) => source.metadata.id === selectedSeries.sourceInfo.recommended_source_id,
+  ) ?? null;
+  const selectedAverageDefault = seriesAverageDefaults.find(
+    (item) => item.competition_series_id === selectedSeries?.series.id,
   ) ?? null;
 
   function chooseMode(nextMode: CompetitionCreationMode) {
@@ -111,8 +122,8 @@ export function CompetitionCreationFlow({
       <button type="button" onClick={() => setMode(null)} className="min-h-10 rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle">Change</button>
     </div>
 
-    {mode === "new_series" ? <CompetitionForm organisation={organisation} season={season} creationMode="new_series" /> : null}
-    {mode === "one_off" ? <CompetitionForm organisation={organisation} season={season} creationMode="one_off" /> : null}
+    {mode === "new_series" ? <CompetitionForm organisation={organisation} season={season} creationMode="new_series" averageConfiguration={averageConfiguration} /> : null}
+    {mode === "one_off" ? <CompetitionForm organisation={organisation} season={season} creationMode="one_off" averageConfiguration={averageConfiguration} /> : null}
 
     {mode === "continue_series" ? <div className="space-y-6">
       {availableSeries.length ? <div className="max-w-xl"><label htmlFor="series-choice" className="text-sm font-semibold text-foreground">Active Series</label><select id="series-choice" value={selectedSeriesId} onChange={(event) => chooseSeries(event.target.value)} className="mt-2 min-h-12 w-full rounded-xl border border-border bg-surface px-4 text-sm text-foreground outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10"><option value="">Choose a Series</option>{availableSeries.map((option) => <option key={option.series.id} value={option.series.id}>{option.series.name}</option>)}</select></div> : <p className="rounded-xl border border-dashed border-border p-5 text-sm text-muted-foreground">{seriesOptions.length ? "Every active Series already has a Competition in this Season." : "There are no active Competition Series to continue. Create a new Series instead."}</p>}
@@ -145,6 +156,7 @@ export function CompetitionCreationFlow({
           custom_starts_at: null,
         }}
         scoreComponents={selectedSeries.components}
+        inheritedAverageDefault={selectedAverageDefault}
       /> : null}
 
       {selectedSeries && !selectedSource && selectedSeries.sources.length === 0 ? <p className="rounded-xl border border-warning/20 bg-warning-subtle px-4 py-3 text-sm text-warning">This Series has no eligible configuration source edition.</p> : null}

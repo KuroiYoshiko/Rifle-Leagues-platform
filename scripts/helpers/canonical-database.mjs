@@ -9,6 +9,7 @@ export async function sqlFile(name) {
 export async function installCanonicalDatabase(db, { competitionSeries = true } = {}) {
   await db.exec(`
     create role anon; create role authenticated; create role service_role;
+    set timezone = 'UTC';
     create schema auth;
     grant usage on schema public,auth to anon,authenticated;
     create table auth.users(id uuid primary key, raw_user_meta_data jsonb default '{}', created_at timestamptz default now());
@@ -31,6 +32,12 @@ export async function installCanonicalDatabase(db, { competitionSeries = true } 
       "competition-series-stage-2-management",
       "competition-series-v1-identity-without-discipline",
       "competition-series-one-edition-per-season",
+      "competition-averages",
+      "competition-average-series-defaults",
+      "competition-averages-stage-2a",
+      "competition-averages-stage-2b",
+      "competition-averages-optional-null",
+      "competition-averages-stage-3",
     ] : []),
   ]) {
     try { await db.exec(await sqlFile(name)); }

@@ -7,6 +7,8 @@ export type AggregateParticipant = {
   first_name: string | null;
   last_name: string | null;
   slot_number: number;
+  running_average?: number | null;
+  starting_average?: number | null;
   gun_total?: number | null;
   x_total?: number | null;
   rounds?: AggregateParticipantRoundCell[];

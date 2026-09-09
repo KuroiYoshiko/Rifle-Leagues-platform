@@ -4,12 +4,35 @@ import { ParticipantBreakdown } from "@/components/competition-aggregate-results
 import type { CompetitionRoundRobinResults, RoundRobinEntrant } from "@/lib/competition-round-robin-results";
 
 const formatNumber = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 });
+const formatAverage = new Intl.NumberFormat("en-GB", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 const date = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", timeZone: "UTC" });
 const number = (value: number | null | undefined) => value == null ? "—" : formatNumber.format(value);
 function name(entrant: RoundRobinEntrant) {
   return entrant.entrant_format === "individual"
     ? [entrant.participants[0]?.first_name?.trim(), entrant.participants[0]?.last_name?.trim()].filter(Boolean).join(" ") || "Shooter"
     : entrant.entrant_label;
+}
+
+function individualAverageSummary(entrant: RoundRobinEntrant) {
+  const participant = entrant.participants[0];
+  if (!participant) return null;
+  const average = (value: number | null | undefined) =>
+    value == null ? "—" : formatAverage.format(value);
+
+  return (
+    <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
+      {Object.hasOwn(participant, "starting_average") ? (
+        <>
+          S/Av {average(participant.starting_average)}{" "}
+          <span aria-hidden="true">·</span>{" "}
+        </>
+      ) : null}
+      R/Av {average(participant.running_average)}
+    </span>
+  );
 }
 
 const labelKey = (value: string) => value.normalize("NFKC").trim().replace(/\s+/g, " ").toLocaleLowerCase("en-GB");
@@ -97,7 +120,7 @@ export function CompetitionRoundRobinResultsTable({ data }: {data: CompetitionRo
           <tbody>{group.entrants.map(entrant => <Fragment key={entrant.entrant_id}>
             <tr data-entrant-row={entrant.entrant_id} className="[&:has(details[open])+tr]:table-row">
               <th scope="row" className="sticky left-0 z-10 border-b border-r border-border bg-surface px-3 py-3 text-left align-top font-normal">
-                <div className="flex w-40 gap-2 sm:w-56"><span className="min-w-6 text-xs text-muted-foreground">{data.released_round_count ? `${entrant.position}${entrant.tied ? "=" : ""}` : "—"}</span><div className="min-w-0 break-words"><span className="font-semibold">{name(entrant)}</span><span className="mt-1 block text-xs text-muted-foreground">{entrant.club_name}</span>
+                <div className="flex w-40 gap-2 sm:w-56"><span className="min-w-6 text-xs text-muted-foreground">{data.released_round_count ? `${entrant.position}${entrant.tied ? "=" : ""}` : "—"}</span><div className="min-w-0 break-words"><span className="font-semibold">{name(entrant)}</span><span className="mt-1 block text-xs text-muted-foreground">{entrant.club_name}</span>{entrant.entrant_format === "individual" ? individualAverageSummary(entrant) : null}
                   {entrant.entrant_format !== "individual" ? <details className="mt-1">
                     <summary aria-controls={`rr-participants-${group.id}-${entrant.entrant_id}`} className="min-h-11 cursor-pointer content-center rounded py-2 text-xs font-semibold text-brand-strong outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand">
                       Participants <span className="sr-only">for {entrant.entrant_label}, {entrant.club_name}</span>

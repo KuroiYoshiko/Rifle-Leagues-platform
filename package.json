@@ -14,6 +14,7 @@
     "test:saved-results": "node --test scripts/test-saved-public-results.mjs",
     "test:club-operations": "node --test scripts/test-club-operational-summaries.mjs",
     "test:series": "node --test scripts/test-competition-series.mjs",
+    "test:averages": "node --test scripts/test-competition-averages.mjs scripts/test-development-averages-fixture.mjs scripts/test-running-averages.mjs",
     "test:results": "npm run test:aggregate && npm run test:gun-score && npm run test:round-robin && npm run test:public-results && npm run test:saved-results"
   },
   "dependencies": {

@@ -10,6 +10,10 @@ import {
 import { getCompetitionAggregateResults } from "@/lib/competition-aggregate-results";
 import { getCompetitionGunScoreResults } from "@/lib/competition-gun-score-results";
 import { getCompetitionRoundRobinResults } from "@/lib/competition-round-robin-results";
+import {
+  addAveragesToCompetitionResults,
+  getCompetitionResultAverages,
+} from "@/lib/competition-result-averages";
 import { CompetitionRoundRobinResultsTable } from "@/components/competition-round-robin-results";
 import { CompetitionLifecycleActions } from "@/components/competition-lifecycle-actions";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
@@ -109,7 +113,7 @@ export default async function CompetitionDetailPage({
     competitionPublished: competition.status === "published",
     hasDivisionManagement: false,
   });
-  const [rounds, scoreComponents, entryContexts, divisionManagement, publishedDivisions, lifecycleState, aggregateResults, gunScoreResults, roundRobinResults] = await Promise.all([
+  const [rounds, scoreComponents, entryContexts, divisionManagement, publishedDivisions, lifecycleState, aggregateResults, gunScoreResults, roundRobinResults, resultAverages] = await Promise.all([
     viewerId
       ? getCompetitionRounds(competition.id)
       : Promise.resolve(publicCatalog?.rounds ?? []),
@@ -145,7 +149,22 @@ export default async function CompetitionDetailPage({
     competition.status === "published" && competition.ranking_method === "round_robin"
       ? getCompetitionRoundRobinResults(organisation.id, season.id, competition.id)
       : Promise.resolve(null),
+    competition.status === "published" && ["aggregate", "gun_score", "round_robin"].includes(competition.ranking_method)
+      ? getCompetitionResultAverages(organisation.id, season.id, competition.id)
+      : Promise.resolve(null),
   ]);
+  const aggregateResultsWithAverages = addAveragesToCompetitionResults(
+    aggregateResults,
+    resultAverages,
+  );
+  const gunScoreResultsWithAverages = addAveragesToCompetitionResults(
+    gunScoreResults,
+    resultAverages,
+  );
+  const roundRobinResultsWithAverages = addAveragesToCompetitionResults(
+    roundRobinResults,
+    resultAverages,
+  );
   const capabilities = getCompetitionViewerCapabilities({
     isAuthenticated,
     isOwner,
@@ -209,7 +228,7 @@ export default async function CompetitionDetailPage({
   }
   if (fee) summaryItems.push(fee);
   const resultsDuplicateDivisionRoster =
-    aggregateResults?.status === "ready" || gunScoreResults?.status === "ready" || roundRobinResults?.status === "ready";
+    aggregateResultsWithAverages?.status === "ready" || gunScoreResultsWithAverages?.status === "ready" || roundRobinResultsWithAverages?.status === "ready";
 
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="leagues">
@@ -328,12 +347,12 @@ export default async function CompetitionDetailPage({
       {competition.status === "published" ? (
         <section id="results" className="mt-8 min-w-0 scroll-mt-24" aria-label="Competition results">
           <SectionHeader title="Results" />
-          {aggregateResults ? (
-            <CompetitionAggregateResultsTable data={aggregateResults} />
-          ) : gunScoreResults ? (
-            <CompetitionGunScoreResultsTable data={gunScoreResults} />
-          ) : roundRobinResults ? (
-            <CompetitionRoundRobinResultsTable data={roundRobinResults} />
+          {aggregateResultsWithAverages ? (
+            <CompetitionAggregateResultsTable data={aggregateResultsWithAverages} />
+          ) : gunScoreResultsWithAverages ? (
+            <CompetitionGunScoreResultsTable data={gunScoreResultsWithAverages} />
+          ) : roundRobinResultsWithAverages ? (
+            <CompetitionRoundRobinResultsTable data={roundRobinResultsWithAverages} />
           ) : (
             <Card className="p-5 text-sm text-muted-foreground sm:p-6">
               {competition.ranking_method === "aggregate"
@@ -359,18 +378,38 @@ export default async function CompetitionDetailPage({
         />
       ) : null}
 
-      {capabilities.showCompetitionManagement ? (
+      {managementContext ? (
         <section className="mt-8" aria-labelledby="competition-management-heading">
           <SectionHeader
             title="Competition management"
             description="Organisation staff tools"
           />
           <Card className="divide-y divide-border overflow-hidden">
-            {managementContext && competition.status === "published" ? (
+            {managementContext ? (
               <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                 <div className="min-w-0">
                   <h3
                     id="competition-management-heading"
+                    className="text-sm font-semibold text-foreground"
+                  >
+                    Starting averages
+                  </h3>
+                  <p className="mt-1 text-sm text-muted-foreground">
+                    Configure average history, preview provisional S/Av, and enter manual fallbacks.
+                  </p>
+                </div>
+                <Link
+                  href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/averages`}
+                  className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle"
+                >
+                  Manage Starting Averages
+                </Link>
+              </div>
+            ) : null}
+            {managementContext && competition.status === "published" ? (
+              <div className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+                <div className="min-w-0">
+                  <h3
                     className="text-sm font-semibold text-foreground"
                   >
                     Round score entry
@@ -387,7 +426,7 @@ export default async function CompetitionDetailPage({
                 </Link>
               </div>
             ) : (
-              <h3 id="competition-management-heading" className="sr-only">
+              <h3 className="sr-only">
                 Competition entry and division management
               </h3>
             )}
