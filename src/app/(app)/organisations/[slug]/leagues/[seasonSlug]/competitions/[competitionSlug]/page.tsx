@@ -10,6 +10,10 @@ import {
 import { getCompetitionAggregateResults } from "@/lib/competition-aggregate-results";
 import { getCompetitionGunScoreResults } from "@/lib/competition-gun-score-results";
 import { getCompetitionRoundRobinResults } from "@/lib/competition-round-robin-results";
+import {
+  addAveragesToCompetitionResults,
+  getCompetitionResultAverages,
+} from "@/lib/competition-result-averages";
 import { CompetitionRoundRobinResultsTable } from "@/components/competition-round-robin-results";
 import { CompetitionLifecycleActions } from "@/components/competition-lifecycle-actions";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
@@ -109,7 +113,7 @@ export default async function CompetitionDetailPage({
     competitionPublished: competition.status === "published",
     hasDivisionManagement: false,
   });
-  const [rounds, scoreComponents, entryContexts, divisionManagement, publishedDivisions, lifecycleState, aggregateResults, gunScoreResults, roundRobinResults] = await Promise.all([
+  const [rounds, scoreComponents, entryContexts, divisionManagement, publishedDivisions, lifecycleState, aggregateResults, gunScoreResults, roundRobinResults, resultAverages] = await Promise.all([
     viewerId
       ? getCompetitionRounds(competition.id)
       : Promise.resolve(publicCatalog?.rounds ?? []),
@@ -145,7 +149,22 @@ export default async function CompetitionDetailPage({
     competition.status === "published" && competition.ranking_method === "round_robin"
       ? getCompetitionRoundRobinResults(organisation.id, season.id, competition.id)
       : Promise.resolve(null),
+    competition.status === "published" && ["aggregate", "gun_score", "round_robin"].includes(competition.ranking_method)
+      ? getCompetitionResultAverages(organisation.id, season.id, competition.id)
+      : Promise.resolve(null),
   ]);
+  const aggregateResultsWithAverages = addAveragesToCompetitionResults(
+    aggregateResults,
+    resultAverages,
+  );
+  const gunScoreResultsWithAverages = addAveragesToCompetitionResults(
+    gunScoreResults,
+    resultAverages,
+  );
+  const roundRobinResultsWithAverages = addAveragesToCompetitionResults(
+    roundRobinResults,
+    resultAverages,
+  );
   const capabilities = getCompetitionViewerCapabilities({
     isAuthenticated,
     isOwner,
@@ -209,7 +228,7 @@ export default async function CompetitionDetailPage({
   }
   if (fee) summaryItems.push(fee);
   const resultsDuplicateDivisionRoster =
-    aggregateResults?.status === "ready" || gunScoreResults?.status === "ready" || roundRobinResults?.status === "ready";
+    aggregateResultsWithAverages?.status === "ready" || gunScoreResultsWithAverages?.status === "ready" || roundRobinResultsWithAverages?.status === "ready";
 
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="leagues">
@@ -328,12 +347,12 @@ export default async function CompetitionDetailPage({
       {competition.status === "published" ? (
         <section id="results" className="mt-8 min-w-0 scroll-mt-24" aria-label="Competition results">
           <SectionHeader title="Results" />
-          {aggregateResults ? (
-            <CompetitionAggregateResultsTable data={aggregateResults} />
-          ) : gunScoreResults ? (
-            <CompetitionGunScoreResultsTable data={gunScoreResults} />
-          ) : roundRobinResults ? (
-            <CompetitionRoundRobinResultsTable data={roundRobinResults} />
+          {aggregateResultsWithAverages ? (
+            <CompetitionAggregateResultsTable data={aggregateResultsWithAverages} />
+          ) : gunScoreResultsWithAverages ? (
+            <CompetitionGunScoreResultsTable data={gunScoreResultsWithAverages} />
+          ) : roundRobinResultsWithAverages ? (
+            <CompetitionRoundRobinResultsTable data={roundRobinResultsWithAverages} />
           ) : (
             <Card className="p-5 text-sm text-muted-foreground sm:p-6">
               {competition.ranking_method === "aggregate"

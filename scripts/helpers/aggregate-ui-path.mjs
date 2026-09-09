@@ -27,12 +27,14 @@ export async function loadModule(relativePath, dependencies = {}) {
 
 export async function renderAggregateResultsRoute({
   readRpc,
+  readAveragesRpc = async () => ({ participants: [] }),
   competition,
   organisationId = 1,
   seasonId = 1,
   viewerId = "00000000-0000-0000-0000-000000000001",
 }) {
   const calls = [];
+  const averageCalls = [];
   const rpcName = competition.ranking_method === "gun_score"
     ? "get_competition_gun_score_results"
     : competition.ranking_method === "round_robin"
@@ -46,7 +48,6 @@ export async function renderAggregateResultsRoute({
   // No network: the real SDK's HTTP request is dispatched to isolated PostgreSQL.
   globalThis.fetch = async (input, init) => {
     const request = new Request(input, init);
-    assert.equal(request.url, `https://aggregate-test.invalid/rest/v1/rpc/${rpcName}`);
     assert.equal(request.method, "POST");
     assert.equal(request.headers.get("content-profile"), "public");
     const parameters = await request.json();
@@ -55,6 +56,12 @@ export async function renderAggregateResultsRoute({
       p_league_season_id: seasonId,
       p_competition_id: competition.id,
     });
+    if (request.url.endsWith("/rpc/get_competition_result_averages")) {
+      const payload = await readAveragesRpc(parameters);
+      averageCalls.push({ url: request.url, parameters, payload: structuredClone(payload) });
+      return new Response(JSON.stringify(payload), { headers: { "Content-Type": "application/json" } });
+    }
+    assert.equal(request.url, `https://aggregate-test.invalid/rest/v1/rpc/${rpcName}`);
     const payload = await readRpc(parameters);
     calls.push({ url: request.url, parameters, payload: structuredClone(payload) });
     return new Response(JSON.stringify(payload), { headers: { "Content-Type": "application/json" } });
@@ -75,6 +82,9 @@ export async function renderAggregateResultsRoute({
       "@/components/ui": ui,
     });
     const roundRobinLoader = await loadModule("src/lib/competition-round-robin-results.ts", {
+      "@/lib/supabase/server": serverClient,
+    });
+    const resultAveragesLoader = await loadModule("src/lib/competition-result-averages.ts", {
       "@/lib/supabase/server": serverClient,
     });
     const roundRobinTable = await loadModule("src/components/competition-round-robin-results.tsx", {
@@ -102,6 +112,7 @@ export async function renderAggregateResultsRoute({
       "@/lib/competition-aggregate-results": resultsLoader,
       "@/lib/competition-gun-score-results": gunScoreResultsLoader,
       "@/lib/competition-round-robin-results": roundRobinLoader,
+      "@/lib/competition-result-averages": resultAveragesLoader,
       "@/lib/competition-divisions": {
         getCompetitionDivisionManagement: async () => null,
         getPublishedCompetitionDivisions: async () => null,
@@ -159,7 +170,8 @@ export async function renderAggregateResultsRoute({
     });
     const html = renderToStaticMarkup(element);
     assert.equal(calls.length, 1, "Competition page must use one Results RPC");
-    return { html, call: calls[0] };
+    assert.equal(averageCalls.length, 1, "Competition page must use one set-based result-averages RPC");
+    return { html, call: calls[0], averageCall: averageCalls[0] };
   } finally {
     globalThis.fetch = originalFetch;
     envKeys.forEach((key, index) => {

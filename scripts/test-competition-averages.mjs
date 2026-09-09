@@ -992,6 +992,7 @@ test("all additive Average SQL files rerun cleanly over the canonical deployed c
     await isolated.exec(await sqlFile("competition-averages-stage-2a"));
     await isolated.exec(await sqlFile("competition-averages-stage-2b"));
     await isolated.exec(await sqlFile("competition-averages-optional-null"));
+    await isolated.exec(await sqlFile("competition-averages-stage-3"));
     assert.equal((await isolated.query(`select count(*)::int n from pg_catalog.pg_class
       where relname in ('average_contexts','average_policy_versions',
         'competition_participant_starting_averages','competition_series_average_defaults')`)).rows[0].n, 4);

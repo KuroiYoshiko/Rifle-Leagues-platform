@@ -19,6 +19,10 @@ type ResultsRoundCell = AggregateRoundCell | GunScoreRoundCell;
 type ResultsData = CompetitionAggregateResults | CompetitionGunScoreResults;
 
 const numberFormatter = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 });
+const averageFormatter = new Intl.NumberFormat("en-GB", {
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
 const compactRoundDateFormatter = new Intl.DateTimeFormat("en-GB", {
   day: "numeric", month: "short", timeZone: "UTC",
 });
@@ -42,6 +46,24 @@ function number(value: number | null | undefined) {
 function participantName(participant: AggregateParticipant) {
   return [participant.first_name, participant.last_name].filter(Boolean).join(" ") ||
     `Shooter ${participant.slot_number}`;
+}
+
+function AverageSummary({ participant }: { participant: AggregateParticipant }) {
+  const hasStartingAverage = Object.hasOwn(participant, "starting_average");
+  const average = (value: number | null | undefined) =>
+    value == null ? "—" : averageFormatter.format(value);
+
+  return (
+    <span className="mt-1 block text-[11px] font-normal text-muted-foreground">
+      {hasStartingAverage ? (
+        <>
+          S/Av {average(participant.starting_average)}{" "}
+          <span aria-hidden="true">·</span>{" "}
+        </>
+      ) : null}
+      R/Av {average(participant.running_average)}
+    </span>
+  );
 }
 
 function RoundCell({ cell, usesX, rankingMethod }: {
@@ -138,6 +160,7 @@ export function ParticipantBreakdown({ entrant, rounds, usesX, rankingMethod, di
                   <tr key={participant.slot_number} data-participant-row={participant.slot_number}>
                     <th scope="row" className="sticky left-0 z-10 border-b border-border bg-surface px-2 py-2 text-left font-medium text-foreground">
                       {participantName(participant)}
+                      <AverageSummary participant={participant} />
                     </th>
                     {rounds.map((round) => (
                       <td key={round.id} data-participant-round={round.id} className="border-b border-border px-2 py-2 text-center">
@@ -234,6 +257,9 @@ function CompetitionResultsTable({ data, rankingMethod }: {
                               {entrant.entrant_format === "individual" ? (entrant.participants[0] ? participantName(entrant.participants[0]) : "Shooter") : entrant.entrant_label}
                             </span>
                             <p className="mt-1 text-xs text-muted-foreground">{entrant.club_name}</p>
+                            {entrant.entrant_format === "individual" && entrant.participants[0] ? (
+                              <AverageSummary participant={entrant.participants[0]} />
+                            ) : null}
                           </div>
                         </div>
                       </th>

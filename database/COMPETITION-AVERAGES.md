@@ -86,6 +86,29 @@ Returning published divisions to draft changes only the division config. It neve
 
 When a Competition will not publish divisions, the staff-only `finalise_competition_starting_averages` RPC provides the explicit freeze point. It is available only while no division config exists, requires a configured complete participant S/Av set, and uses the same atomic private freeze primitive without creating or altering divisions.
 
+## Stage 3 Running Average in Results
+
+Starting Average and Running Average have deliberately separate lifecycles:
+
+- S/Av is the frozen historical snapshot the participant entered this Competition with. It may validly be null, and current-Competition scores never update it.
+- R/Av is the live unrounded database-numeric arithmetic mean of that participant's qualifying canonical achieved-score totals in this Competition. It is never persisted, manually entered, frozen, or copied into S/Av.
+
+For participant `p`, with the set `Q(p)` of qualifying score sources, the exact rule is:
+
+`R/Av(p) = SUM(q.achieved_score) / COUNT(Q(p))`
+
+where each `q.achieved_score` is the sum of all canonical `shooting_score_values.achieved_score` slots for one complete participant/Round source. PostgreSQL `avg(numeric)` performs the calculation without UI rounding. The Results UI displays two decimal places; when `Q(p)` is empty the database returns null and the UI displays `R/Av —`, never zero.
+
+A source qualifies only when it belongs to the exact published Competition and submitted participant, is linked to an eligible Competition Round, the current UTC date is strictly after that Round End, and every configured set/component slot is present. Missing usages, blank/missing values, NSR, incomplete/partial Course-of-Fire entry, and unreleased/future Rounds are excluded. Achieved zero is complete and included. The canonical score-source uniqueness rules and the projection's participant/Round/source partition prevent a reused physical source from being counted twice in one result slot.
+
+Points-dropped entry needs no separate Running Average arithmetic: score entry has already converted it to canonical achieved score, so (for example) 4 dropped Ex100 contributes 96, not 4.
+
+`get_competition_result_averages` is a narrow set-based released-results projection used alongside Aggregate, Gun Score, and Round Robin Results. It does not change their position, tie, points, gun-score, match-point, or division mathematics. Individual rows show a compact R/Av under the shooter name. Pair/Team rows show each participant's R/Av in the existing participant breakdown; there is no entrant-level Pair/Team R/Av.
+
+Anonymous and ordinary authenticated readers receive R/Av only, derived from the same released source basis as public Results. An authenticated active Organisation owner/manager additionally receives the already staff-only frozen S/Av in that exact context. The projection does not broaden direct score, snapshot, or provenance table access and cannot expose an entered unreleased score through R/Av.
+
+Because R/Av is derived on every request, a legitimate correction to a released canonical score is reflected immediately. The correction does not mutate frozen S/Av, its provenance, or division finalisation state.
+
 ## Series defaults
 
 `competition_series_average_defaults` holds an optional Context and Policy version pair. `create_competition_series_with_average_defaults` applies them to the first edition. Existing `continue_competition_series` attaches the Series after creating the draft; a database trigger copies the then-current defaults to a new authoritative Competition binding with `contributes_to_history = true`.
@@ -102,9 +125,9 @@ Stage 2A adds two narrow RPCs. `create_competition_with_average_settings` compos
 
 ## Security and deferred scope
 
-All public management tables have RLS. Direct anonymous/authenticated writes are revoked. Contextual active Organisation owners and managers use narrow `SECURITY DEFINER` RPCs with `search_path = ''`; `user_organisations` is never used for authorisation. Private derivation functions are not executable by API roles. Starting Average and provenance are management-only and are not added to public Results.
+All public management tables have RLS. Direct anonymous/authenticated writes are revoked. Contextual active Organisation owners and managers use narrow `SECURITY DEFINER` RPCs with `search_path = ''`; `user_organisations` is never used for authorisation. Private derivation functions are not executable by API roles. Starting Average and provenance remain management-only; the Stage 3 Results projection includes S/Av only after the same contextual staff check and only when the snapshot is frozen.
 
-The application does not persist or publicly expose Running Average. R/Av remains a live derived value for complete released scores in the current Competition and will reuse the same canonical completeness/release/source-deduplication rules in a later stage. Stage 2B also does not implement persistent Pair/Team averages, Concurrent Shooting, substitutions, promotion/relegation, Results integration, or `ranking_method = best_n_average` standings. Competition Best N standings remain separate from historical Average Policy.
+The application does not persist Running Average. Stage 3 also does not implement persistent Pair/Team averages, entrant-level Pair/Team R/Av, Concurrent Shooting, substitutions, promotion/relegation, Results ranking changes, or `ranking_method = best_n_average` standings. Competition Best N standings remain separate from historical Average Policy.
 
 ## Existing database deployment order
 
@@ -114,5 +137,7 @@ Run these files after all existing Competition Series SQL:
 2. `database/competition-average-series-defaults.sql`
 3. `database/competition-averages-stage-2a.sql`
 4. `database/competition-averages-stage-2b.sql`
+5. `database/competition-averages-optional-null.sql`
+6. `database/competition-averages-stage-3.sql`
 
-For the already-deployed Stage 1 + Stage 2A database, run only file 4. All four files are additive and rerunnable. No reset or destructive rewrite of deployed migration history is required.
+For a database where Stage 1, Stage 2A, Stage 2B, and the optional-null upgrade are already deployed, run only file 6. All six files are additive and rerunnable. No reset or destructive rewrite of deployed migration history is required.
