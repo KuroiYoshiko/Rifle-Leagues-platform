@@ -39,6 +39,7 @@ function errorMessage(error: { code?: string; message?: string }, fallback: stri
 
 function refresh(organisationSlug: string) {
   revalidatePath(`/organisations/${organisationSlug}/management`);
+  revalidatePath(`/organisations/${organisationSlug}/management/series`);
   revalidatePath(`/organisations/${organisationSlug}/leagues`, "layout");
 }
 

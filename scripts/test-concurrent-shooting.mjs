@@ -14,7 +14,7 @@ const actors = Object.fromEntries(
   ]),
 );
 
-before(async () => installCanonicalDatabase(db, { concurrentShootingStage2: true }));
+before(async () => installCanonicalDatabase(db, { concurrentShootingStage3a: true }));
 after(async () => db.close());
 beforeEach(async () => {
   await db.exec(`begin;
@@ -1066,10 +1066,13 @@ test("the additive migration is rerunnable", async () => {
     await installCanonicalDatabase(rerun);
     const sql = await sqlFile("concurrent-shooting");
     const stage2 = await sqlFile("concurrent-shooting-stage-2");
+    const stage3a = await sqlFile("concurrent-shooting-stage-3a");
     await rerun.exec(sql);
     await rerun.exec(sql);
     await rerun.exec(stage2);
     await rerun.exec(stage2);
+    await rerun.exec(stage3a);
+    await rerun.exec(stage3a);
     assert.equal((await rerun.query(
       "select count(*)::int n from information_schema.tables where table_schema='public' and table_name like 'concurrent_shooting%'",
     )).rows[0].n, 4);

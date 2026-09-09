@@ -10,6 +10,7 @@ export async function installCanonicalDatabase(db, {
   competitionSeries = true,
   concurrentShooting = false,
   concurrentShootingStage2 = false,
+  concurrentShootingStage3a = false,
 } = {}) {
   await db.exec(`
     create role anon; create role authenticated; create role service_role;
@@ -43,10 +44,13 @@ export async function installCanonicalDatabase(db, {
       "competition-averages-optional-null",
       "competition-averages-stage-3",
     ] : []),
-    ...(concurrentShooting || concurrentShootingStage2
+    ...(concurrentShooting || concurrentShootingStage2 || concurrentShootingStage3a
       ? ["concurrent-shooting"]
       : []),
-    ...(concurrentShootingStage2 ? ["concurrent-shooting-stage-2"] : []),
+    ...(concurrentShootingStage2 || concurrentShootingStage3a
+      ? ["concurrent-shooting-stage-2"]
+      : []),
+    ...(concurrentShootingStage3a ? ["concurrent-shooting-stage-3a"] : []),
   ]) {
     try { await db.exec(await sqlFile(name)); }
     catch (error) { throw new Error(`Schema ${name}: ${error.message}`, { cause: error }); }
