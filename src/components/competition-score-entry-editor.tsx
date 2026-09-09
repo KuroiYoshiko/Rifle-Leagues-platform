@@ -23,6 +23,7 @@ type EditableScoreValue = {
 
 type EditableParticipant = {
   participant_id: number;
+  source_version: number | null;
   entrant_id: number;
   entrant_position: number;
   club_id: number;
@@ -272,6 +273,7 @@ export function CompetitionScoreEntryEditor({
         clubId,
         scores: participants.map((participant) => ({
           participant_id: participant.participant_id,
+          source_version: participant.source_version,
           values: participant.values.map((value) => ({
             set_number: value.set_number,
             component_position: value.component_position,
@@ -281,6 +283,16 @@ export function CompetitionScoreEntryEditor({
           })),
         })),
       });
+      if (result.status === "success" && result.sourceVersions) {
+        setParticipants((current) =>
+          current.map((participant) => ({
+            ...participant,
+            source_version:
+              result.sourceVersions?.[String(participant.participant_id)] ?? null,
+          })),
+        );
+        router.refresh();
+      }
       setActionState(result);
     });
   }

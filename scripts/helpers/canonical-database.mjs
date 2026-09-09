@@ -9,6 +9,7 @@ export async function sqlFile(name) {
 export async function installCanonicalDatabase(db, {
   competitionSeries = true,
   concurrentShooting = false,
+  concurrentShootingStage2 = false,
 } = {}) {
   await db.exec(`
     create role anon; create role authenticated; create role service_role;
@@ -42,7 +43,10 @@ export async function installCanonicalDatabase(db, {
       "competition-averages-optional-null",
       "competition-averages-stage-3",
     ] : []),
-    ...(concurrentShooting ? ["concurrent-shooting"] : []),
+    ...(concurrentShooting || concurrentShootingStage2
+      ? ["concurrent-shooting"]
+      : []),
+    ...(concurrentShootingStage2 ? ["concurrent-shooting-stage-2"] : []),
   ]) {
     try { await db.exec(await sqlFile(name)); }
     catch (error) { throw new Error(`Schema ${name}: ${error.message}`, { cause: error }); }

@@ -6,6 +6,7 @@ import { createClient } from "@/lib/supabase/server";
 export type CompetitionScoreActionState = {
   status?: "success" | "error";
   message?: string;
+  sourceVersions?: Record<string, number | null>;
 };
 
 export type CompetitionScoreBatchInput = {
@@ -16,6 +17,7 @@ export type CompetitionScoreBatchInput = {
   clubId: number | null;
   scores: Array<{
     participant_id: number;
+    source_version?: number | null;
     values: Array<{
       set_number: number;
       component_position: number;
@@ -44,6 +46,9 @@ function validBatch(input: CompetitionScoreBatchInput) {
     input.scores.every(
       (score) =>
         positiveInteger(score?.participant_id) !== null &&
+        (score.source_version === undefined ||
+          score.source_version === null ||
+          positiveInteger(score.source_version) !== null) &&
         Array.isArray(score.values) &&
         score.values.length <= 2_000 &&
         score.values.every(
@@ -84,6 +89,15 @@ function scoreError(
     };
   }
 
+  if (code === "40001") {
+    return {
+      status: "error",
+      message:
+        databaseMessage ||
+        "This shared score changed in another editor. Refresh and try again.",
+    };
+  }
+
   if (["22023", "23503", "23505", "23514"].includes(code ?? "")) {
     return {
       status: "error",
@@ -116,7 +130,7 @@ export async function saveCompetitionRoundScores(
     return { status: "error", message: "Sign in again before saving scores." };
   }
 
-  const { error } = await supabase.rpc(
+  const { data, error } = await supabase.rpc(
     "save_individual_competition_round_scores",
     {
       p_organisation_id: input.organisationId,
@@ -130,11 +144,25 @@ export async function saveCompetitionRoundScores(
 
   if (error) return scoreError(error.code, error.message);
 
+  const result = data && typeof data === "object" && !Array.isArray(data)
+    ? (data as {
+        shared?: boolean;
+        shared_clear_count?: number;
+        source_versions?: Record<string, number | null>;
+      })
+    : {};
+
   revalidatePath("/organisations", "layout");
   revalidatePath("/clubs", "layout");
 
   return {
     status: "success",
-    message: "Round scores saved.",
+    message:
+      result.shared && (result.shared_clear_count ?? 0) > 0
+        ? "Shared physical score cleared across every linked Competition."
+        : result.shared
+          ? "Shared round scores saved across linked Competitions."
+          : "Round scores saved.",
+    sourceVersions: result.source_versions,
   };
 }
