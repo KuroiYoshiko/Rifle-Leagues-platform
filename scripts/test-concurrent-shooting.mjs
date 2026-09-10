@@ -1060,6 +1060,124 @@ test("one shared source is deduplicated within an Average Context and frozen S/A
     where starting_average_id=$1 order by id`, [before.id])).rows, provenanceBefore);
 });
 
+test("Stage 3A candidates are server-derived, Season-scoped, and explain unavailable Competitions", async () => {
+  const selected = await createCompetition({ name: "Selected published" });
+  const compatible = await createCompetition({ name: "Compatible published", entryFormat: "team" });
+  const incompatible = await createCompetition({
+    name: "Same Ex different shape",
+    components: [
+      { short_label: "P", maximum_score: 50, score_method: "points_scored" },
+      { short_label: "S", maximum_score: 50, score_method: "points_scored" },
+    ],
+  });
+  const grouped = await createCompetition({ name: "Already grouped" });
+  const otherSeason = await createCompetition({ season: 2, name: "Other Season" });
+  for (const competition of [selected, compatible, incompatible, grouped, otherSeason]) {
+    await publish(competition, { season: competition.id === otherSeason.id ? 2 : 1 });
+  }
+  const group = await createGroup("Candidate group");
+  await add(group, selected);
+  const otherGroup = await createGroup("Other group");
+  await add(otherGroup, grouped);
+
+  const candidates = (await db.query(
+    "select public.get_concurrent_shooting_competition_candidates(1,$1) data",
+    [group.id],
+  )).rows[0].data;
+  const byName = new Map(candidates.map((candidate) => [candidate.name, candidate]));
+  assert.equal(byName.get("Selected published").selected, true);
+  assert.equal(byName.get("Compatible published").selectable, true);
+  assert.equal(byName.get("Compatible published").entry_format, "team");
+  assert.equal(byName.get("Same Ex different shape").selectable, false);
+  assert.ok(byName.get("Same Ex different shape").compatibility_mismatches.includes("component_count"));
+  assert.equal(byName.get("Already grouped").selectable, false);
+  assert.equal(byName.get("Already grouped").existing_group_name, "Other group");
+  assert.equal(byName.has("Other Season"), false);
+
+  await actor("manager");
+  assert.ok(Array.isArray((await db.query(
+    "select public.get_concurrent_shooting_competition_candidates(1,$1) data",
+    [group.id],
+  )).rows[0].data));
+  await actor("normal");
+  await rejected(
+    "select public.get_concurrent_shooting_competition_candidates(1,$1)",
+    [group.id],
+    /active contextual Organisation author permission/i,
+  );
+});
+
+test("Stage 3A mapping setter is explicit and Competition summaries expose only configured membership", async () => {
+  const fixture = await prepareValidGroup({ formats: ["individual", "pairs"], rounds: [3, 2] });
+  const secondPhysical = await physicalRound(fixture.group, 2, "Second shared shoot");
+  const competitionASecond = await competitionRound(fixture.competitions[0], 2);
+  const competitionAFirst = await competitionRound(fixture.competitions[0], 1);
+  assert.equal((await admin(
+    "select count(*)::int n from concurrent_shooting_round_mappings where concurrent_shooting_round_id=$1",
+    [secondPhysical],
+  )).rows[0].n, 0, "equal Round numbers must never create mappings implicitly");
+
+  await db.query(
+    "select public.set_concurrent_shooting_round_mapping(1,$1,$2,$3,$4)",
+    [fixture.group.id, secondPhysical, fixture.competitions[0].id, competitionASecond],
+  );
+  await rejected(
+    "select public.set_concurrent_shooting_round_mapping(1,$1,$2,$3,$4)",
+    [fixture.group.id, secondPhysical, fixture.competitions[0].id, competitionAFirst],
+    /already mapped|duplicate key/i,
+  );
+  await db.query(
+    "select public.set_concurrent_shooting_round_mapping(1,$1,$2,$3,null)",
+    [fixture.group.id, secondPhysical, fixture.competitions[0].id],
+  );
+  assert.equal((await admin(
+    "select count(*)::int n from concurrent_shooting_round_mappings where concurrent_shooting_round_id=$1",
+    [secondPhysical],
+  )).rows[0].n, 0);
+
+  const summary = (await db.query(
+    "select public.get_competition_concurrent_shooting_summary(1,$1) data",
+    [fixture.competitions[0].id],
+  )).rows[0].data;
+  assert.equal(summary.group_name, "Concurrent group");
+  assert.equal(summary.status, "draft");
+  assert.equal(summary.shared_round_count, 1);
+  assert.deepEqual(summary.linked_competitions.map((item) => item.name), ["Competition 2"]);
+  const unrelated = await createCompetition({ name: "Independent Competition" });
+  assert.equal((await db.query(
+    "select public.get_competition_concurrent_shooting_summary(1,$1) data",
+    [unrelated.id],
+  )).rows[0].data, null);
+});
+
+test("Stage 3A lifecycle metadata mirrors safe cancellation rules", async () => {
+  const fixture = await prepareValidGroup();
+  let lifecycle = (await db.query(
+    "select public.get_concurrent_shooting_group_lifecycle(1,$1) data",
+    [fixture.group.id],
+  )).rows[0].data;
+  assert.deepEqual(lifecycle, {
+    can_cancel_activation: false,
+    cancel_block_reason: "not_active",
+    has_score_provenance: false,
+  });
+  for (const competition of fixture.competitions) await publish(competition);
+  await db.query("select public.activate_concurrent_shooting_group(1,$1)", [fixture.group.id]);
+  lifecycle = (await db.query(
+    "select public.get_concurrent_shooting_group_lifecycle(1,$1) data",
+    [fixture.group.id],
+  )).rows[0].data;
+  assert.equal(lifecycle.can_cancel_activation, true);
+  assert.equal(lifecycle.cancel_block_reason, null);
+  await admin("update league_seasons set starts_at=current_date where id=1");
+  lifecycle = (await db.query(
+    "select public.get_concurrent_shooting_group_lifecycle(1,$1) data",
+    [fixture.group.id],
+  )).rows[0].data;
+  assert.equal(lifecycle.can_cancel_activation, false);
+  assert.equal(lifecycle.cancel_block_reason, "competition_started");
+});
+
 test("the additive migration is rerunnable", async () => {
   const rerun = new PGlite();
   try {

@@ -17,10 +17,6 @@ import type {
   ConcurrentShootingWorkspace,
 } from "@/lib/concurrent-shooting";
 import type { LeagueSeason } from "@/lib/league-seasons";
-import {
-  getCompetitionEntryFormatLabel,
-  getCompetitionRankingMethodLabel,
-} from "@/lib/competitions";
 
 const initialState: ConcurrentShootingActionState = {};
 const fieldClass = "min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10 disabled:cursor-not-allowed disabled:opacity-60";
@@ -33,6 +29,17 @@ const activatedDateFormatter = new Intl.DateTimeFormat("en-GB", {
   year: "numeric",
   timeZone: "UTC",
 });
+
+function getCompetitionEntryFormatLabel(value: string) {
+  return value === "individual" ? "Individual" : value === "pairs" ? "Pairs" : "Team";
+}
+
+function getCompetitionRankingMethodLabel(value: string) {
+  if (value === "aggregate") return "Aggregate points";
+  if (value === "best_n_average") return "Best N rounds average";
+  if (value === "round_robin") return "Round robin";
+  return "Gun score";
+}
 
 function CommonFields({ organisation, groupId }: {
   organisation: { id: number; slug: string };
@@ -323,7 +330,10 @@ function MappingCards({ organisation, workspace, editable }: {
   </Card>)}</div>;
 }
 
-function Review({ workspace }: { workspace: ConcurrentShootingWorkspace }) {
+function Review({ workspace, seasonName }: {
+  workspace: ConcurrentShootingWorkspace;
+  seasonName: string;
+}) {
   const candidateById = new Map(workspace.candidates.map((candidate) => [candidate.competition_id, candidate]));
   const entryFormats = new Set(workspace.members.map((member) => member.entry_format));
   const rankingMethods = new Set(workspace.members.map((member) => candidateById.get(member.competition_id)?.ranking_method).filter(Boolean));
@@ -335,7 +345,14 @@ function Review({ workspace }: { workspace: ConcurrentShootingWorkspace }) {
       <div>
         <h3 className="font-semibold text-foreground">{workspace.group.name}</h3>
         <dl className="mt-4 space-y-3 text-sm">
-          <div><dt className="text-muted-foreground">Competitions</dt><dd className="mt-1 font-semibold text-foreground">{workspace.members.length} selected</dd></div>
+          <div><dt className="text-muted-foreground">Season</dt><dd className="mt-1 font-semibold text-foreground">{seasonName}</dd></div>
+          <div>
+            <dt className="text-muted-foreground">Competitions</dt>
+            <dd className="mt-1">
+              <span className="font-semibold text-foreground">{workspace.members.length} selected</span>
+              <ul className="mt-2 space-y-1 text-muted-foreground">{workspace.members.map((member) => <li key={member.competition_id}>✓ {member.name}</li>)}</ul>
+            </dd>
+          </div>
           <div><dt className="text-muted-foreground">Compatibility</dt><dd className={`mt-1 font-semibold ${compatible ? "text-success" : "text-warning"}`}>{compatible ? "✓ Course of Fire compatible" : "Review incompatible Competition settings"}</dd></div>
           <div><dt className="text-muted-foreground">Shared physical Rounds</dt><dd className="mt-1 font-semibold text-foreground">{workspace.physical_rounds.length} configured · {validPhysicalRounds} ready</dd></div>
         </dl>
@@ -372,6 +389,10 @@ export function ConcurrentShootingWorkspaceView({ organisation, seasonName, work
   const editable = workspace.group.status === "draft";
   const nextPosition = Math.max(0, ...workspace.physical_rounds.map((round) => round.position)) + 1;
   const cancellationNote = cancelExplanation(workspace.lifecycle);
+  const hasEligibleCompetition = workspace.candidates.some((candidate) => candidate.selected || candidate.selectable);
+  const displayedCandidates = editable
+    ? workspace.candidates
+    : workspace.candidates.filter((candidate) => candidate.selected);
   return <div className="space-y-10">
     <section aria-labelledby="concurrent-basic-heading">
       <SectionHeader title="1. Basic details" description={`Season: ${seasonName}`} />
@@ -387,7 +408,8 @@ export function ConcurrentShootingWorkspaceView({ organisation, seasonName, work
     <section aria-labelledby="concurrent-competitions-heading">
       <SectionHeader title="2. Select Competitions" description="At least two published Competitions with the same Course of Fire are required" />
       <p className="mb-4 rounded-xl border border-brand/20 bg-brand-subtle px-4 py-3 text-sm leading-6 text-brand-deep">Compatibility is based on Course of Fire—not Competition names. Individual, Pair, and Team Competitions can be linked when their physical score format matches.</p>
-      {workspace.candidates.length ? <div className="space-y-3">{workspace.candidates.map((candidate) => <CandidateCard key={candidate.competition_id} organisation={organisation} groupId={workspace.group.id} candidate={candidate} editable={editable} />)}</div> : <Card className="bg-surface-muted p-6"><p className="text-sm text-muted-foreground">There are no Competitions in this Season yet.</p></Card>}
+      {!hasEligibleCompetition ? <Card className="mb-4 border-dashed bg-surface-muted p-5"><p className="text-sm text-muted-foreground">No published Competition in this Season is currently eligible. Publish and complete the Course of Fire for at least two compatible Competitions, then return here.</p></Card> : null}
+      {displayedCandidates.length ? <div className="space-y-3">{displayedCandidates.map((candidate) => <CandidateCard key={candidate.competition_id} organisation={organisation} groupId={workspace.group.id} candidate={candidate} editable={editable} />)}</div> : <Card className="bg-surface-muted p-6"><p className="text-sm text-muted-foreground">There are no Competitions in this Season yet.</p></Card>}
     </section>
 
     <section aria-labelledby="concurrent-rounds-heading">
@@ -399,7 +421,7 @@ export function ConcurrentShootingWorkspaceView({ organisation, seasonName, work
 
     <section aria-labelledby="concurrent-review-heading">
       <SectionHeader title="4. Review" description="Confirm shared and independent Competition behaviour" />
-      <Review workspace={workspace} />
+      <Review workspace={workspace} seasonName={seasonName} />
     </section>
 
     <section aria-labelledby="concurrent-lifecycle-heading">

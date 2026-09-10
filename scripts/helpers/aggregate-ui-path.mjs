@@ -99,6 +99,10 @@ export async function renderAggregateResultsRoute({
         CompetitionDetailsDisclosure: ({ showScoringAccess }) =>
           createElement("div", { "data-scoring-access": String(showScoringAccess) }),
       },
+      "@/components/competition-concurrent-shooting-indicator": {
+        CompetitionConcurrentShootingIndicator: () =>
+          createElement("div", { "data-concurrent-shooting": "true" }),
+      },
       "@/components/competition-entry-controls": {
         CompetitionEntryControls: () => createElement("div", { "data-entry-controls": "true" }),
       },
@@ -118,6 +122,9 @@ export async function renderAggregateResultsRoute({
         getPublishedCompetitionDivisions: async () => null,
       },
       "@/lib/competition-entries": { getCompetitionClubEntryContext: async () => [] },
+      "@/lib/concurrent-shooting": {
+        getCompetitionConcurrentShootingSummary: async () => null,
+      },
       "@/lib/public-results": {
         getPublicResultsCatalog: async () => ({
           organisation: { id: organisationId, slug: "test-org", name: "Test Organisation" },

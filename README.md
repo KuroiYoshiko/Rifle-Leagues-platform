@@ -234,21 +234,24 @@ No existing SQL needs rerunning on an up-to-date installation. Both new files ar
 additive and rerunnable; existing Competitions remain unlinked with unchanged IDs,
 configuration and participation. Run this upgrade last if reapplying earlier SQL.
 
-### Concurrent Shooting backend (Stages 1 and 2)
+### Concurrent Shooting (Stages 1, 2, and 3A)
 
 After all existing Competition, score, Series, and Average migrations through
 `database/competition-averages-stage-3.sql`, run these complete files in order:
 
 1. [`database/concurrent-shooting.sql`](database/concurrent-shooting.sql)
 2. [`database/concurrent-shooting-stage-2.sql`](database/concurrent-shooting-stage-2.sql)
+3. [`database/concurrent-shooting-stage-3a.sql`](database/concurrent-shooting-stage-3a.sql)
 
 The first file adds opt-in Organisation/Season-scoped groups, explicit physical
 Round mappings, strict server-derived Course-of-Fire signatures, lifecycle
 guards, source association/version fields, and generic append-only audit
 storage. The second adds atomic shared-score resolution and usage propagation,
 optimistic conflicts, global clear, audit recording, late-entry reconciliation,
-and shared score-entry metadata. Existing unmapped scoring and Results remain
-unchanged; neither file creates links, merges sources, or backfills history.
+and shared score-entry metadata. The third adds narrow management read models
+and an atomic Draft mapping setter for the Organisation Management workflow.
+Existing unmapped scoring and Results remain unchanged; none of these files
+creates links, merges sources, or backfills history.
 
 See [the Concurrent Shooting architecture and deployment boundary](database/CONCURRENT-SHOOTING.md).
 Run `npm run test:concurrent` for its disposable PostgreSQL regression suite.

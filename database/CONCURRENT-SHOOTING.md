@@ -1,11 +1,12 @@
-# Concurrent Shooting — Stages 1 and 2
+# Concurrent Shooting — Stages 1, 2, and 3A
 
 Concurrent Shooting lets one physical score source be used by more than one
 compatible Competition. Stage 1 installs the durable domain, lifecycle,
 management RPCs, source association/version fields, and append-only audit table.
 Stage 2 adds atomic canonical shared-score writes, usage propagation, optimistic
 editing, immutable audit events, and late-entry reconciliation. Results and
-ranking mathematics remain unchanged.
+ranking mathematics remain unchanged. Stage 3A adds the Organisation Management
+workflow without exposing Concurrent configuration on public pages.
 
 ## Mental model
 
@@ -248,6 +249,35 @@ Organisation scorer is required. Stage 2 helpers and RPCs use an empty search
 path, fully qualified relations, explicit execute grants, and `auth.uid()`;
 there are no service-role shortcuts.
 
+## Stage 3A Organisation Management workflow
+
+Organisation Management has routed destinations for Overview, Competition
+Series, Averages, and Concurrent Shooting. The existing Series list and owner
+lifecycle controls live on the Competition Series route; Overview remains
+focused on access requests and staff. Managers can still view Series, while
+existing owner-only Series mutations are unchanged.
+
+Concurrent Shooting is prepared as a Draft workflow: create the group, select
+server-validated candidates, explicitly add physical Rounds and choose each
+Competition Round mapping, review independent Rounds and non-blocking format or
+schedule differences, then ask an owner to activate. Course-of-Fire mismatch
+codes are translated into organiser-facing reasons; the server remains the
+authority for candidate eligibility and activation validation. Active and
+Archived configurations render read-only. Safe cancellation is displayed only
+to owners when the lifecycle read model confirms it remains possible.
+
+The responsive mapping view uses cards instead of a wide table. Equal Round
+numbers are not saved automatically, and clearing a selection leaves that
+Competition Round independent. A management-only Competition indicator links
+members back to the Organisation workflow and does not broaden public access.
+
+`database/concurrent-shooting-stage-3a.sql` adds only four narrow functions:
+same-Season candidate diagnostics, lifecycle display metadata, a Competition
+membership summary, and an atomic Draft mapping setter. They use the existing
+contextual `organisation_staff` authorization, empty search paths, explicit
+grants, and server-derived compatibility rules. No table or score behavior is
+changed.
+
 ## Deployment and verification
 
 Deploy the existing migrations through
@@ -255,16 +285,20 @@ Deploy the existing migrations through
 
 1. `database/concurrent-shooting.sql`
 2. `database/concurrent-shooting-stage-2.sql`
+3. `database/concurrent-shooting-stage-3a.sql`
 
-Both files are additive and rerunnable. They create no groups, do no historical
-backfill or source merge, and infer no relationship. Stage 2 must be deployed
-before Active groups are used for score entry. Run `npm run test:concurrent` for
-the focused disposable-PostgreSQL suite.
+All three files are additive and rerunnable. They create no groups, do no
+historical backfill or source merge, and infer no relationship. Stage 2 must be
+deployed before Active groups are used for score entry; Stage 3A must be
+deployed before exposing its management routes. Run `npm run test:concurrent`
+for the focused disposable-PostgreSQL and UI suite.
 
 ## Deferred stages
 
-Still deferred are the shared-score banner and clear confirmation UI, full
-management wizard, public
-Concurrent pages, Results changes, S/Av and R/Av changes, substitutions,
+Still deferred are the score-entry shared-score banner, global-clear
+confirmation, stale-version refresh handling, participant conflict presentation,
+audit viewer, and public Concurrent pages. Results, S/Av, and R/Av behavior is
+not redesigned. Substitutions, persistent Pair/Team identities,
 cross-Organisation/cross-Season groups, partial Course-of-Fire mappings,
-many-to-one Round mappings, and historical retroactive linking.
+many-to-one Round mappings, and historical retroactive linking also remain out
+of scope.
