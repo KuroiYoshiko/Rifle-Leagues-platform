@@ -7,6 +7,7 @@ import {
   getCompetitionBySlug,
   getCompetitionRounds,
   getCompetitionScoreComponents,
+  getShootingTaxonomy,
 } from "@/lib/competitions";
 import { getLeagueSeasonBySlug } from "@/lib/league-seasons";
 import { getCompetitionSeries } from "@/lib/competition-series";
@@ -48,12 +49,13 @@ export default async function EditCompetitionPage({
     notFound();
   }
 
-  const [rounds, scoreComponents, seriesRows] = await Promise.all([
+  const [rounds, scoreComponents, seriesRows, shootingTaxonomy] = await Promise.all([
     getCompetitionRounds(competition.id),
     getCompetitionScoreComponents(competition.id),
     competition.competition_series_id
       ? getCompetitionSeries(context.organisation.id)
       : Promise.resolve([]),
+    getShootingTaxonomy(context.organisation.id),
   ]);
   const series = seriesRows.find(
     (item) => item.id === competition.competition_series_id,
@@ -79,6 +81,7 @@ export default async function EditCompetitionPage({
           rounds={rounds}
           scoreComponents={scoreComponents}
           series={series}
+          shootingTaxonomy={shootingTaxonomy}
         />
       </Card>
       <p className="mt-4 text-xs leading-5 text-muted-foreground">

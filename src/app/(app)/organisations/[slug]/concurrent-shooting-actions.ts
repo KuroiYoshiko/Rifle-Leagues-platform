@@ -61,8 +61,11 @@ function domainError(
   if (/already belongs/i.test(message)) {
     return "That Competition already belongs to another Concurrent Shooting group.";
   }
-  if (/Course of Fire is incompatible|is incompatible/i.test(message)) {
-    return "The Competition Course of Fire no longer matches this group. Review the compatibility details and try again.";
+  if (/Physical shooting details required/i.test(message)) {
+    return "Complete the Competition’s physical shooting details before using it for Concurrent Shooting.";
+  }
+  if (/Course of Fire is incompatible|is incompatible|not eligible for Concurrent Shooting/i.test(message)) {
+    return "The Competition’s physical or scoring Course of Fire no longer matches this group. Review the eligibility details and try again.";
   }
   if (/must be published/i.test(message)) {
     return "Every linked Competition must be published before activation.";
@@ -74,7 +77,7 @@ function domainError(
     return "Existing score activity means this configuration can no longer be changed safely.";
   }
   if (/at least two member/i.test(message)) {
-    return "Select at least two compatible Competitions before activation.";
+    return "Select at least two eligible Competitions before activation.";
   }
   if (/physical Round mappings|at least two Competitions/i.test(message)) {
     return "Every shared physical Round must explicitly map at least two Competitions.";

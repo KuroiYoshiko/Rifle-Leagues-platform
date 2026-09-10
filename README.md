@@ -242,6 +242,8 @@ After all existing Competition, score, Series, and Average migrations through
 1. [`database/concurrent-shooting.sql`](database/concurrent-shooting.sql)
 2. [`database/concurrent-shooting-stage-2.sql`](database/concurrent-shooting-stage-2.sql)
 3. [`database/concurrent-shooting-stage-3a.sql`](database/concurrent-shooting-stage-3a.sql)
+4. [`database/competition-shooting-details.sql`](database/competition-shooting-details.sql)
+5. [`database/concurrent-shooting-physical-compatibility.sql`](database/concurrent-shooting-physical-compatibility.sql)
 
 The first file adds opt-in Organisation/Season-scoped groups, explicit physical
 Round mappings, strict server-derived Course-of-Fire signatures, lifecycle
@@ -253,8 +255,21 @@ and an atomic Draft mapping setter for the Organisation Management workflow.
 Existing unmapped scoring and Results remain unchanged; none of these files
 creates links, merges sources, or backfills history.
 
+The fourth file adds stable built-in equipment and position taxonomies,
+normalised reusable Organisation custom values, Competition-level equipment,
+and component-level position/style, distance, and physical shots. New structured
+drafts derive `shots_per_round` on the server as sets multiplied by the sum of
+component shots. Existing rows remain explicitly legacy (`shooting_details_version
+IS NULL`) with no inferred values. Series identity and continuation preserve the
+physical definition. The fifth file installs exact physical compatibility V2;
+legacy or incomplete Competitions show “Physical shooting details required” and
+cannot be newly linked merely because their score-entry shapes match.
+
 See [the Concurrent Shooting architecture and deployment boundary](database/CONCURRENT-SHOOTING.md).
-Run `npm run test:concurrent` for its disposable PostgreSQL regression suite.
+See [the structured physical shooting model](database/COMPETITION-SHOOTING-DETAILS.md)
+for taxonomy, Series inheritance, legacy behavior, and analytics rationale.
+Run `npm run test:concurrent` and `npm run test:shooting-details` for the disposable
+PostgreSQL regression suites.
 No reset, reseed, name-based association or live database application is automated.
 
 This adds strict organisation-scoped Series identity, atomic first-draft and

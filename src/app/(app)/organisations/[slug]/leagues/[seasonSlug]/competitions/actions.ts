@@ -9,6 +9,8 @@ import {
   COMPETITION_SCORING_METHODS,
   COMPETITION_START_DATE_MODES,
   COMPETITION_STATUSES,
+  SHOOTING_DISTANCE_MODES,
+  SHOOTING_DISTANCE_UNITS,
   type CompetitionEntryFormat,
   type CompetitionEntryWindowMode,
   type CompetitionRankingMethod,
@@ -22,7 +24,7 @@ import { createClient } from "@/lib/supabase/server";
 export type CompetitionField =
   | "seriesName" | "name" | "description" | "entryFormat" | "teamSize" | "entryWindow"
   | "competitionStart" | "setsPerRound" | "scoreComponents"
-  | "shotsPerRound" | "numberOfRounds" | "entryFee" | "rankingMethod"
+  | "equipment" | "physicalDetails" | "shotsPerRound" | "numberOfRounds" | "entryFee" | "rankingMethod"
   | "bestRoundsCount" | "scoringAccess" | "xScoring" | "roundSchedule"
   | "startingAverages";
 
@@ -30,6 +32,12 @@ export type CompetitionScoreComponentValue = {
   shortLabel: string;
   maximumScore: string;
   scoreMethod: string;
+  positionSelection: string;
+  customPositionName: string;
+  distanceMode: string;
+  distanceValue: string;
+  distanceUnit: string;
+  shots: string;
 };
 
 export type CompetitionFormValues = {
@@ -44,6 +52,9 @@ export type CompetitionFormValues = {
   startDateMode: string;
   customStartsAt: string;
   setsPerRound: string;
+  shootingDetailsVersion: string;
+  equipmentSelection: string;
+  customEquipmentName: string;
   scoreComponents: CompetitionScoreComponentValue[];
   shotsPerRound: string;
   usesXScore: boolean;
@@ -96,6 +107,9 @@ const routeSafeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const calendarDatePattern = /^\d{4}-\d{2}-\d{2}$/;
 const moneyPattern = /^\d+(?:\.\d{1,2})?$/;
 const scorePattern = /^\d{1,7}(?:\.\d{1,2})?$/;
+const distancePattern = /^\d{1,6}(?:\.\d{1,3})?$/;
+const builtInSelectionPattern = /^builtin:([a-z0-9]+(?:_[a-z0-9]+)*)$/;
+const customSelectionPattern = /^custom:([1-9]\d*)$/;
 const earliestDate = "1900-01-01";
 const latestDate = "2200-12-31";
 
@@ -120,7 +134,17 @@ function readValues(formData: FormData): CompetitionFormValues {
   const labels = formData.getAll("component_label").map(String);
   const maxima = formData.getAll("component_maximum").map(String);
   const methods = formData.getAll("component_method").map(String);
-  const componentCount = Math.max(labels.length, maxima.length, methods.length);
+  const positionSelections = formData.getAll("component_position_selection").map(String);
+  const customPositionNames = formData.getAll("component_custom_position_name").map(String);
+  const distanceModes = formData.getAll("component_distance_mode").map(String);
+  const distanceValues = formData.getAll("component_distance_value").map(String);
+  const distanceUnits = formData.getAll("component_distance_unit").map(String);
+  const shots = formData.getAll("component_shots").map(String);
+  const componentCount = Math.max(
+    labels.length, maxima.length, methods.length, positionSelections.length,
+    customPositionNames.length, distanceModes.length, distanceValues.length,
+    distanceUnits.length, shots.length,
+  );
   return {
     seriesName: String(formData.get("series_name") ?? "").trim(),
     name: String(formData.get("name") ?? "").trim(),
@@ -133,10 +157,19 @@ function readValues(formData: FormData): CompetitionFormValues {
     startDateMode: String(formData.get("start_date_mode") ?? "season_default").trim(),
     customStartsAt: String(formData.get("custom_starts_at") ?? "").trim(),
     setsPerRound: String(formData.get("sets_per_round") ?? "1").trim(),
+    shootingDetailsVersion: String(formData.get("shooting_details_version") ?? "1").trim(),
+    equipmentSelection: String(formData.get("equipment_selection") ?? "").trim(),
+    customEquipmentName: String(formData.get("custom_equipment_name") ?? "").trim(),
     scoreComponents: Array.from({ length: componentCount }, (_, index) => ({
       shortLabel: String(labels[index] ?? "").trim(),
       maximumScore: String(maxima[index] ?? "").trim(),
       scoreMethod: String(methods[index] ?? "").trim(),
+      positionSelection: String(positionSelections[index] ?? "").trim(),
+      customPositionName: String(customPositionNames[index] ?? "").trim(),
+      distanceMode: String(distanceModes[index] ?? "").trim(),
+      distanceValue: String(distanceValues[index] ?? "").trim(),
+      distanceUnit: String(distanceUnits[index] ?? "").trim(),
+      shots: String(shots[index] ?? "").trim(),
     })),
     shotsPerRound: String(formData.get("shots_per_round") ?? "").trim(),
     usesXScore: formData.get("uses_x_score") === "true",
@@ -224,6 +257,16 @@ function validateStructuralValues(
   if (values.scoreComponents.length > 20) {
     errors.scoreComponents = "Use no more than 20 score components per set.";
   } else {
+    if (values.equipmentSelection && !builtInSelectionPattern.test(values.equipmentSelection) &&
+      !customSelectionPattern.test(values.equipmentSelection) && values.equipmentSelection !== "custom:new") {
+      errors.equipment = "Choose a valid equipment type.";
+    }
+    const customEquipmentLength = [...values.customEquipmentName].length;
+    if (values.equipmentSelection === "custom:new" && values.customEquipmentName && customEquipmentLength < 2) {
+      errors.equipment = "Custom equipment type must be at least 2 characters.";
+    } else if (customEquipmentLength > 80) {
+      errors.equipment = "Custom equipment type must be 80 characters or fewer.";
+    }
     for (const [index, component] of values.scoreComponents.entries()) {
       const maximum = Number(component.maximumScore);
       if ([...component.shortLabel].length > 30) {
@@ -237,6 +280,51 @@ function validateStructuralValues(
       if (!COMPETITION_SCORING_METHODS.includes(component.scoreMethod as CompetitionScoringMethod)) {
         errors.scoreComponents = `Score ${index + 1} needs a scoring method.`;
         break;
+      }
+      if (component.positionSelection && !builtInSelectionPattern.test(component.positionSelection) &&
+        !customSelectionPattern.test(component.positionSelection) &&
+        !["custom:new", "variable", "not_applicable"].includes(component.positionSelection)) {
+        errors.physicalDetails = `Score ${index + 1} needs a valid position/style.`;
+        break;
+      }
+      const customPositionLength = [...component.customPositionName].length;
+      if (component.positionSelection === "custom:new" && component.customPositionName && customPositionLength < 2) {
+        errors.physicalDetails = `Score ${index + 1} custom position/style must be at least 2 characters.`;
+        break;
+      }
+      if (customPositionLength > 80) {
+        errors.physicalDetails = `Score ${index + 1} custom position/style must be 80 characters or fewer.`;
+        break;
+      }
+      if (component.distanceMode && !SHOOTING_DISTANCE_MODES.includes(
+        component.distanceMode as (typeof SHOOTING_DISTANCE_MODES)[number]
+      )) {
+        errors.physicalDetails = `Score ${index + 1} needs a valid distance state.`;
+        break;
+      }
+      if (component.distanceMode === "fixed") {
+        const distance = Number(component.distanceValue);
+        if (!distancePattern.test(component.distanceValue) || !Number.isFinite(distance) ||
+          distance <= 0 || distance > 100_000) {
+          errors.physicalDetails = `Score ${index + 1} needs a fixed distance greater than zero and no more than 100,000, with up to three decimal places.`;
+          break;
+        }
+        if (!SHOOTING_DISTANCE_UNITS.includes(
+          component.distanceUnit as (typeof SHOOTING_DISTANCE_UNITS)[number]
+        )) {
+          errors.physicalDetails = `Score ${index + 1} needs metres, yards, or feet.`;
+          break;
+        }
+      } else if (component.distanceValue || component.distanceUnit) {
+        errors.physicalDetails = `Score ${index + 1} can use a distance value and unit only in Fixed mode.`;
+        break;
+      }
+      if (component.shots) {
+        const componentShots = readPositiveInteger(component.shots);
+        if (!componentShots || componentShots > 10_000) {
+          errors.physicalDetails = `Score ${index + 1} Shots must be a whole number between 1 and 10,000.`;
+          break;
+        }
       }
     }
   }
@@ -312,11 +400,56 @@ function getPublishErrors(values: CompetitionFormValues, season: SeasonBoundaryC
     errors.push("Round Robin requires time to finalise divisions after entries close. Competition Start must be after the Entry Close date.");
   }
   if (values.scoreComponents.length === 0) errors.push("Add at least one Course of Fire score component.");
+  if (!values.equipmentSelection ||
+    (values.equipmentSelection === "custom:new" && !values.customEquipmentName)) {
+    errors.push("Choose an equipment type.");
+  }
+  for (const [index, component] of values.scoreComponents.entries()) {
+    if (!component.positionSelection ||
+      (component.positionSelection === "custom:new" && !component.customPositionName)) {
+      errors.push(`Complete Score ${index + 1} position/style.`);
+    }
+    if (!component.distanceMode) errors.push(`Complete Score ${index + 1} distance state.`);
+    if (!component.shots) errors.push(`Complete Score ${index + 1} Shots.`);
+  }
   if (values.rankingMethod === "best_n_average" && values.usesXScore) errors.push("Turn off X scoring for Best N rounds average.");
   if (rounds && (values.roundDeadlines.length !== rounds || values.roundDeadlines.some((date) => !date))) {
     errors.push(`Set a Round End for all ${rounds} rounds.`);
   }
   return errors;
+}
+
+function readEquipmentConfiguration(values: CompetitionFormValues) {
+  const builtIn = values.equipmentSelection.match(builtInSelectionPattern)?.[1] ?? null;
+  const customId = values.equipmentSelection.match(customSelectionPattern)?.[1] ?? null;
+  const newName = values.equipmentSelection === "custom:new"
+    ? values.customEquipmentName || null : null;
+  return {
+    equipment_type_code: builtIn,
+    organisation_equipment_type_id: customId ? Number(customId) : null,
+    custom_equipment_type_name: newName,
+  };
+}
+
+function readComponentPhysicalConfiguration(component: CompetitionScoreComponentValue) {
+  const builtIn = component.positionSelection.match(builtInSelectionPattern)?.[1] ?? null;
+  const customId = component.positionSelection.match(customSelectionPattern)?.[1] ?? null;
+  const newName = component.positionSelection === "custom:new"
+    ? component.customPositionName || null : null;
+  const explicitState = component.positionSelection === "variable" ||
+    component.positionSelection === "not_applicable"
+    ? component.positionSelection : null;
+  const fixed = Boolean(builtIn || customId || newName);
+  return {
+    shooting_position_mode: fixed ? "fixed" : explicitState,
+    shooting_position_code: builtIn,
+    organisation_shooting_position_id: customId ? Number(customId) : null,
+    custom_shooting_position_name: newName,
+    distance_mode: component.distanceMode || null,
+    distance_value: component.distanceMode === "fixed" ? component.distanceValue : null,
+    distance_unit: component.distanceMode === "fixed" ? component.distanceUnit : null,
+    shots: component.shots || null,
+  };
 }
 
 function getRpcValues(values: CompetitionFormValues) {
@@ -358,10 +491,13 @@ function getConfigurationValues(values: CompetitionFormValues) {
     team_size: entryFormat === "individual" ? 1 : entryFormat === "pairs" ? 2 : Number(values.teamSize),
     sets_per_round: Number(values.setsPerRound),
     shots_per_round: values.shotsPerRound ? Number(values.shotsPerRound) : null,
+    shooting_details_version: values.shootingDetailsVersion === "1" ? 1 : null,
+    ...readEquipmentConfiguration(values),
     score_components: values.scoreComponents.map((component) => ({
       short_label: component.shortLabel || null,
       maximum_score: Number(component.maximumScore),
       score_method: component.scoreMethod,
+      ...readComponentPhysicalConfiguration(component),
     })),
     entry_fee: values.entryFee ? Number(values.entryFee) : null,
     uses_x_score: values.usesXScore,
@@ -663,8 +799,10 @@ export async function createCompetition(_previousState: CompetitionFormState, fo
       p_average_context_id: Number(values.averageContextId),
       p_average_policy_version_id: Number(values.averagePolicyVersionId),
     })
-    : await supabase.rpc("create_competition", {
-      p_organisation_id: organisationId, p_league_season_id: leagueSeasonId, ...getRpcValues(values),
+    : await supabase.rpc("create_competition_with_shooting_details", {
+      p_organisation_id: organisationId,
+      p_league_season_id: leagueSeasonId,
+      p_configuration: getConfigurationValues(values),
     });
   if (error) {
     await reportMutationError("create", error, supabase, {
@@ -820,14 +958,22 @@ export async function updateCompetition(_previousState: CompetitionFormState, fo
   }
   const { organisationId, leagueSeasonId, values, supabase, season } = prepared;
   const fieldErrors = validateStructuralValues(values, season);
-  const publishErrors = desiredStatus === "published" ? getPublishErrors(values, season) : [];
+  const publishErrors = desiredStatus === "published" && currentStatus === "draft"
+    ? getPublishErrors(values, season) : [];
   if (Object.keys(fieldErrors).length || publishErrors.length) {
     return { status: "error", message: desiredStatus === "published" ? "This Competition isn’t ready to publish." : "Review the highlighted Competition details and try again.", fieldErrors, publishErrors, values };
   }
-  const { data, error } = await supabase.rpc("update_competition", {
-    p_organisation_id: organisationId, p_league_season_id: leagueSeasonId,
-    p_competition_id: competitionId, ...getRpcValues(values), p_status: desiredStatus,
-  });
+  const { data, error } = desiredStatus === "draft"
+    ? await supabase.rpc("update_competition_shooting_details_draft", {
+      p_organisation_id: organisationId,
+      p_league_season_id: leagueSeasonId,
+      p_competition_id: competitionId,
+      p_configuration: getConfigurationValues(values),
+    })
+    : await supabase.rpc("update_competition", {
+      p_organisation_id: organisationId, p_league_season_id: leagueSeasonId,
+      p_competition_id: competitionId, ...getRpcValues(values), p_status: desiredStatus,
+    });
   if (error) {
     await reportMutationError("update", error, supabase, {
       organisationId,

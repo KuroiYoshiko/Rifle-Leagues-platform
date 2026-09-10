@@ -34,7 +34,8 @@ aggregate source: each shooter has their own source, identified by
 Organisation's Seasons. Its trimmed name is case-insensitively unique within the
 Organisation. Its lifecycle is `draft`, `active`, or `archived`. Draft rows have
 no compatibility signature. Active and Archived rows retain the server-derived
-V1 signature and activation time.
+signature and activation time. Existing V1 rows remain valid; newly activated
+groups use the structured physical V2 signature.
 
 `concurrent_shooting_group_competitions` is the membership relation. A global
 unique constraint on `competition_id` limits a Competition to one Concurrent
@@ -58,25 +59,38 @@ distinct member Competitions per physical Round, and at least one mapping for
 every member. Round numbers are never inferred. Different Competition Round
 counts are valid and unmapped Rounds remain independent.
 
-## V1 compatibility signature
+## V2 physical compatibility signature
 
 `private.concurrent_shooting_compatibility_signature` derives deterministic
 JSONB from authoritative Competition/component rows. Clients cannot provide or
-override it. Version 1 contains:
+override it. Version 2 contains:
 
+- exact Competition equipment identity (stable built-in code or Organisation custom ID);
 - `sets_per_round`;
 - `shots_per_round`, preserving `null`;
 - `uses_x_score`;
 - component count;
 - ordered components containing exact position, exact label (including `null`),
   exact maximum and per-component `score_method`; and
+- each ordered component's explicit position/style state and identity;
+- each component's distance mode and, for Fixed distance, exact numeric value
+  and original unit (`metres`, `yards`, or `feet`);
+- each component's positive shot count; and
 - derived shooter maximum (`sets_per_round × sum(component maximums)`).
 
 JSONB equality is the identity comparison. Competition/Series names, ranking
 method, entry format, team size, number of Rounds, deadlines, Competition Series,
 and Average Context are not part of it. Consequently, identical Individual,
 Pair, and Team Courses of Fire can join one group, while an Ex100 single
-component does not match P/S/K components that happen to total Ex100.
+component does not match P/S/K components that happen to total Ex100. Ranking
+method remains deliberately excluded: Aggregate, Gun Score, and Round Robin can
+share a physical definition. Entry format and team size are also excluded.
+
+No unit conversion or approximate distance comparison is used. For this version,
+50 metres differs from 50 yards and from a Variable distance. A Competition whose
+`shooting_details_version` is `NULL`, or whose structured fields are incomplete,
+is reported as `Physical shooting details required`; matching legacy score shape
+alone never makes it eligible. Existing legacy scoring and Results are unaffected.
 
 Draft membership performs an early compatibility check for useful feedback.
 Activation recalculates every signature in one transaction and stores only the
@@ -100,7 +114,7 @@ All authorisation uses active contextual `organisation_staff`; the legacy
 
 Activation is atomic. It re-locks and validates the group and all members, then
 requires at least two member Competitions, same Organisation and Season,
-Published status, future effective start, exact V1 compatibility, complete
+Published status, future effective start, exact V2 physical compatibility, complete
 mapping invariants, and no score usage in a mapped slot.
 
 Active membership, physical Rounds, mappings, name, activation metadata, and
@@ -286,12 +300,18 @@ Deploy the existing migrations through
 1. `database/concurrent-shooting.sql`
 2. `database/concurrent-shooting-stage-2.sql`
 3. `database/concurrent-shooting-stage-3a.sql`
+4. `database/competition-shooting-details.sql`
+5. `database/concurrent-shooting-physical-compatibility.sql`
 
-All three files are additive and rerunnable. They create no groups, do no
+All five files are additive and rerunnable. The final two are the physical-model
+upgrade for an existing Stage 3A deployment; on such a deployment run only files
+4 and 5, in that order. They create no groups, do no
 historical backfill or source merge, and infer no relationship. Stage 2 must be
 deployed before Active groups are used for score entry; Stage 3A must be
 deployed before exposing its management routes. Run `npm run test:concurrent`
-for the focused disposable-PostgreSQL and UI suite.
+for the focused disposable-PostgreSQL and UI suite, and
+`npm run test:shooting-details` for taxonomy, distance, derivation, Series,
+legacy, security, and lock coverage.
 
 ## Deferred stages
 

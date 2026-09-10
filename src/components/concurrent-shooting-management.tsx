@@ -134,7 +134,7 @@ export function ConcurrentShootingCreateForm({ organisation, seasons }: {
     <Card className="p-5 sm:p-7">
       <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">Step 1 · Basic details</p>
       <h2 className="mt-2 text-xl font-semibold tracking-[-0.025em] text-foreground">Create a Draft group</h2>
-      <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">Concurrent Shooting lets one physical shooter score count in several compatible Competitions. The Competitions and exact Round mappings are selected after this Draft is created.</p>
+      <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">Concurrent Shooting lets one physical shooter score count in several physically eligible Competitions. The organiser still selects the Competitions and explicitly maps the Rounds that represent the same shoot.</p>
       <div className="mt-6 grid gap-5 sm:grid-cols-2">
         <label className="block">
           <span className="text-sm font-semibold text-foreground">Season</span>
@@ -214,7 +214,7 @@ export function ConcurrentShootingGroupList({ organisation, groups, isOwner }: {
 }) {
   if (!groups.length) return <Card className="border-dashed bg-surface-muted p-7 text-center sm:p-10">
     <h2 className="text-lg font-semibold text-foreground">No Concurrent Shooting groups yet</h2>
-    <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">Create a Draft to select compatible Competitions and explicitly map the physical Rounds they share.</p>
+    <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">Create a Draft to select Competitions with the same structured physical Course of Fire, then explicitly map the Rounds they share.</p>
     <Link href={`/organisations/${organisation.slug}/management/concurrent-shooting/new`} className={`mt-5 ${primaryButton}`}>Create Concurrent Shooting Group</Link>
   </Card>;
   const sections: Array<{ status: ConcurrentShootingStatus; title: string }> = [
@@ -235,17 +235,23 @@ export function ConcurrentShootingGroupList({ organisation, groups, isOwner }: {
 function mismatchMessage(candidate: ConcurrentShootingCandidate) {
   if (candidate.status !== "published") return "Publish this Competition before adding it.";
   if (!candidate.has_course_of_fire) return "Complete its Course of Fire before adding it.";
+  if (!candidate.physical_details_configured) return "Physical shooting details required.";
   if (candidate.existing_group_id && !candidate.selected) return `Already belongs to ${candidate.existing_group_name ?? "another Concurrent Shooting group"}.`;
   const labels: Record<string, string> = {
+    physical_details: "physical shooting details are incomplete",
+    equipment: "equipment differs",
     sets_per_round: "sets per Round differ",
     component_count: "component count differs",
     components: "component structure, labels, maximums, or scoring methods differ",
+    component_positions: "component position / style differs",
+    component_distances: "component distance differs",
+    component_shots: "component shot count differs",
     uses_x_score: "X scoring differs",
     shots_per_round: "shots per Round differ",
     shooter_maximum: "shooter maximum differs",
   };
   const reasons = candidate.compatibility_mismatches.map((item) => labels[item] ?? "Course of Fire differs");
-  return reasons.length ? `Course of Fire mismatch: ${reasons.join("; ")}.` : null;
+  return reasons.length ? `Physical eligibility mismatch: ${reasons.join("; ")}.` : null;
 }
 
 function CandidateCard({ organisation, groupId, candidate, editable }: {
@@ -260,7 +266,7 @@ function CandidateCard({ organisation, groupId, candidate, editable }: {
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-semibold text-foreground">{candidate.name}</h3>
-          <Badge tone={candidate.selected ? "brand" : candidate.selectable ? "positive" : "neutral"}>{candidate.selected ? "Selected" : candidate.selectable ? "Compatible" : "Unavailable"}</Badge>
+          <Badge tone={candidate.selected ? "brand" : candidate.selectable ? "positive" : "neutral"}>{candidate.selected ? "Selected" : candidate.selectable ? "Eligible for Concurrent Shooting" : "Unavailable"}</Badge>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">{getCompetitionEntryFormatLabel(candidate.entry_format)} · {candidate.number_of_rounds} Round{candidate.number_of_rounds === 1 ? "" : "s"} · {getCompetitionRankingMethodLabel(candidate.ranking_method)}</p>
         {reason ? <p className="mt-2 text-sm leading-5 text-warning">{reason}</p> : null}
@@ -353,7 +359,7 @@ function Review({ workspace, seasonName }: {
               <ul className="mt-2 space-y-1 text-muted-foreground">{workspace.members.map((member) => <li key={member.competition_id}>✓ {member.name}</li>)}</ul>
             </dd>
           </div>
-          <div><dt className="text-muted-foreground">Compatibility</dt><dd className={`mt-1 font-semibold ${compatible ? "text-success" : "text-warning"}`}>{compatible ? "✓ Course of Fire compatible" : "Review incompatible Competition settings"}</dd></div>
+          <div><dt className="text-muted-foreground">Physical eligibility</dt><dd className={`mt-1 font-semibold ${compatible ? "text-success" : "text-warning"}`}>{compatible ? "✓ Eligible for Concurrent Shooting" : "Review physical or scoring differences"}</dd></div>
           <div><dt className="text-muted-foreground">Shared physical Rounds</dt><dd className="mt-1 font-semibold text-foreground">{workspace.physical_rounds.length} configured · {validPhysicalRounds} ready</dd></div>
         </dl>
       </div>
@@ -407,8 +413,8 @@ export function ConcurrentShootingWorkspaceView({ organisation, seasonName, work
 
     <section aria-labelledby="concurrent-competitions-heading">
       <SectionHeader title="2. Select Competitions" description="At least two published Competitions with the same Course of Fire are required" />
-      <p className="mb-4 rounded-xl border border-brand/20 bg-brand-subtle px-4 py-3 text-sm leading-6 text-brand-deep">Compatibility is based on Course of Fire—not Competition names. Individual, Pair, and Team Competitions can be linked when their physical score format matches.</p>
-      {!hasEligibleCompetition ? <Card className="mb-4 border-dashed bg-surface-muted p-5"><p className="text-sm text-muted-foreground">No published Competition in this Season is currently eligible. Publish and complete the Course of Fire for at least two compatible Competitions, then return here.</p></Card> : null}
+      <p className="mb-4 rounded-xl border border-brand/20 bg-brand-subtle px-4 py-3 text-sm leading-6 text-brand-deep">Eligibility is based on the structured physical Course of Fire—not Competition names. Individual, Pair, and Team Competitions can be linked when their physical and scoring definitions match.</p>
+      {!hasEligibleCompetition ? <Card className="mb-4 border-dashed bg-surface-muted p-5"><p className="text-sm text-muted-foreground">No published Competition in this Season is currently eligible. Publish at least two Competitions with matching scoring and complete physical shooting details, then return here.</p></Card> : null}
       {displayedCandidates.length ? <div className="space-y-3">{displayedCandidates.map((candidate) => <CandidateCard key={candidate.competition_id} organisation={organisation} groupId={workspace.group.id} candidate={candidate} editable={editable} />)}</div> : <Card className="bg-surface-muted p-6"><p className="text-sm text-muted-foreground">There are no Competitions in this Season yet.</p></Card>}
     </section>
 

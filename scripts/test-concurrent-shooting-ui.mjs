@@ -126,9 +126,10 @@ function workspace(status) {
       ],
     }],
     candidates: [
-      { competition_id: 11, name: "Individual A", slug: "individual-a", status: "published", entry_format: "individual", ranking_method: "aggregate", number_of_rounds: 3, selected: true, existing_group_id: 8, existing_group_name: "Winter shared shooting", existing_group_status: status, compatible: true, compatibility_mismatches: [], has_course_of_fire: true, selectable: status === "draft" },
-      { competition_id: 12, name: "Pair B", slug: "pair-b", status: "published", entry_format: "pairs", ranking_method: "aggregate", number_of_rounds: 2, selected: true, existing_group_id: 8, existing_group_name: "Winter shared shooting", existing_group_status: status, compatible: true, compatibility_mismatches: [], has_course_of_fire: true, selectable: status === "draft" },
-      { competition_id: 13, name: "Incompatible C", slug: "incompatible-c", status: "published", entry_format: "team", ranking_method: "aggregate", number_of_rounds: 2, selected: false, existing_group_id: null, existing_group_name: null, existing_group_status: null, compatible: false, compatibility_mismatches: ["components", "uses_x_score"], has_course_of_fire: true, selectable: false },
+      { competition_id: 11, name: "Individual A", slug: "individual-a", status: "published", entry_format: "individual", ranking_method: "aggregate", number_of_rounds: 3, selected: true, existing_group_id: 8, existing_group_name: "Winter shared shooting", existing_group_status: status, compatible: true, compatibility_mismatches: [], has_course_of_fire: true, physical_details_configured: true, selectable: status === "draft" },
+      { competition_id: 12, name: "Pair B", slug: "pair-b", status: "published", entry_format: "pairs", ranking_method: "aggregate", number_of_rounds: 2, selected: true, existing_group_id: 8, existing_group_name: "Winter shared shooting", existing_group_status: status, compatible: true, compatibility_mismatches: [], has_course_of_fire: true, physical_details_configured: true, selectable: status === "draft" },
+      { competition_id: 13, name: "Incompatible C", slug: "incompatible-c", status: "published", entry_format: "team", ranking_method: "aggregate", number_of_rounds: 2, selected: false, existing_group_id: null, existing_group_name: null, existing_group_status: null, compatible: false, compatibility_mismatches: ["components", "uses_x_score"], has_course_of_fire: true, physical_details_configured: true, selectable: false },
+      { competition_id: 14, name: "Legacy D", slug: "legacy-d", status: "published", entry_format: "individual", ranking_method: "gun_score", number_of_rounds: 2, selected: false, existing_group_id: null, existing_group_name: null, existing_group_status: null, compatible: false, compatibility_mismatches: ["physical_details"], has_course_of_fire: true, physical_details_configured: false, selectable: false },
     ],
     lifecycle: status === "active" ? lifecycle : { can_cancel_activation: false, cancel_block_reason: "not_active", has_score_provenance: false },
     roundsByCompetition: {
@@ -146,8 +147,9 @@ test("Draft workflow shows compatibility, explicit mapping, independent Rounds, 
     workspace: workspace("draft"),
     isOwner: true,
   }));
-  assert.match(ownerHtml, /Course of Fire—not Competition names/);
-  assert.match(ownerHtml, /Course of Fire mismatch: component structure, labels, maximums, or scoring methods differ; X scoring differs/);
+  assert.match(ownerHtml, /structured physical Course of Fire—not Competition names/);
+  assert.match(ownerHtml, /Physical eligibility mismatch: component structure, labels, maximums, or scoring methods differ; X scoring differs/);
+  assert.match(ownerHtml, /Physical shooting details required/);
   assert.match(ownerHtml, /Choose every mapping explicitly/);
   assert.match(ownerHtml, /Round 3 · already mapped|Round 2/);
   assert.match(ownerHtml, /Individual A:<\/span> 2, 3/);

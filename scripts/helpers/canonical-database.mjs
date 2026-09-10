@@ -43,6 +43,7 @@ export async function installCanonicalDatabase(db, {
       "competition-averages-stage-2b",
       "competition-averages-optional-null",
       "competition-averages-stage-3",
+      "competition-shooting-details",
     ] : []),
     ...(concurrentShooting || concurrentShootingStage2 || concurrentShootingStage3a
       ? ["concurrent-shooting"]
@@ -51,6 +52,7 @@ export async function installCanonicalDatabase(db, {
       ? ["concurrent-shooting-stage-2"]
       : []),
     ...(concurrentShootingStage3a ? ["concurrent-shooting-stage-3a"] : []),
+    ...(concurrentShootingStage3a ? ["concurrent-shooting-physical-compatibility"] : []),
   ]) {
     try { await db.exec(await sqlFile(name)); }
     catch (error) { throw new Error(`Schema ${name}: ${error.message}`, { cause: error }); }

@@ -72,6 +72,7 @@ export type ConcurrentShootingCandidate = {
   compatible: boolean;
   compatibility_mismatches: string[];
   has_course_of_fire: boolean;
+  physical_details_configured: boolean;
   selectable: boolean;
 };
 

@@ -4,6 +4,7 @@ import { CompetitionCreationFlow } from "@/components/competition-creation-flow"
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { Card, SectionHeader } from "@/components/ui";
 import { getLeagueSeasonBySlug } from "@/lib/league-seasons";
+import { getShootingTaxonomy } from "@/lib/competitions";
 import { getCompetitionSeriesCreationOptions } from "@/lib/competition-series";
 import { getOrganisationManagementContextBySlug } from "@/lib/organisations";
 import {
@@ -35,10 +36,11 @@ export default async function CreateCompetitionPage({
   if (!season) {
     notFound();
   }
-  const [seriesOptions, averageConfiguration, seriesAverageDefaults] = await Promise.all([
+  const [seriesOptions, averageConfiguration, seriesAverageDefaults, shootingTaxonomy] = await Promise.all([
     getCompetitionSeriesCreationOptions(context.organisation.id, season.id),
     getAverageConfiguration(context.organisation.id),
     getCompetitionSeriesAverageDefaults(context.organisation.id),
+    getShootingTaxonomy(context.organisation.id),
   ]);
 
   return (
@@ -57,6 +59,7 @@ export default async function CreateCompetitionPage({
           seriesOptions={seriesOptions}
           averageConfiguration={averageConfiguration}
           seriesAverageDefaults={seriesAverageDefaults}
+          shootingTaxonomy={shootingTaxonomy}
         />
       </Card>
       <p className="mt-4 text-xs leading-5 text-muted-foreground">

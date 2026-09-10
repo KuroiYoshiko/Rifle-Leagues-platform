@@ -113,14 +113,52 @@ async function createCompetition({
   rounds = 2,
   localScoring = true,
   components = [{ short_label: "P", maximum_score: 100, score_method: "points_scored" }],
+  equipmentTypeCode = "smallbore_rifle",
+  positionCode = "prone",
+  distanceMode = "fixed",
+  distanceValue = 50,
+  distanceUnit = "metres",
+  rankingMethod = "aggregate",
 } = {}) {
   const deadlines = await futureDates(rounds);
-  return (await db.query(`select public.create_competition(
-      $1,$2,$3,null,$4,$5,$6,$7,$8,0,
-      'season_default',null,null,'season_default',null,$9,$10,
-      'aggregate',null,$12,$11,array[]::date[]
-    ) data`, [org, season, name, entryFormat, teamSize, shotsPerRound, usesX,
-    rounds, setsPerRound, components, deadlines, localScoring])).rows[0].data;
+  const structuredComponents = components.map((component) => ({
+    ...component,
+    shooting_position_mode: component.shooting_position_mode ?? "fixed",
+    shooting_position_code: component.shooting_position_code ?? positionCode,
+    organisation_shooting_position_id: component.organisation_shooting_position_id ?? null,
+    distance_mode: component.distance_mode ?? distanceMode,
+    distance_value: component.distance_value ?? (distanceMode === "fixed" ? distanceValue : null),
+    distance_unit: component.distance_unit ?? (distanceMode === "fixed" ? distanceUnit : null),
+    shots: component.shots ?? Math.max(1, Math.floor(shotsPerRound / setsPerRound)),
+  }));
+  return (await db.query(
+    "select public.create_competition_with_shooting_details($1,$2,$3::jsonb) data",
+    [org, season, JSON.stringify({
+      name,
+      description: null,
+      entry_format: entryFormat,
+      team_size: teamSize,
+      sets_per_round: setsPerRound,
+      shooting_details_version: 1,
+      equipment_type_code: equipmentTypeCode,
+      organisation_equipment_type_id: null,
+      custom_equipment_type_name: null,
+      score_components: structuredComponents,
+      uses_x_score: usesX,
+      number_of_rounds: rounds,
+      entry_fee: 0,
+      entry_window_mode: "season_default",
+      custom_entry_opens_at: null,
+      custom_entry_closes_at: null,
+      start_date_mode: "season_default",
+      custom_starts_at: null,
+      ranking_method: rankingMethod,
+      best_rounds_count: null,
+      local_scoring_enabled: localScoring,
+      round_deadlines: deadlines,
+      round_shoot_by_dates: [],
+    })],
+  )).rows[0].data;
 }
 
 async function publish(competition, { org = 1, season = 1 } = {}) {
@@ -364,10 +402,14 @@ test("one Competition belongs to at most one group and existing data is not link
 test("strict compatibility accepts identical formats and rejects every approved identity mismatch", async () => {
   const base = await createCompetition({ name: "Base" });
   const identical = await createCompetition({ name: "Identical", entryFormat: "team", teamSize: 3 });
+  const gunScore = await createCompetition({ name: "Gun score", rankingMethod: "gun_score" });
+  const roundRobin = await createCompetition({ name: "Round robin", rankingMethod: "round_robin" });
   const group = await createGroup();
   const accepted = await add(group, base);
   await add(group, identical);
-  assert.equal(accepted.compatibility_signature.version, 1);
+  await add(group, gunScore);
+  await add(group, roundRobin);
+  assert.equal(accepted.compatibility_signature.version, 2);
   assert.equal(accepted.compatibility_signature.shooter_maximum, 100);
 
   const mismatchCases = [
@@ -384,6 +426,9 @@ test("strict compatibility accepts identical formats and rejects every approved 
     ["X mismatch", { usesX: true }, /uses_x_score/],
     ["Shots mismatch", { shotsPerRound: 20 }, /shots_per_round/],
     ["Sets mismatch", { setsPerRound: 2 }, /sets_per_round/],
+    ["Equipment mismatch", { equipmentTypeCode: "air_rifle" }, /equipment/],
+    ["Position mismatch", { positionCode: "standing" }, /component_positions/],
+    ["Distance mismatch", { distanceValue: 100, distanceUnit: "yards" }, /component_distances/],
   ];
   for (const [name, values, error] of mismatchCases) {
     const candidate = await createCompetition({ name, ...values });
@@ -392,6 +437,29 @@ test("strict compatibility accepts identical formats and rejects every approved 
       [group.id, candidate.id], error,
     );
   }
+});
+
+test("legacy Competition remains usable but is not presented as Concurrent-eligible", async () => {
+  const deadlines = await futureDates(2);
+  const legacy = (await db.query(`select public.create_competition(
+      1,1,'Legacy Competition',null,'individual',1,10,false,2,0,
+      'season_default',null,null,'season_default',null,1,
+      '[{"short_label":"P","maximum_score":100,"score_method":"points_scored"}]'::jsonb,
+      'aggregate',null,true,$1,array[]::date[]
+    ) data`, [deadlines])).rows[0].data;
+  await publish(legacy);
+  const group = await createGroup("Legacy eligibility");
+  const candidates = (await db.query(
+    "select public.get_concurrent_shooting_competition_candidates(1,$1) data",
+    [group.id],
+  )).rows[0].data;
+  const candidate = candidates.find((item) => item.competition_id === legacy.id);
+  assert.equal(candidate.physical_details_configured, false);
+  assert.equal(candidate.selectable, false);
+  assert.ok(candidate.compatibility_mismatches.includes("physical_details"));
+  assert.equal((await admin(
+    "select shooting_details_version from competitions where id=$1", [legacy.id],
+  )).rows[0].shooting_details_version, null);
 });
 
 test("same Organisation and Season are enforced while Individual, Pair and Team can share", async () => {
@@ -470,11 +538,11 @@ test("activation is owner-only, atomic, and requires published unstarted mapped 
     "select public.activate_concurrent_shooting_group(1,$1) data", [group.id],
   )).rows[0].data;
   assert.equal(activated.status, "active");
-  assert.equal(activated.compatibility_version, 1);
+  assert.equal(activated.compatibility_version, 2);
   assert.equal((await admin(
     "select compatibility_signature->>'version' version from concurrent_shooting_groups where id=$1",
     [group.id],
-  )).rows[0].version, "1");
+  )).rows[0].version, "2");
 });
 
 test("activation rejects started Competitions and mapped score usages", async () => {
@@ -1182,15 +1250,21 @@ test("the additive migration is rerunnable", async () => {
   const rerun = new PGlite();
   try {
     await installCanonicalDatabase(rerun);
+    const shootingDetails = await sqlFile("competition-shooting-details");
     const sql = await sqlFile("concurrent-shooting");
     const stage2 = await sqlFile("concurrent-shooting-stage-2");
     const stage3a = await sqlFile("concurrent-shooting-stage-3a");
+    const physicalCompatibility = await sqlFile("concurrent-shooting-physical-compatibility");
+    await rerun.exec(shootingDetails);
+    await rerun.exec(shootingDetails);
     await rerun.exec(sql);
     await rerun.exec(sql);
     await rerun.exec(stage2);
     await rerun.exec(stage2);
     await rerun.exec(stage3a);
     await rerun.exec(stage3a);
+    await rerun.exec(physicalCompatibility);
+    await rerun.exec(physicalCompatibility);
     assert.equal((await rerun.query(
       "select count(*)::int n from information_schema.tables where table_schema='public' and table_name like 'concurrent_shooting%'",
     )).rows[0].n, 4);

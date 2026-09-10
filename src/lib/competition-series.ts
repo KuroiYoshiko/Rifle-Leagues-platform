@@ -16,7 +16,7 @@ export * from "@/lib/competition-series-types";
 export const getCompetitionSeries = cache(async (organisationId: number) => {
   const supabase = await createClient();
   const { data, error } = await supabase.from("competition_series")
-    .select("id,organisation_id,name,slug,archived_at,entry_format,team_size,sets_per_round,shots_per_round,identity_locked_at,created_at,updated_at")
+    .select("id,organisation_id,name,slug,archived_at,entry_format,team_size,sets_per_round,shots_per_round,shooting_details_version,equipment_type_code,organisation_equipment_type_id,identity_locked_at,created_at,updated_at")
     .eq("organisation_id", organisationId).order("name").order("id");
   if (error) throw new Error("Competition Series could not be loaded.");
   return (data ?? []) as CompetitionSeries[];
@@ -42,7 +42,7 @@ export const getCompetitionSeriesScoreComponents = cache(async (
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("competition_series_score_components")
-    .select("competition_series_id,position,short_label,maximum_score,score_method")
+    .select("competition_series_id,position,short_label,maximum_score,score_method,shooting_position_mode,shooting_position_code,organisation_shooting_position_id,distance_mode,distance_value,distance_unit,shots")
     .eq("competition_series_id", competitionSeriesId)
     .order("position");
   if (error) throw new Error("Competition Series format could not be loaded.");
