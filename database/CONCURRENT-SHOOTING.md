@@ -1,4 +1,4 @@
-# Concurrent Shooting — Stages 1, 2, and 3A
+# Concurrent Shooting — Stages 1, 2, 3A, and 3B
 
 Concurrent Shooting lets one physical score source be used by more than one
 compatible Competition. Stage 1 installs the durable domain, lifecycle,
@@ -7,6 +7,9 @@ Stage 2 adds atomic canonical shared-score writes, usage propagation, optimistic
 editing, immutable audit events, and late-entry reconciliation. Results and
 ranking mathematics remain unchanged. Stage 3A adds the Organisation Management
 workflow without exposing Concurrent configuration on public pages.
+Stage 3B presents those existing shared-score contracts to scorers, including
+global-clear confirmation, stale-version recovery, participant state, and
+linked Competition context. It changes no database semantics.
 
 ## Mental model
 
@@ -296,6 +299,26 @@ contextual `organisation_staff` authorization, empty search paths, explicit
 grants, and server-derived compatibility rules. No table or score behavior is
 changed.
 
+## Stage 3B score-entry experience
+
+An Active mapped Round displays a compact scorer-only banner with the group,
+physical Round label, and human Competition/Round destinations. Each shooter
+row remains the unit of sharing for Individual, Pair, and Team entries. Missing
+participation is informational; ambiguity, conflicting provenance, and
+cross-authority edits remain blocking according to the Stage 2 read model.
+
+Clearing every score component for a shooter who currently has a recorded
+shared score opens the application confirmation dialog before the existing
+global-clear mutation. Partial blank components and ordinary scoring do not use
+that confirmation. Stale SQLSTATE `40001` responses are translated into a
+blocking refresh flow; the rejected values are never automatically retried.
+Successful responses retain returned source versions for the next edit and use
+participant-aware linked Competition counts for feedback. No linked result
+values or audit history are exposed.
+
+Stage 3B is application-only. It adds no migration, RPC, table, policy, Results,
+release, Series, or Average changes.
+
 ## Deployment and verification
 
 Deploy the existing migrations through
@@ -319,12 +342,15 @@ for the focused disposable-PostgreSQL and UI suite, and
 `npm run test:shooting-details` for taxonomy, distance, derivation, Series,
 legacy, security, and lock coverage.
 
+Deploy the Stage 3B application only after the Stage 2 score transaction and
+Stage 3A/physical-compatibility read contracts above are present. No additional
+SQL step is required. Run `npm run test:concurrent-score-entry` for its focused
+scorer UI/action coverage.
+
 ## Deferred stages
 
-Still deferred are the score-entry shared-score banner, global-clear
-confirmation, stale-version refresh handling, participant conflict presentation,
-audit viewer, and public Concurrent pages. Results, S/Av, and R/Av behavior is
-not redesigned. Substitutions, persistent Pair/Team identities,
+Still deferred are the audit viewer and public Concurrent pages. Results, S/Av,
+and R/Av behavior is not redesigned. Substitutions, persistent Pair/Team identities,
 cross-Organisation/cross-Season groups, partial Course-of-Fire mappings,
 many-to-one Round mappings, and historical retroactive linking also remain out
 of scope.
