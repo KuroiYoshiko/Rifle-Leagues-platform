@@ -70,6 +70,9 @@ function domainError(
   if (/must be published/i.test(message)) {
     return "Every linked Competition must be published before activation.";
   }
+  if (/must be configured before Competition Start/i.test(message)) {
+    return "Competition has already started. Concurrent Shooting must be configured before Competition Start.";
+  }
   if (/effective start|has started/i.test(message)) {
     return "A linked Competition has already started, so this group cannot be activated or cancelled.";
   }
@@ -189,6 +192,15 @@ export async function mutateConcurrentShootingGroup(
       p_label: label,
     });
     success = "Shared physical Round added.";
+  } else if (operation === "map_matching_rounds") {
+    result = await prepared.supabase.rpc(
+      "map_matching_concurrent_shooting_round_numbers",
+      {
+        p_organisation_id: prepared.organisationId,
+        p_concurrent_shooting_group_id: groupId,
+      },
+    );
+    success = "Matching Round numbers mapped. Review the generated shared Rounds before activation.";
   } else if (operation === "update_round") {
     const physicalRoundId = positiveInteger(formData.get("physical_round_id"));
     const position = positiveInteger(formData.get("position"));

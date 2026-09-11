@@ -1155,6 +1155,7 @@ test("Stage 3A candidates are server-derived, Season-scoped, and explain unavail
   const byName = new Map(candidates.map((candidate) => [candidate.name, candidate]));
   assert.equal(byName.get("Selected published").selected, true);
   assert.equal(byName.get("Compatible published").selectable, true);
+  assert.equal(byName.get("Compatible published").has_started, false);
   assert.equal(byName.get("Compatible published").entry_format, "team");
   assert.equal(byName.get("Same Ex different shape").selectable, false);
   assert.ok(byName.get("Same Ex different shape").compatibility_mismatches.includes("component_count"));
@@ -1173,6 +1174,110 @@ test("Stage 3A candidates are server-derived, Season-scoped, and explain unavail
     [group.id],
     /active contextual Organisation author permission/i,
   );
+});
+
+test("started Competitions cannot be newly selected and started Draft members remain visible but block activation", async () => {
+  const selected = await createCompetition({ name: "Starts later" });
+  const candidate = await createCompetition({ name: "Already started" });
+  await publish(selected);
+  await publish(candidate);
+  const group = await createGroup("Start guard");
+  await add(group, selected);
+  await admin("update league_seasons set starts_at=current_date where id=1");
+
+  const candidates = (await db.query(
+    "select public.get_concurrent_shooting_competition_candidates(1,$1) data",
+    [group.id],
+  )).rows[0].data;
+  const byName = new Map(candidates.map((item) => [item.name, item]));
+  assert.equal(byName.get("Starts later").selected, true);
+  assert.equal(byName.get("Starts later").has_started, true);
+  assert.equal(byName.get("Starts later").selectable, false);
+  assert.equal(byName.get("Already started").has_started, true);
+  assert.equal(byName.get("Already started").selectable, false);
+  await rejected(
+    "select public.add_concurrent_shooting_group_competition(1,$1,$2)",
+    [group.id, candidate.id],
+    /must be configured before Competition Start/i,
+  );
+  const lifecycle = (await db.query(
+    "select public.get_concurrent_shooting_group_lifecycle(1,$1) data",
+    [group.id],
+  )).rows[0].data;
+  assert.equal(lifecycle.can_activate, false);
+  assert.ok(lifecycle.activation_block_reasons.includes("competition_started"));
+});
+
+test("matching Round numbers maps equal, unequal, and three-Competition schedules idempotently", async () => {
+  const competitions = [];
+  for (const [index, rounds] of [3, 2, 4].entries()) {
+    const competition = await createCompetition({ name: `Matching ${index + 1}`, rounds });
+    await publish(competition);
+    competitions.push(competition);
+  }
+  const group = await createGroup("Matching schedules");
+  for (const competition of competitions) await add(group, competition);
+
+  const first = (await db.query(
+    "select public.map_matching_concurrent_shooting_round_numbers(1,$1) data",
+    [group.id],
+  )).rows[0].data;
+  assert.deepEqual(first, {
+    created_round_count: 3,
+    added_mapping_count: 8,
+    preserved_manual_conflict_count: 0,
+  });
+  const mappings = (await admin(`select physical.position, competition.name, round.round_number
+    from concurrent_shooting_round_mappings mapping
+    join concurrent_shooting_rounds physical on physical.id=mapping.concurrent_shooting_round_id
+    join competitions competition on competition.id=mapping.competition_id
+    join competition_rounds round on round.id=mapping.competition_round_id
+    where mapping.concurrent_shooting_group_id=$1
+    order by physical.position,competition.name`, [group.id])).rows;
+  assert.deepEqual(mappings.map((row) => [row.position, row.name, row.round_number]), [
+    [1, "Matching 1", 1], [1, "Matching 2", 1], [1, "Matching 3", 1],
+    [2, "Matching 1", 2], [2, "Matching 2", 2], [2, "Matching 3", 2],
+    [3, "Matching 1", 3], [3, "Matching 3", 3],
+  ]);
+  const repeated = (await db.query(
+    "select public.map_matching_concurrent_shooting_round_numbers(1,$1) data",
+    [group.id],
+  )).rows[0].data;
+  assert.deepEqual(repeated, {
+    created_round_count: 0,
+    added_mapping_count: 0,
+    preserved_manual_conflict_count: 0,
+  });
+});
+
+test("matching Round convenience preserves unusual manual conflicts", async () => {
+  const a = await createCompetition({ name: "Manual A", rounds: 3 });
+  const b = await createCompetition({ name: "Manual B", rounds: 3 });
+  await publish(a);
+  await publish(b);
+  const group = await createGroup("Manual preservation");
+  await add(group, a);
+  await add(group, b);
+  const manual = await physicalRound(group, 1, "Unusual shoot");
+  await map(group, manual, a, 1);
+  await map(group, manual, b, 3);
+
+  const result = (await db.query(
+    "select public.map_matching_concurrent_shooting_round_numbers(1,$1) data",
+    [group.id],
+  )).rows[0].data;
+  assert.deepEqual(result, {
+    created_round_count: 1,
+    added_mapping_count: 2,
+    preserved_manual_conflict_count: 2,
+  });
+  const manualMappings = (await admin(`select mapping.competition_id,round.round_number
+    from concurrent_shooting_round_mappings mapping
+    join competition_rounds round on round.id=mapping.competition_round_id
+    where mapping.concurrent_shooting_round_id=$1 order by mapping.competition_id`, [manual])).rows;
+  assert.deepEqual(manualMappings.map((row) => [row.competition_id, row.round_number]), [
+    [a.id, 1], [b.id, 3],
+  ]);
 });
 
 test("Stage 3A mapping setter is explicit and Competition summaries expose only configured membership", async () => {
@@ -1225,6 +1330,8 @@ test("Stage 3A lifecycle metadata mirrors safe cancellation rules", async () => 
     [fixture.group.id],
   )).rows[0].data;
   assert.deepEqual(lifecycle, {
+    can_activate: false,
+    activation_block_reasons: ["competition_not_published"],
     can_cancel_activation: false,
     cancel_block_reason: "not_active",
     has_score_provenance: false,
@@ -1255,6 +1362,7 @@ test("the additive migration is rerunnable", async () => {
     const stage2 = await sqlFile("concurrent-shooting-stage-2");
     const stage3a = await sqlFile("concurrent-shooting-stage-3a");
     const physicalCompatibility = await sqlFile("concurrent-shooting-physical-compatibility");
+    const managementUx = await sqlFile("concurrent-shooting-management-ux");
     await rerun.exec(shootingDetails);
     await rerun.exec(shootingDetails);
     await rerun.exec(sql);
@@ -1265,6 +1373,8 @@ test("the additive migration is rerunnable", async () => {
     await rerun.exec(stage3a);
     await rerun.exec(physicalCompatibility);
     await rerun.exec(physicalCompatibility);
+    await rerun.exec(managementUx);
+    await rerun.exec(managementUx);
     assert.equal((await rerun.query(
       "select count(*)::int n from information_schema.tables where table_schema='public' and table_name like 'concurrent_shooting%'",
     )).rows[0].n, 4);

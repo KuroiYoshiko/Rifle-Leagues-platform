@@ -26,6 +26,8 @@ async function loadUi() {
 
 const organisation = { id: 1, slug: "test-org" };
 const lifecycle = {
+  can_activate: false,
+  activation_block_reasons: [],
   can_cancel_activation: true,
   cancel_block_reason: null,
   has_score_provenance: false,
@@ -126,12 +128,18 @@ function workspace(status) {
       ],
     }],
     candidates: [
-      { competition_id: 11, name: "Individual A", slug: "individual-a", status: "published", entry_format: "individual", ranking_method: "aggregate", number_of_rounds: 3, selected: true, existing_group_id: 8, existing_group_name: "Winter shared shooting", existing_group_status: status, compatible: true, compatibility_mismatches: [], has_course_of_fire: true, physical_details_configured: true, selectable: status === "draft" },
-      { competition_id: 12, name: "Pair B", slug: "pair-b", status: "published", entry_format: "pairs", ranking_method: "aggregate", number_of_rounds: 2, selected: true, existing_group_id: 8, existing_group_name: "Winter shared shooting", existing_group_status: status, compatible: true, compatibility_mismatches: [], has_course_of_fire: true, physical_details_configured: true, selectable: status === "draft" },
-      { competition_id: 13, name: "Incompatible C", slug: "incompatible-c", status: "published", entry_format: "team", ranking_method: "aggregate", number_of_rounds: 2, selected: false, existing_group_id: null, existing_group_name: null, existing_group_status: null, compatible: false, compatibility_mismatches: ["components", "uses_x_score"], has_course_of_fire: true, physical_details_configured: true, selectable: false },
-      { competition_id: 14, name: "Legacy D", slug: "legacy-d", status: "published", entry_format: "individual", ranking_method: "gun_score", number_of_rounds: 2, selected: false, existing_group_id: null, existing_group_name: null, existing_group_status: null, compatible: false, compatibility_mismatches: ["physical_details"], has_course_of_fire: true, physical_details_configured: false, selectable: false },
+      { competition_id: 11, name: "Individual A", slug: "individual-a", status: "published", entry_format: "individual", ranking_method: "aggregate", number_of_rounds: 3, selected: true, existing_group_id: 8, existing_group_name: "Winter shared shooting", existing_group_status: status, compatible: true, compatibility_mismatches: [], has_course_of_fire: true, physical_details_configured: true, effective_starts_at: "2026-03-01", has_started: false, selectable: status === "draft" },
+      { competition_id: 12, name: "Pair B", slug: "pair-b", status: "published", entry_format: "pairs", ranking_method: "aggregate", number_of_rounds: 2, selected: true, existing_group_id: 8, existing_group_name: "Winter shared shooting", existing_group_status: status, compatible: true, compatibility_mismatches: [], has_course_of_fire: true, physical_details_configured: true, effective_starts_at: "2026-03-01", has_started: false, selectable: status === "draft" },
+      { competition_id: 13, name: "Incompatible C", slug: "incompatible-c", status: "published", entry_format: "team", ranking_method: "aggregate", number_of_rounds: 2, selected: false, existing_group_id: null, existing_group_name: null, existing_group_status: null, compatible: false, compatibility_mismatches: ["components", "uses_x_score"], has_course_of_fire: true, physical_details_configured: true, effective_starts_at: "2026-03-01", has_started: false, selectable: false },
+      { competition_id: 14, name: "Legacy D", slug: "legacy-d", status: "published", entry_format: "individual", ranking_method: "gun_score", number_of_rounds: 2, selected: false, existing_group_id: null, existing_group_name: null, existing_group_status: null, compatible: false, compatibility_mismatches: ["physical_details"], has_course_of_fire: true, physical_details_configured: false, effective_starts_at: "2026-03-01", has_started: false, selectable: false },
     ],
-    lifecycle: status === "active" ? lifecycle : { can_cancel_activation: false, cancel_block_reason: "not_active", has_score_provenance: false },
+    lifecycle: status === "active" ? lifecycle : {
+      can_activate: status === "draft",
+      activation_block_reasons: [],
+      can_cancel_activation: false,
+      cancel_block_reason: "not_active",
+      has_score_provenance: false,
+    },
     roundsByCompetition: {
       11: [{ id: 101, competition_id: 11, round_number: 1, deadline: "2026-03-01", shoot_by_date: null }, { id: 102, competition_id: 11, round_number: 2, deadline: "2026-03-08", shoot_by_date: null }, { id: 103, competition_id: 11, round_number: 3, deadline: "2026-03-15", shoot_by_date: null }],
       12: [{ id: 201, competition_id: 12, round_number: 2, deadline: "2026-03-04", shoot_by_date: null }, { id: 202, competition_id: 12, round_number: 3, deadline: "2026-03-11", shoot_by_date: null }],
@@ -150,7 +158,10 @@ test("Draft workflow shows compatibility, explicit mapping, independent Rounds, 
   assert.match(ownerHtml, /structured physical Course of Fire—not Competition names/);
   assert.match(ownerHtml, /Physical eligibility mismatch: component structure, labels, maximums, or scoring methods differ; X scoring differs/);
   assert.match(ownerHtml, /Physical shooting details required/);
-  assert.match(ownerHtml, /Choose every mapping explicitly/);
+  assert.match(ownerHtml, /Review every generated or manual mapping/);
+  assert.match(ownerHtml, /Map matching Round numbers/);
+  assert.match(ownerHtml, /one physical shoot whose score counts/);
+  assert.match(ownerHtml, /Manual different-number mapping/);
   assert.match(ownerHtml, /Round 3 · already mapped|Round 2/);
   assert.match(ownerHtml, /Individual A:<\/span> 2, 3/);
   assert.match(ownerHtml, /Pair B:<\/span> 3/);
@@ -164,6 +175,99 @@ test("Draft workflow shows compatibility, explicit mapping, independent Rounds, 
   }));
   assert.doesNotMatch(managerHtml, /Activate Concurrent Shooting/);
   assert.match(managerHtml, /Organisation owner must activate/);
+});
+
+test("first Competition establishes the reference without false Compatible wording", async () => {
+  const { management } = await loadUi();
+  const first = workspace("draft");
+  first.members = [];
+  first.physical_rounds = [];
+  first.roundsByCompetition = {};
+  first.candidates = first.candidates.map((candidate) => ({
+    ...candidate,
+    selected: false,
+    existing_group_id: null,
+    existing_group_name: null,
+    selectable: candidate.physical_details_configured,
+    compatibility_mismatches: candidate.physical_details_configured ? [] : ["physical_details"],
+  }));
+  first.lifecycle = {
+    can_activate: false,
+    activation_block_reasons: ["member_count", "rounds_missing"],
+    can_cancel_activation: false,
+    cancel_block_reason: "not_active",
+    has_score_provenance: false,
+  };
+  const html = renderToStaticMarkup(createElement(management.ConcurrentShootingWorkspaceView, {
+    organisation, seasonName: "Winter 2026", workspace: first, isOwner: true,
+  }));
+  assert.match(html, /Start with this Competition/);
+  assert.match(html, /establishes the physical Course of Fire/);
+  assert.doesNotMatch(html, />Compatible</);
+  assert.doesNotMatch(html, /Eligible for Concurrent Shooting/);
+});
+
+test("started Draft member stays visible and disables predictable activation", async () => {
+  const { management } = await loadUi();
+  const started = workspace("draft");
+  started.candidates[0].has_started = true;
+  started.candidates[0].selectable = false;
+  started.lifecycle = {
+    can_activate: false,
+    activation_block_reasons: ["competition_started"],
+    can_cancel_activation: false,
+    cancel_block_reason: "not_active",
+    has_score_provenance: false,
+  };
+  const html = renderToStaticMarkup(createElement(management.ConcurrentShootingWorkspaceView, {
+    organisation, seasonName: "Winter 2026", workspace: started, isOwner: true,
+  }));
+  assert.match(html, /Selected · activation blocked/);
+  assert.match(html, /Competition has already started/);
+  assert.match(html, /Activate Concurrent Shooting/);
+  assert.match(html, /type="submit" disabled="" class="[^"]*text-primary-foreground!/);
+});
+
+test("Concurrent filled primary actions use the high-contrast application convention", async () => {
+  const source = await readFile(new URL("../src/components/concurrent-shooting-management.tsx", import.meta.url), "utf8");
+  const page = await readFile(new URL("../src/app/(app)/organisations/[slug]/management/concurrent-shooting/page.tsx", import.meta.url), "utf8");
+  assert.match(source, /bg-primary[^"\n]*text-primary-foreground!/);
+  assert.match(source, /hover:bg-brand-deep/);
+  assert.match(page, /bg-primary[^"\n]*text-primary-foreground!/);
+});
+
+test("Competition details render equipment and component physical identity while legacy stays unchanged", async () => {
+  const disclosure = await loadModule("src/components/competition-details-disclosure.tsx", {
+    "@/lib/competitions": {
+      getCompetitionMaximumPerRound: () => 100,
+      getCompetitionRankingMethodLabel: () => "Aggregate points",
+      getCompetitionScoringMethodLabel: () => "Points scored",
+    },
+    "@/lib/league-seasons": { formatLeagueSeasonDate: (value) => value },
+  });
+  const competition = {
+    sets_per_round: 1, entry_window_mode: "season_default", start_date_mode: "season_default",
+    local_scoring_enabled: true, ranking_method: "aggregate", uses_x_score: false,
+    number_of_rounds: 1,
+  };
+  const components = [{ id: 1, position: 1, short_label: "50m", maximum_score: 100, score_method: "points_scored" }];
+  const structured = renderToStaticMarkup(createElement(disclosure.CompetitionDetailsDisclosure, {
+    competition,
+    effectiveDates: { effective_entry_opens_at: null, effective_entry_closes_at: null, effective_starts_at: null },
+    rounds: [], scoreComponents: components,
+    shootingDisplay: { configured: true, equipment_name: "Water Pistol", components: [{ component_id: 1, position_mode: "fixed", position_name: "Prone", distance_mode: "fixed", distance_value: 50, distance_unit: "metres", shots: 20 }] },
+  }));
+  assert.match(structured, /Prone · 50 metres · 20 shots · Ex 100 · Points scored/);
+  const legacy = renderToStaticMarkup(createElement(disclosure.CompetitionDetailsDisclosure, {
+    competition,
+    effectiveDates: { effective_entry_opens_at: null, effective_entry_closes_at: null, effective_starts_at: null },
+    rounds: [], scoreComponents: components,
+    shootingDisplay: { configured: false, equipment_name: null, components: [] },
+  }));
+  assert.match(legacy, /Ex 100 · Points scored/);
+  assert.doesNotMatch(legacy, /Prone|metres|shots · Ex/);
+  const page = await readFile(new URL("../src/app/(app)/organisations/[slug]/leagues/[seasonSlug]/competitions/[competitionSlug]/page.tsx", import.meta.url), "utf8");
+  assert.match(page, /shootingDisplay\.equipment_name/);
 });
 
 test("Active and Archived group views are read-only", async () => {

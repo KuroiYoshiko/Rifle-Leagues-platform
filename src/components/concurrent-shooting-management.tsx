@@ -21,7 +21,7 @@ import type { LeagueSeason } from "@/lib/league-seasons";
 const initialState: ConcurrentShootingActionState = {};
 const fieldClass = "min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm text-foreground outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10 disabled:cursor-not-allowed disabled:opacity-60";
 const secondaryButton = "inline-flex min-h-10 items-center justify-center rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-brand-deep transition hover:bg-brand-subtle disabled:cursor-not-allowed disabled:opacity-50";
-const primaryButton = "inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50";
+const primaryButton = "inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep disabled:cursor-not-allowed disabled:opacity-50";
 const dangerButton = "inline-flex min-h-10 items-center justify-center rounded-xl border border-danger/30 bg-danger-subtle px-4 text-sm font-semibold text-danger transition hover:border-danger/50 disabled:cursor-not-allowed disabled:opacity-50";
 const activatedDateFormatter = new Intl.DateTimeFormat("en-GB", {
   day: "numeric",
@@ -52,15 +52,16 @@ function CommonFields({ organisation, groupId }: {
   </>;
 }
 
-function SubmitButton({ label, pendingLabel, tone = "secondary" }: {
+function SubmitButton({ label, pendingLabel, tone = "secondary", disabled = false }: {
   label: string;
   pendingLabel: string;
   tone?: "primary" | "secondary" | "danger";
+  disabled?: boolean;
 }) {
   const { pending } = useFormStatus();
   return <button
     type="submit"
-    disabled={pending}
+    disabled={pending || disabled}
     className={tone === "primary" ? primaryButton : tone === "danger" ? dangerButton : secondaryButton}
   >{pending ? pendingLabel : label}</button>;
 }
@@ -82,6 +83,7 @@ function MutationForm({
   tone,
   className = "",
   confirmMessage,
+  disabled = false,
 }: {
   organisation: { id: number; slug: string };
   groupId: number;
@@ -92,6 +94,7 @@ function MutationForm({
   tone?: "primary" | "secondary" | "danger";
   className?: string;
   confirmMessage?: string;
+  disabled?: boolean;
 }) {
   const [state, action] = useActionState(mutateConcurrentShootingGroup, initialState);
   return <form
@@ -104,7 +107,7 @@ function MutationForm({
     <CommonFields organisation={organisation} groupId={groupId} />
     <input type="hidden" name="operation" value={operation} />
     {children}
-    <SubmitButton label={submitLabel} pendingLabel={pendingLabel} tone={tone} />
+    <SubmitButton label={submitLabel} pendingLabel={pendingLabel} tone={tone} disabled={disabled} />
     <ActionMessage state={state} />
   </form>;
 }
@@ -233,6 +236,7 @@ export function ConcurrentShootingGroupList({ organisation, groups, isOwner }: {
 }
 
 function mismatchMessage(candidate: ConcurrentShootingCandidate) {
+  if (candidate.has_started) return "Competition has already started. Concurrent Shooting must be configured before Competition Start.";
   if (candidate.status !== "published") return "Publish this Competition before adding it.";
   if (!candidate.has_course_of_fire) return "Complete its Course of Fire before adding it.";
   if (!candidate.physical_details_configured) return "Physical shooting details required.";
@@ -254,19 +258,24 @@ function mismatchMessage(candidate: ConcurrentShootingCandidate) {
   return reasons.length ? `Physical eligibility mismatch: ${reasons.join("; ")}.` : null;
 }
 
-function CandidateCard({ organisation, groupId, candidate, editable }: {
+function CandidateCard({ organisation, groupId, candidate, editable, hasReference }: {
   organisation: { id: number; slug: string };
   groupId: number;
   candidate: ConcurrentShootingCandidate;
   editable: boolean;
+  hasReference: boolean;
 }) {
   const reason = mismatchMessage(candidate);
+  const availableLabel = hasReference
+    ? "Eligible for Concurrent Shooting"
+    : "Start with this Competition";
+  const selectedLabel = candidate.has_started ? "Selected · activation blocked" : "Selected";
   return <Card className={`p-4 sm:p-5 ${candidate.selected ? "border-brand/40 bg-brand-subtle/30" : ""}`}>
     <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
       <div className="min-w-0">
         <div className="flex flex-wrap items-center gap-2">
           <h3 className="font-semibold text-foreground">{candidate.name}</h3>
-          <Badge tone={candidate.selected ? "brand" : candidate.selectable ? "positive" : "neutral"}>{candidate.selected ? "Selected" : candidate.selectable ? "Eligible for Concurrent Shooting" : "Unavailable"}</Badge>
+          <Badge tone={candidate.selected ? candidate.has_started ? "warning" : "brand" : candidate.selectable ? "positive" : "neutral"}>{candidate.selected ? selectedLabel : candidate.selectable ? availableLabel : "Unavailable"}</Badge>
         </div>
         <p className="mt-1 text-xs text-muted-foreground">{getCompetitionEntryFormatLabel(candidate.entry_format)} · {candidate.number_of_rounds} Round{candidate.number_of_rounds === 1 ? "" : "s"} · {getCompetitionRankingMethodLabel(candidate.ranking_method)}</p>
         {reason ? <p className="mt-2 text-sm leading-5 text-warning">{reason}</p> : null}
@@ -275,7 +284,7 @@ function CandidateCard({ organisation, groupId, candidate, editable }: {
         organisation={organisation}
         groupId={groupId}
         operation={candidate.selected ? "remove_competition" : "add_competition"}
-        submitLabel={candidate.selected ? "Remove" : "Add Competition"}
+        submitLabel={candidate.selected ? "Remove" : hasReference ? "Add Competition" : "Start with this Competition"}
         pendingLabel={candidate.selected ? "Removing…" : "Adding…"}
         tone={candidate.selected ? "danger" : "secondary"}
         className="shrink-0"
@@ -299,7 +308,7 @@ function MappingCards({ organisation, workspace, editable }: {
   editable: boolean;
 }) {
   if (!workspace.physical_rounds.length) return <Card className="border-dashed bg-surface-muted p-6">
-    <p className="text-sm text-muted-foreground">No shared physical Rounds have been added. Round numbers are never linked automatically.</p>
+    <p className="text-sm text-muted-foreground">No shared physical Rounds have been added yet. Use matching Round numbers for the common path, or add one manually for an unusual mapping.</p>
   </Card>;
   return <div className="space-y-4">{workspace.physical_rounds.map((physical) => <Card key={physical.id} className="overflow-hidden">
     <div className="border-b border-border bg-surface-muted p-4 sm:px-5">
@@ -344,7 +353,8 @@ function Review({ workspace, seasonName }: {
   const entryFormats = new Set(workspace.members.map((member) => member.entry_format));
   const rankingMethods = new Set(workspace.members.map((member) => candidateById.get(member.competition_id)?.ranking_method).filter(Boolean));
   const schedules = new Set(workspace.members.map((member) => JSON.stringify((workspace.roundsByCompetition[String(member.competition_id)] ?? []).map((round) => [round.deadline, round.shoot_by_date]))));
-  const compatible = workspace.members.every((member) => member.compatibility_mismatches.length === 0);
+  const compatible = workspace.members.length > 0
+    && workspace.members.every((member) => member.compatibility_mismatches.length === 0);
   const validPhysicalRounds = workspace.physical_rounds.filter((physical) => new Set(physical.mappings.map((mapping) => mapping.competition_id)).size >= 2).length;
   return <Card className="p-5 sm:p-7">
     <div className="grid gap-6 lg:grid-cols-2">
@@ -359,7 +369,7 @@ function Review({ workspace, seasonName }: {
               <ul className="mt-2 space-y-1 text-muted-foreground">{workspace.members.map((member) => <li key={member.competition_id}>✓ {member.name}</li>)}</ul>
             </dd>
           </div>
-          <div><dt className="text-muted-foreground">Physical eligibility</dt><dd className={`mt-1 font-semibold ${compatible ? "text-success" : "text-warning"}`}>{compatible ? "✓ Eligible for Concurrent Shooting" : "Review physical or scoring differences"}</dd></div>
+          <div><dt className="text-muted-foreground">Physical eligibility</dt><dd className={`mt-1 font-semibold ${compatible ? "text-success" : "text-warning"}`}>{workspace.members.length === 0 ? "Select a starting Competition" : compatible ? "✓ Eligible for Concurrent Shooting" : "Review physical or scoring differences"}</dd></div>
           <div><dt className="text-muted-foreground">Shared physical Rounds</dt><dd className="mt-1 font-semibold text-foreground">{workspace.physical_rounds.length} configured · {validPhysicalRounds} ready</dd></div>
         </dl>
       </div>
@@ -369,6 +379,21 @@ function Review({ workspace, seasonName }: {
           const rounds = independentRounds(workspace, member.competition_id);
           return <li key={member.competition_id}><span className="font-medium text-foreground">{member.name}:</span> {rounds.length ? rounds.map((round) => round.round_number).join(", ") : "None"}</li>;
         })}</ul>
+        <h3 className="mt-6 font-semibold text-foreground">Configured score sharing</h3>
+        {workspace.physical_rounds.length ? <ul className="mt-3 space-y-2 text-sm text-muted-foreground">
+          {workspace.physical_rounds.map((physical) => {
+            const mappings = physical.mappings.map((mapping) => {
+              const member = workspace.members.find((item) => item.competition_id === mapping.competition_id);
+              return `${member?.name ?? "Competition"} R${mapping.round_number}`;
+            });
+            const roundNumbers = new Set(physical.mappings.map((mapping) => mapping.round_number));
+            return <li key={physical.id}>
+              <span className="font-medium text-foreground">{physical.label || `Shared ${physical.position}`}:</span>{" "}
+              {mappings.length ? mappings.join(" + ") : "Not mapped"}
+              {roundNumbers.size > 1 ? <span className="ml-2 text-warning">Manual different-number mapping</span> : null}
+            </li>;
+          })}
+        </ul> : <p className="mt-3 text-sm text-muted-foreground">No Competition Rounds will share a physical score yet.</p>}
       </div>
     </div>
     <div className="mt-6 flex flex-wrap gap-2 border-t border-border pt-5">
@@ -386,6 +411,21 @@ function cancelExplanation(lifecycle: ConcurrentShootingLifecycle) {
   return null;
 }
 
+function activationExplanations(lifecycle: ConcurrentShootingLifecycle) {
+  const labels: Record<ConcurrentShootingLifecycle["activation_block_reasons"][number], string> = {
+    member_count: "Select at least two Competitions.",
+    competition_started: "A selected Competition has already started. Concurrent Shooting must be activated before Competition Start.",
+    competition_not_published: "Every selected Competition must remain published.",
+    physical_details: "Complete the structured physical shooting details.",
+    incompatible: "Selected Competitions no longer have the same physical Course of Fire.",
+    rounds_missing: "Add or generate at least one shared Round.",
+    round_not_ready: "Each configured shared Round must map at least two Competitions.",
+    member_unmapped: "Every selected Competition needs at least one shared Round mapping.",
+    score_provenance: "Existing score activity prevents activation.",
+  };
+  return lifecycle.activation_block_reasons.map((reason) => labels[reason]);
+}
+
 export function ConcurrentShootingWorkspaceView({ organisation, seasonName, workspace, isOwner }: {
   organisation: { id: number; slug: string };
   seasonName: string;
@@ -399,6 +439,8 @@ export function ConcurrentShootingWorkspaceView({ organisation, seasonName, work
   const displayedCandidates = editable
     ? workspace.candidates
     : workspace.candidates.filter((candidate) => candidate.selected);
+  const hasReference = workspace.members.length > 0;
+  const activationNotes = activationExplanations(workspace.lifecycle);
   return <div className="space-y-10">
     <section aria-labelledby="concurrent-basic-heading">
       <SectionHeader title="1. Basic details" description={`Season: ${seasonName}`} />
@@ -413,15 +455,19 @@ export function ConcurrentShootingWorkspaceView({ organisation, seasonName, work
 
     <section aria-labelledby="concurrent-competitions-heading">
       <SectionHeader title="2. Select Competitions" description="At least two published Competitions with the same Course of Fire are required" />
-      <p className="mb-4 rounded-xl border border-brand/20 bg-brand-subtle px-4 py-3 text-sm leading-6 text-brand-deep">Eligibility is based on the structured physical Course of Fire—not Competition names. Individual, Pair, and Team Competitions can be linked when their physical and scoring definitions match.</p>
+      <p className="mb-4 rounded-xl border border-brand/20 bg-brand-subtle px-4 py-3 text-sm leading-6 text-brand-deep">{hasReference ? "Eligibility is based on the structured physical Course of Fire—not Competition names. Individual, Pair, and Team Competitions can be linked when their physical and scoring definitions match." : "Start with one configured Competition. It establishes the physical Course of Fire against which later candidates are checked."}</p>
       {!hasEligibleCompetition ? <Card className="mb-4 border-dashed bg-surface-muted p-5"><p className="text-sm text-muted-foreground">No published Competition in this Season is currently eligible. Publish at least two Competitions with matching scoring and complete physical shooting details, then return here.</p></Card> : null}
-      {displayedCandidates.length ? <div className="space-y-3">{displayedCandidates.map((candidate) => <CandidateCard key={candidate.competition_id} organisation={organisation} groupId={workspace.group.id} candidate={candidate} editable={editable} />)}</div> : <Card className="bg-surface-muted p-6"><p className="text-sm text-muted-foreground">There are no Competitions in this Season yet.</p></Card>}
+      {displayedCandidates.length ? <div className="space-y-3">{displayedCandidates.map((candidate) => <CandidateCard key={candidate.competition_id} organisation={organisation} groupId={workspace.group.id} candidate={candidate} editable={editable} hasReference={hasReference} />)}</div> : <Card className="bg-surface-muted p-6"><p className="text-sm text-muted-foreground">There are no Competitions in this Season yet.</p></Card>}
     </section>
 
     <section aria-labelledby="concurrent-rounds-heading">
-      <SectionHeader title="3. Map shared physical Rounds" description="Choose every mapping explicitly; equal Round numbers are not linked automatically" action={editable ? <MutationForm organisation={organisation} groupId={workspace.group.id} operation="create_round" submitLabel="Add shared Round" pendingLabel="Adding…">
-        <input type="hidden" name="position" value={nextPosition} /><input type="hidden" name="round_label" value="" />
-      </MutationForm> : undefined} />
+      <SectionHeader title="3. Map shared physical Rounds" description="Review every generated or manual mapping before activation" action={editable ? <div className="flex flex-wrap justify-end gap-2">
+        <MutationForm organisation={organisation} groupId={workspace.group.id} operation="map_matching_rounds" submitLabel="Map matching Round numbers" pendingLabel="Mapping…" tone="primary" />
+        <MutationForm organisation={organisation} groupId={workspace.group.id} operation="create_round" submitLabel="Add shared Round" pendingLabel="Adding…">
+          <input type="hidden" name="position" value={nextPosition} /><input type="hidden" name="round_label" value="" />
+        </MutationForm>
+      </div> : undefined} />
+      <p className="mb-4 text-sm leading-6 text-muted-foreground">A shared Round represents one physical shoot whose score counts in each mapped Competition Round. Matching Round numbers are the fast path; manual mapping remains useful when corresponding physical shoots use different Round numbers.</p>
       <MappingCards organisation={organisation} workspace={workspace} editable={editable} />
     </section>
 
@@ -435,7 +481,8 @@ export function ConcurrentShootingWorkspaceView({ organisation, seasonName, work
       <Card className="p-5 sm:p-6">
         {editable ? <>
           <p className="text-sm leading-6 text-muted-foreground">Activation locks membership and Round mappings. Scores entered for mapped Rounds become one physical score across linked Competition usages, while Competition Results and release dates remain independent.</p>
-          <div className="mt-5">{isOwner ? <MutationForm organisation={organisation} groupId={workspace.group.id} operation="activate" submitLabel="Activate Concurrent Shooting" pendingLabel="Activating…" tone="primary" confirmMessage="Activate and lock this Concurrent Shooting configuration?" /> : <div className="rounded-xl border border-warning/20 bg-warning-subtle px-4 py-3 text-sm text-warning">This Draft is ready for preparation, but an Organisation owner must activate it.</div>}</div>
+          {activationNotes.length ? <div className="mt-4 rounded-xl border border-warning/20 bg-warning-subtle px-4 py-3 text-sm text-warning"><p className="font-semibold">Activation is not ready:</p><ul className="mt-2 list-disc space-y-1 pl-5">{activationNotes.map((note) => <li key={note}>{note}</li>)}</ul></div> : null}
+          <div className="mt-5">{isOwner ? <MutationForm organisation={organisation} groupId={workspace.group.id} operation="activate" submitLabel="Activate Concurrent Shooting" pendingLabel="Activating…" tone="primary" disabled={!workspace.lifecycle.can_activate} confirmMessage="Activate and lock this Concurrent Shooting configuration?" /> : <div className="rounded-xl border border-warning/20 bg-warning-subtle px-4 py-3 text-sm text-warning">{workspace.lifecycle.can_activate ? "This Draft is ready, but an Organisation owner must activate it." : "An Organisation owner can activate this Draft after the issues above are resolved."}</div>}</div>
         </> : workspace.group.status === "active" ? <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div><h3 className="font-semibold text-foreground">Active configuration</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Membership and shared Round mappings are locked.</p>{cancellationNote ? <p className="mt-2 text-sm text-warning">{cancellationNote}</p> : null}</div>
           {isOwner ? <div className="flex flex-wrap gap-2">{workspace.lifecycle.can_cancel_activation ? <MutationForm organisation={organisation} groupId={workspace.group.id} operation="cancel" submitLabel="Cancel activation" pendingLabel="Cancelling…" confirmMessage="Return this unused Active group to Draft?" /> : null}<MutationForm organisation={organisation} groupId={workspace.group.id} operation="archive" submitLabel="Archive" pendingLabel="Archiving…" confirmMessage="Archive this group while preserving all historical configuration?" /></div> : null}

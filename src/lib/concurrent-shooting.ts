@@ -73,10 +73,24 @@ export type ConcurrentShootingCandidate = {
   compatibility_mismatches: string[];
   has_course_of_fire: boolean;
   physical_details_configured: boolean;
+  effective_starts_at: string | null;
+  has_started: boolean;
   selectable: boolean;
 };
 
 export type ConcurrentShootingLifecycle = {
+  can_activate: boolean;
+  activation_block_reasons: Array<
+    | "member_count"
+    | "competition_started"
+    | "competition_not_published"
+    | "physical_details"
+    | "incompatible"
+    | "rounds_missing"
+    | "round_not_ready"
+    | "member_unmapped"
+    | "score_provenance"
+  >;
   can_cancel_activation: boolean;
   cancel_block_reason:
     | "not_active"

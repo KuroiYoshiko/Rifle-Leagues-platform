@@ -17,7 +17,7 @@ import { getOrganisationManagementContextBySlug } from "@/lib/organisations";
 
 export const metadata: Metadata = { title: "Concurrent Shooting" };
 
-const createButtonClass = "inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:opacity-90";
+const createButtonClass = "inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep";
 
 export default async function OrganisationConcurrentShootingPage({
   params,

@@ -272,18 +272,22 @@ focused on access requests and staff. Managers can still view Series, while
 existing owner-only Series mutations are unchanged.
 
 Concurrent Shooting is prepared as a Draft workflow: create the group, select
-server-validated candidates, explicitly add physical Rounds and choose each
-Competition Round mapping, review independent Rounds and non-blocking format or
-schedule differences, then ask an owner to activate. Course-of-Fire mismatch
-codes are translated into organiser-facing reasons; the server remains the
-authority for candidate eligibility and activation validation. Active and
+a first Competition to establish the physical Course-of-Fire reference, map
+matching Round numbers or explicitly add unusual physical Rounds, review every
+persisted mapping and independent Round, then ask an owner to activate.
+Course-of-Fire mismatch codes are translated into organiser-facing reasons;
+the server remains the authority for candidate eligibility and activation
+validation. Active and
 Archived configurations render read-only. Safe cancellation is displayed only
 to owners when the lifecycle read model confirms it remains possible.
 
-The responsive mapping view uses cards instead of a wide table. Equal Round
-numbers are not saved automatically, and clearing a selection leaves that
-Competition Round independent. A management-only Competition indicator links
-members back to the Organisation workflow and does not broaden public access.
+The responsive mapping view uses cards instead of a wide table. The optional
+matching-Round action persists only exact Round-number matches present in at
+least two selected Competitions. It includes every matching member, is
+idempotent, and preserves conflicting manual mappings; clearing a selection
+leaves that Competition Round independent. A management-only Competition
+indicator links members back to the Organisation workflow and does not broaden
+public access.
 
 `database/concurrent-shooting-stage-3a.sql` adds only four narrow functions:
 same-Season candidate diagnostics, lifecycle display metadata, a Competition
@@ -302,10 +306,12 @@ Deploy the existing migrations through
 3. `database/concurrent-shooting-stage-3a.sql`
 4. `database/competition-shooting-details.sql`
 5. `database/concurrent-shooting-physical-compatibility.sql`
+6. `database/concurrent-shooting-management-ux.sql`
 
-All five files are additive and rerunnable. The final two are the physical-model
-upgrade for an existing Stage 3A deployment; on such a deployment run only files
-4 and 5, in that order. They create no groups, do no
+All six files are additive and rerunnable. The final three are the physical-model
+upgrade and management UX contracts for an existing Stage 3A deployment; on
+such a deployment that already has structured details and physical compatibility,
+run only file 6. They create no groups, do no
 historical backfill or source merge, and infer no relationship. Stage 2 must be
 deployed before Active groups are used for score entry; Stage 3A must be
 deployed before exposing its management routes. Run `npm run test:concurrent`

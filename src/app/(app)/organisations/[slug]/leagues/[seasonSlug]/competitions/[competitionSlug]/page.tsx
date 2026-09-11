@@ -33,6 +33,7 @@ import {
   getCompetitionRankingMethodLabel,
   getCompetitionRounds,
   getCompetitionScoreComponents,
+  getCompetitionShootingDisplay,
   getCompetitionScoringMethodLabel,
   getCompetitionStatusLabel,
   resolveCompetitionEffectiveDates,
@@ -115,13 +116,14 @@ export default async function CompetitionDetailPage({
     competitionPublished: competition.status === "published",
     hasDivisionManagement: false,
   });
-  const [rounds, scoreComponents, entryContexts, divisionManagement, publishedDivisions, lifecycleState, aggregateResults, gunScoreResults, roundRobinResults, resultAverages, concurrentShootingSummary] = await Promise.all([
+  const [rounds, scoreComponents, shootingDisplay, entryContexts, divisionManagement, publishedDivisions, lifecycleState, aggregateResults, gunScoreResults, roundRobinResults, resultAverages, concurrentShootingSummary] = await Promise.all([
     viewerId
       ? getCompetitionRounds(competition.id)
       : Promise.resolve(publicCatalog?.rounds ?? []),
     viewerId
       ? getCompetitionScoreComponents(competition.id)
       : Promise.resolve(publicCatalog?.score_components ?? []),
+    getCompetitionShootingDisplay(organisation.id, season.id, competition.id),
     initialCapabilities.loadEntryContext
       ? getCompetitionClubEntryContext(competition.id)
       : Promise.resolve([]),
@@ -219,6 +221,7 @@ export default async function CompetitionDetailPage({
       ? `${formatLeagueSeasonDate(effectiveDates.effective_entry_opens_at)} – ${formatLeagueSeasonDate(effectiveDates.effective_entry_closes_at)}`
       : "Not configured";
   const summaryItems = [
+    ...(shootingDisplay.equipment_name ? [shootingDisplay.equipment_name] : []),
     entryFormatDetail,
     `${competition.number_of_rounds} round${competition.number_of_rounds === 1 ? "" : "s"}`,
     getCompetitionRankingMethodLabel(competition.ranking_method),
@@ -380,6 +383,7 @@ export default async function CompetitionDetailPage({
         effectiveDates={effectiveDates}
         rounds={rounds}
         scoreComponents={scoreComponents}
+        shootingDisplay={shootingDisplay}
         showScoringAccess={capabilities.showScoringAccess}
       />
 

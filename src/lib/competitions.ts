@@ -131,6 +131,20 @@ export type ShootingTaxonomy = {
   customPositions: OrganisationShootingTaxonomyOption[];
 };
 
+export type CompetitionShootingDisplay = {
+  configured: boolean;
+  equipment_name: string | null;
+  components: Array<{
+    component_id: number;
+    position_mode: ShootingPositionMode;
+    position_name: string | null;
+    distance_mode: ShootingDistanceMode;
+    distance_value: number | null;
+    distance_unit: ShootingDistanceUnit | null;
+    shots: number | null;
+  }>;
+};
+
 export type CompetitionEffectiveDates = {
   effective_entry_opens_at: string | null;
   effective_entry_closes_at: string | null;
@@ -290,6 +304,23 @@ export const getShootingTaxonomy = cache(async (organisationId: number) => {
     customEquipmentTypes: (customEquipment.data ?? []) as OrganisationShootingTaxonomyOption[],
     customPositions: (customPositions.data ?? []) as OrganisationShootingTaxonomyOption[],
   } satisfies ShootingTaxonomy;
+});
+
+export const getCompetitionShootingDisplay = cache(async (
+  organisationId: number,
+  leagueSeasonId: number,
+  competitionId: number,
+) => {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_competition_shooting_display", {
+    p_organisation_id: organisationId,
+    p_league_season_id: leagueSeasonId,
+    p_competition_id: competitionId,
+  });
+  if (error || !data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("Competition shooting details could not be loaded.");
+  }
+  return data as CompetitionShootingDisplay;
 });
 
 export const getCompetitionLifecycleState = cache(

@@ -238,6 +238,60 @@ test("custom position normalises once and can be reused by multiple components",
   );
 });
 
+test("safe shooting display resolves built-in and Organisation custom labels without internal codes", async () => {
+  const builtIn = await create("Built-in display");
+  const custom = await create("Custom display", {
+    equipment_type_code: null,
+    custom_equipment_type_name: "Water Pistol",
+    score_components: [component({
+      short_label: "50m",
+      shooting_position_code: null,
+      custom_shooting_position_name: "Supported Standing",
+      distance_value: 50,
+      distance_unit: "metres",
+      shots: 20,
+    })],
+  });
+  const builtInDisplay = (await db.query(
+    "select public.get_competition_shooting_display(1,1,$1) data", [builtIn.id],
+  )).rows[0].data;
+  assert.equal(builtInDisplay.equipment_name, "Smallbore Rifle");
+  assert.equal(builtInDisplay.components[0].position_name, "Prone");
+  const customDisplay = (await db.query(
+    "select public.get_competition_shooting_display(1,1,$1) data", [custom.id],
+  )).rows[0].data;
+  assert.equal(customDisplay.equipment_name, "Water Pistol");
+  assert.deepEqual(customDisplay.components[0], {
+    component_id: customDisplay.components[0].component_id,
+    position_mode: "fixed",
+    position_name: "Supported Standing",
+    distance_mode: "fixed",
+    distance_value: 50,
+    distance_unit: "metres",
+    shots: 20,
+  });
+  assert.doesNotMatch(JSON.stringify(customDisplay), /smallbore_rifle|organisation_equipment_type_id/);
+
+  await become(foreignOwner);
+  await rejected(
+    "select public.get_competition_shooting_display(1,1,$1)", [custom.id],
+    /not available|permission/i,
+  );
+  await become(owner);
+});
+
+test("legacy shooting display stays explicitly unconfigured", async () => {
+  const legacy = (await db.query(`select public.create_competition(
+    1,1,'Legacy display',null,'individual',1,10,false,1,0,
+    'season_default',null,null,'season_default',null,1,
+    '[{"short_label":"P","maximum_score":100,"score_method":"points_scored"}]'::jsonb,
+    'aggregate',null,true,array[current_date+30],array[]::date[]
+  ) data`)).rows[0].data;
+  assert.deepEqual((await db.query(
+    "select public.get_competition_shooting_display(1,1,$1) data", [legacy.id],
+  )).rows[0].data, { configured: false, equipment_name: null, components: [] });
+});
+
 test("distance modes retain exact values/units and reject invalid combinations", async () => {
   const created = await create("Distance modes", {
     score_components: [

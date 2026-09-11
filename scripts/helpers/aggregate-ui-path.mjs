@@ -162,6 +162,11 @@ export async function renderAggregateResultsRoute({
         getCompetitionRankingMethodLabel: () => "Aggregate points",
         getCompetitionRounds: async () => [],
         getCompetitionScoreComponents: async () => [],
+        getCompetitionShootingDisplay: async () => ({
+          configured: false,
+          equipment_name: null,
+          components: [],
+        }),
         getCompetitionScoringMethodLabel: () => "Points scored",
         getCompetitionStatusLabel: () => "Published",
         resolveCompetitionEffectiveDates: () => ({
