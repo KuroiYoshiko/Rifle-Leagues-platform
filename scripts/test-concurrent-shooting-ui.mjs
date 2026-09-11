@@ -9,9 +9,18 @@ const link = ({ children, ...props }) => createElement("a", props, children);
 
 async function loadUi() {
   const ui = await loadModule("src/components/ui.tsx");
+  const confirmation = await loadModule("src/components/confirmation-dialog.tsx");
   const management = await loadModule("src/components/concurrent-shooting-management.tsx", {
     "next/link": { __esModule: true, default: link },
     "@/components/ui": ui,
+    "@/components/confirmation-dialog": confirmation,
+    "@/components/unsaved-changes": {
+      useUnsavedChangesForm: () => ({
+        markDirty: () => undefined,
+        onChangeCapture: () => undefined,
+        onSubmitCapture: () => undefined,
+      }),
+    },
     "@/app/(app)/organisations/[slug]/concurrent-shooting-actions": {
       createConcurrentShootingGroup: async () => ({}),
       mutateConcurrentShootingGroup: async () => ({}),
@@ -234,6 +243,15 @@ test("Concurrent filled primary actions use the high-contrast application conven
   assert.match(source, /bg-primary[^"\n]*text-primary-foreground!/);
   assert.match(source, /hover:bg-brand-deep/);
   assert.match(page, /bg-primary[^"\n]*text-primary-foreground!/);
+});
+
+test("Concurrent destructive actions use accessible in-app confirmations", async () => {
+  const source = await readFile(new URL("../src/components/concurrent-shooting-management.tsx", import.meta.url), "utf8");
+  assert.doesNotMatch(source, /window\.confirm/);
+  assert.match(source, /Delete Concurrent Shooting Draft\?/);
+  assert.match(source, /Remove shared Round\?/);
+  assert.match(source, /It does not change Competition configuration/);
+  assert.match(source, /<ConfirmationDialog/);
 });
 
 test("Competition details render equipment and component physical identity while legacy stays unchanged", async () => {

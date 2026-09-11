@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useUnsavedChangesForm } from "@/components/unsaved-changes";
 import {
   createCompetition,
   createCompetitionSeries,
@@ -233,8 +234,10 @@ export function CompetitionForm({
   );
   const formRef = useRef<HTMLFormElement>(null);
   const submitErrorRef = useRef<HTMLDivElement>(null);
-  const dirtyRef = useRef(false);
-  const submittingRef = useRef(false);
+  const unsavedChanges = useUnsavedChangesForm({
+    pending,
+    savedSignal: state.status === "success" ? state : null,
+  });
   const submitted = state.values;
   const initialCompetitionName = submitted?.name ?? defaults?.name ?? "";
   const [seriesName, setSeriesName] = useState(submitted?.seriesName ?? "");
@@ -348,43 +351,7 @@ export function CompetitionForm({
   const [generatorError, setGeneratorError] = useState<string | null>(null);
 
   useEffect(() => {
-    submittingRef.current = pending;
-  }, [pending]);
-
-  useEffect(() => {
-    function handleBeforeUnload(event: BeforeUnloadEvent) {
-      if (!dirtyRef.current || submittingRef.current) return;
-      event.preventDefault();
-      event.returnValue = "";
-    }
-
-    function handleDocumentClick(event: MouseEvent) {
-      if (!dirtyRef.current || submittingRef.current || event.defaultPrevented || event.button !== 0 ||
-        event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      if (!(event.target instanceof Element)) return;
-      const link = event.target.closest<HTMLAnchorElement>("a[href]");
-      if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
-      const destination = new URL(link.href, window.location.href);
-      if (destination.href === window.location.href) return;
-      if (!window.confirm("You have unsaved Competition changes. Leave without saving?")) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        return;
-      }
-      dirtyRef.current = false;
-    }
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    document.addEventListener("click", handleDocumentClick, true);
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      document.removeEventListener("click", handleDocumentClick, true);
-    };
-  }, []);
-
-  useEffect(() => {
     if (state.status !== "error") return;
-    submittingRef.current = false;
     const firstField = Object.keys(state.fieldErrors ?? {})[0] as CompetitionField | undefined;
     const fieldId = firstField ? fieldFocusIds[firstField] : undefined;
     const field = fieldId ? document.getElementById(fieldId) : null;
@@ -474,7 +441,7 @@ export function CompetitionForm({
   }
 
   function generateSchedule() {
-    dirtyRef.current = true;
+    unsavedChanges.markDirty();
     setGeneratorError(null);
     const interval = Number(repeatEvery);
     const maximum = repeatUnit === "days" ? 365 : 52;
@@ -517,8 +484,8 @@ export function CompetitionForm({
     action={formAction}
     className="space-y-7"
     noValidate
-    onChangeCapture={() => { dirtyRef.current = true; }}
-    onSubmitCapture={() => { submittingRef.current = true; }}
+    onChangeCapture={unsavedChanges.onChangeCapture}
+    onSubmitCapture={unsavedChanges.onSubmitCapture}
   >
     <input type="hidden" name="organisation_id" value={organisation.id} />
     <input type="hidden" name="league_season_id" value={season.id} />

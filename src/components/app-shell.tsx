@@ -7,6 +7,7 @@ import {
   ApplicationSidebarBrand,
   ApplicationSidebarLink,
 } from "@/components/application-sidebar-primitives";
+import { UnsavedChangesProvider } from "@/components/unsaved-changes";
 import type { SidebarClub } from "@/lib/clubs";
 import type { SidebarOrganisation } from "@/lib/organisations";
 
@@ -518,6 +519,7 @@ export function AppShell({
   const details = getPageDetails(pathname, organisations, clubs);
 
   return (
+    <UnsavedChangesProvider>
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-[264px_1fr]">
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-[264px] flex-col bg-navigation text-white lg:flex">
         <SidebarContent
@@ -606,5 +608,6 @@ export function AppShell({
         </main>
       </div>
     </div>
+    </UnsavedChangesProvider>
   );
 }

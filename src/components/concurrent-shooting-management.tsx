@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useActionState, type ReactNode } from "react";
+import { useActionState, useState, type ReactNode } from "react";
 import { useFormStatus } from "react-dom";
 import {
   createConcurrentShootingGroup,
@@ -9,6 +9,8 @@ import {
   type ConcurrentShootingActionState,
 } from "@/app/(app)/organisations/[slug]/concurrent-shooting-actions";
 import { Badge, Card, SectionHeader } from "@/components/ui";
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
+import { useUnsavedChangesForm } from "@/components/unsaved-changes";
 import type {
   ConcurrentShootingCandidate,
   ConcurrentShootingGroupListItem,
@@ -52,17 +54,22 @@ function CommonFields({ organisation, groupId }: {
   </>;
 }
 
-function SubmitButton({ label, pendingLabel, tone = "secondary", disabled = false }: {
+function SubmitButton({ label, pendingLabel, tone = "secondary", disabled = false, modal = false }: {
   label: string;
   pendingLabel: string;
   tone?: "primary" | "secondary" | "danger";
   disabled?: boolean;
+  modal?: boolean;
 }) {
   const { pending } = useFormStatus();
+  const className = tone === "primary" ? primaryButton
+    : tone === "danger" && modal
+      ? "inline-flex min-h-11 items-center justify-center rounded-xl bg-danger px-5 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-wait disabled:opacity-60"
+      : tone === "danger" ? dangerButton : secondaryButton;
   return <button
     type="submit"
     disabled={pending || disabled}
-    className={tone === "primary" ? primaryButton : tone === "danger" ? dangerButton : secondaryButton}
+    className={className}
   >{pending ? pendingLabel : label}</button>;
 }
 
@@ -82,7 +89,8 @@ function MutationForm({
   pendingLabel,
   tone,
   className = "",
-  confirmMessage,
+  confirmation,
+  protectUnsavedChanges = false,
   disabled = false,
 }: {
   organisation: { id: number; slug: string };
@@ -93,16 +101,62 @@ function MutationForm({
   pendingLabel: string;
   tone?: "primary" | "secondary" | "danger";
   className?: string;
-  confirmMessage?: string;
+  confirmation?: {
+    title: string;
+    description: string;
+    confirmLabel?: string;
+  };
+  protectUnsavedChanges?: boolean;
   disabled?: boolean;
 }) {
-  const [state, action] = useActionState(mutateConcurrentShootingGroup, initialState);
+  const [state, action, pending] = useActionState(mutateConcurrentShootingGroup, initialState);
+  const [confirmationOpen, setConfirmationOpen] = useState(false);
+  const unsavedChanges = useUnsavedChangesForm({
+    pending,
+    savedSignal: state.status === "success" ? state : null,
+    enabled: protectUnsavedChanges,
+  });
+
+  if (confirmation) return <div className={className}>
+    <button
+      type="button"
+      disabled={pending || disabled}
+      onClick={() => setConfirmationOpen(true)}
+      className={tone === "primary" ? primaryButton : tone === "danger" ? dangerButton : secondaryButton}
+    >{submitLabel}</button>
+    <ConfirmationDialog
+      open={confirmationOpen}
+      title={confirmation.title}
+      description={<><p>{confirmation.description}</p><ActionMessage state={state} /></>}
+      onCancel={() => setConfirmationOpen(false)}
+      cancelDisabled={pending}
+    >
+      <button
+        type="button"
+        disabled={pending}
+        onClick={() => setConfirmationOpen(false)}
+        className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold transition hover:bg-surface-muted disabled:opacity-60"
+      >Cancel</button>
+      <form action={action} className="contents">
+        <CommonFields organisation={organisation} groupId={groupId} />
+        <input type="hidden" name="operation" value={operation} />
+        {children}
+        <SubmitButton
+          label={confirmation.confirmLabel ?? submitLabel}
+          pendingLabel={pendingLabel}
+          tone={tone}
+          disabled={disabled}
+          modal
+        />
+      </form>
+    </ConfirmationDialog>
+  </div>;
+
   return <form
     action={action}
     className={className}
-    onSubmit={confirmMessage ? (event) => {
-      if (!window.confirm(confirmMessage)) event.preventDefault();
-    } : undefined}
+    onChangeCapture={protectUnsavedChanges ? unsavedChanges.onChangeCapture : undefined}
+    onSubmitCapture={protectUnsavedChanges ? unsavedChanges.onSubmitCapture : undefined}
   >
     <CommonFields organisation={organisation} groupId={groupId} />
     <input type="hidden" name="operation" value={operation} />
@@ -127,15 +181,21 @@ export function ConcurrentShootingCreateForm({ organisation, seasons }: {
   seasons: LeagueSeason[];
 }) {
   const [state, action, pending] = useActionState(createConcurrentShootingGroup, initialState);
+  const unsavedChanges = useUnsavedChangesForm({ pending });
   if (!seasons.length) return <Card className="bg-surface-muted p-6">
     <h2 className="font-semibold text-foreground">No eligible Seasons</h2>
     <p className="mt-2 text-sm leading-6 text-muted-foreground">Create an upcoming Season before preparing Concurrent Shooting.</p>
   </Card>;
-  return <form action={action} className="space-y-6">
+  return <form
+    action={action}
+    className="space-y-6"
+    onChangeCapture={unsavedChanges.onChangeCapture}
+    onSubmitCapture={unsavedChanges.onSubmitCapture}
+  >
     <input type="hidden" name="organisation_id" value={organisation.id} />
     <input type="hidden" name="organisation_slug" value={organisation.slug} />
     <Card className="p-5 sm:p-7">
-      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">Step 1 · Basic details</p>
+      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-strong">Basic details</p>
       <h2 className="mt-2 text-xl font-semibold tracking-[-0.025em] text-foreground">Create a Draft group</h2>
       <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">Concurrent Shooting lets one physical shooter score count in several physically eligible Competitions. The organiser still selects the Competitions and explicitly maps the Rounds that represent the same shoot.</p>
       <div className="mt-6 grid gap-5 sm:grid-cols-2">
@@ -187,7 +247,11 @@ function GroupCard({ organisation, group, isOwner }: {
           submitLabel="Delete"
           pendingLabel="Deleting…"
           tone="danger"
-          confirmMessage={`Delete Draft Concurrent Shooting group “${group.name}”?`}
+          confirmation={{
+            title: "Delete Concurrent Shooting Draft?",
+            description: "This permanently removes this unused Draft configuration.",
+            confirmLabel: "Delete Draft",
+          }}
         /> : null}
         {group.status === "active" && isOwner && group.lifecycle.can_cancel_activation ? <MutationForm
           organisation={organisation}
@@ -195,7 +259,11 @@ function GroupCard({ organisation, group, isOwner }: {
           operation="cancel"
           submitLabel="Cancel activation"
           pendingLabel="Cancelling…"
-          confirmMessage="Return this unused Active group to Draft?"
+          confirmation={{
+            title: "Cancel Concurrent Shooting activation?",
+            description: "This returns the unused Active group to Draft so its configuration can be edited again.",
+            confirmLabel: "Cancel activation",
+          }}
         /> : null}
         {group.status === "active" && isOwner ? <MutationForm
           organisation={organisation}
@@ -203,7 +271,11 @@ function GroupCard({ organisation, group, isOwner }: {
           operation="archive"
           submitLabel="Archive"
           pendingLabel="Archiving…"
-          confirmMessage="Archive this Concurrent Shooting group and preserve its configuration?"
+          confirmation={{
+            title: "Archive Concurrent Shooting group?",
+            description: "This makes the group read-only while preserving its historical configuration.",
+            confirmLabel: "Archive group",
+          }}
         /> : null}
       </div>
     </div>
@@ -281,6 +353,7 @@ function CandidateCard({ organisation, groupId, candidate, editable, hasReferenc
         {reason ? <p className="mt-2 text-sm leading-5 text-warning">{reason}</p> : null}
       </div>
       {editable && (candidate.selected || candidate.selectable) ? <MutationForm
+        key={`${candidate.competition_id}-${candidate.selected ? "selected" : "available"}`}
         organisation={organisation}
         groupId={groupId}
         operation={candidate.selected ? "remove_competition" : "add_competition"}
@@ -288,7 +361,11 @@ function CandidateCard({ organisation, groupId, candidate, editable, hasReferenc
         pendingLabel={candidate.selected ? "Removing…" : "Adding…"}
         tone={candidate.selected ? "danger" : "secondary"}
         className="shrink-0"
-        confirmMessage={candidate.selected ? `Remove ${candidate.name} and all of its Draft Round mappings?` : undefined}
+        confirmation={candidate.selected ? {
+          title: `Remove ${candidate.name}?`,
+          description: "This removes the Competition and all of its Draft shared Round mappings. It does not change the Competition itself.",
+          confirmLabel: "Remove Competition",
+        } : undefined}
       ><input type="hidden" name="competition_id" value={candidate.competition_id} /></MutationForm> : null}
     </div>
   </Card>;
@@ -315,11 +392,23 @@ function MappingCards({ organisation, workspace, editable }: {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div><p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-strong">Shared {physical.position}</p><h3 className="mt-1 font-semibold text-foreground">{physical.label || `Shared physical Round ${physical.position}`}</h3></div>
         {editable ? <div className="flex flex-col gap-2 sm:flex-row">
-          <MutationForm organisation={organisation} groupId={workspace.group.id} operation="update_round" submitLabel="Save label" pendingLabel="Saving…" className="flex flex-col gap-2 sm:flex-row">
+          <MutationForm organisation={organisation} groupId={workspace.group.id} operation="update_round" submitLabel="Save label" pendingLabel="Saving…" className="flex flex-col gap-2 sm:flex-row" protectUnsavedChanges>
             <input type="hidden" name="physical_round_id" value={physical.id} /><input type="hidden" name="position" value={physical.position} />
             <label><span className="sr-only">Shared Round label</span><input name="round_label" maxLength={160} defaultValue={physical.label ?? ""} placeholder="Optional label" className={fieldClass} /></label>
           </MutationForm>
-          <MutationForm organisation={organisation} groupId={workspace.group.id} operation="delete_round" submitLabel="Remove" pendingLabel="Removing…" tone="danger" confirmMessage={`Remove Shared ${physical.position} and all its Draft mappings?`}>
+          <MutationForm
+            organisation={organisation}
+            groupId={workspace.group.id}
+            operation="delete_round"
+            submitLabel="Remove"
+            pendingLabel="Removing…"
+            tone="danger"
+            confirmation={{
+              title: "Remove shared Round?",
+              description: `This removes Shared Round ${physical.position} and all Draft mappings assigned to it. It does not change Competition configuration.`,
+              confirmLabel: "Remove shared Round",
+            }}
+          >
             <input type="hidden" name="physical_round_id" value={physical.id} />
           </MutationForm>
         </div> : null}
@@ -333,7 +422,7 @@ function MappingCards({ organisation, workspace, editable }: {
       return <div key={member.competition_id} className="rounded-xl border border-border bg-surface p-4">
         <h4 className="text-sm font-semibold text-foreground">{member.name}</h4>
         <p className="mt-1 text-xs text-muted-foreground">{getCompetitionEntryFormatLabel(member.entry_format)}</p>
-        {editable ? <MutationForm organisation={organisation} groupId={workspace.group.id} operation="set_mapping" submitLabel="Save mapping" pendingLabel="Saving…" className="mt-3">
+        {editable ? <MutationForm organisation={organisation} groupId={workspace.group.id} operation="set_mapping" submitLabel="Save mapping" pendingLabel="Saving…" className="mt-3" protectUnsavedChanges>
           <input type="hidden" name="physical_round_id" value={physical.id} /><input type="hidden" name="competition_id" value={member.competition_id} />
           <label><span className="sr-only">Competition Round for {member.name}</span><select name="competition_round_id" defaultValue={selected?.competition_round_id ?? ""} className={fieldClass}>
             <option value="">Independent / not mapped</option>
@@ -446,7 +535,7 @@ export function ConcurrentShootingWorkspaceView({ organisation, seasonName, work
       <SectionHeader title="1. Basic details" description={`Season: ${seasonName}`} />
       <Card className="p-5 sm:p-6">
         <div className="flex flex-wrap items-center gap-2"><Badge tone={statusTone(workspace.group.status)}>{statusLabel(workspace.group.status)}</Badge>{workspace.group.activated_at ? <span className="text-xs text-muted-foreground">Activated {activatedDateFormatter.format(new Date(workspace.group.activated_at))}</span> : null}</div>
-        {editable ? <MutationForm organisation={organisation} groupId={workspace.group.id} operation="rename" submitLabel="Save name" pendingLabel="Saving…" className="mt-4 flex max-w-3xl flex-col gap-2 sm:flex-row">
+        {editable ? <MutationForm organisation={organisation} groupId={workspace.group.id} operation="rename" submitLabel="Save name" pendingLabel="Saving…" className="mt-4 flex max-w-3xl flex-col gap-2 sm:flex-row" protectUnsavedChanges>
           <label className="min-w-0 flex-1"><span className="sr-only">Concurrent Shooting group name</span><input name="group_name" required minLength={2} maxLength={160} defaultValue={workspace.group.name} className={fieldClass} /></label>
         </MutationForm> : <h2 id="concurrent-basic-heading" className="mt-3 text-xl font-semibold text-foreground">{workspace.group.name}</h2>}
         {!editable ? <p className="mt-3 text-sm text-muted-foreground">This configuration is read-only and remains the historical source of its explicit shared Round mappings.</p> : null}
@@ -482,14 +571,14 @@ export function ConcurrentShootingWorkspaceView({ organisation, seasonName, work
         {editable ? <>
           <p className="text-sm leading-6 text-muted-foreground">Activation locks membership and Round mappings. Scores entered for mapped Rounds become one physical score across linked Competition usages, while Competition Results and release dates remain independent.</p>
           {activationNotes.length ? <div className="mt-4 rounded-xl border border-warning/20 bg-warning-subtle px-4 py-3 text-sm text-warning"><p className="font-semibold">Activation is not ready:</p><ul className="mt-2 list-disc space-y-1 pl-5">{activationNotes.map((note) => <li key={note}>{note}</li>)}</ul></div> : null}
-          <div className="mt-5">{isOwner ? <MutationForm organisation={organisation} groupId={workspace.group.id} operation="activate" submitLabel="Activate Concurrent Shooting" pendingLabel="Activating…" tone="primary" disabled={!workspace.lifecycle.can_activate} confirmMessage="Activate and lock this Concurrent Shooting configuration?" /> : <div className="rounded-xl border border-warning/20 bg-warning-subtle px-4 py-3 text-sm text-warning">{workspace.lifecycle.can_activate ? "This Draft is ready, but an Organisation owner must activate it." : "An Organisation owner can activate this Draft after the issues above are resolved."}</div>}</div>
+          <div className="mt-5">{isOwner ? <MutationForm organisation={organisation} groupId={workspace.group.id} operation="activate" submitLabel="Activate Concurrent Shooting" pendingLabel="Activating…" tone="primary" disabled={!workspace.lifecycle.can_activate} confirmation={{ title: "Activate Concurrent Shooting?", description: "Activation locks the selected Competitions and explicit shared Round mappings.", confirmLabel: "Activate Concurrent Shooting" }} /> : <div className="rounded-xl border border-warning/20 bg-warning-subtle px-4 py-3 text-sm text-warning">{workspace.lifecycle.can_activate ? "This Draft is ready, but an Organisation owner must activate it." : "An Organisation owner can activate this Draft after the issues above are resolved."}</div>}</div>
         </> : workspace.group.status === "active" ? <div className="flex flex-col gap-5 sm:flex-row sm:items-center sm:justify-between">
           <div><h3 className="font-semibold text-foreground">Active configuration</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">Membership and shared Round mappings are locked.</p>{cancellationNote ? <p className="mt-2 text-sm text-warning">{cancellationNote}</p> : null}</div>
-          {isOwner ? <div className="flex flex-wrap gap-2">{workspace.lifecycle.can_cancel_activation ? <MutationForm organisation={organisation} groupId={workspace.group.id} operation="cancel" submitLabel="Cancel activation" pendingLabel="Cancelling…" confirmMessage="Return this unused Active group to Draft?" /> : null}<MutationForm organisation={organisation} groupId={workspace.group.id} operation="archive" submitLabel="Archive" pendingLabel="Archiving…" confirmMessage="Archive this group while preserving all historical configuration?" /></div> : null}
+          {isOwner ? <div className="flex flex-wrap gap-2">{workspace.lifecycle.can_cancel_activation ? <MutationForm organisation={organisation} groupId={workspace.group.id} operation="cancel" submitLabel="Cancel activation" pendingLabel="Cancelling…" confirmation={{ title: "Cancel Concurrent Shooting activation?", description: "This returns the unused Active group to Draft so its configuration can be edited again.", confirmLabel: "Cancel activation" }} /> : null}<MutationForm organisation={organisation} groupId={workspace.group.id} operation="archive" submitLabel="Archive" pendingLabel="Archiving…" confirmation={{ title: "Archive Concurrent Shooting group?", description: "This makes the group read-only while preserving its historical configuration.", confirmLabel: "Archive group" }} /></div> : null}
         </div> : <div><h3 className="font-semibold text-foreground">Archived configuration</h3><p className="mt-2 text-sm leading-6 text-muted-foreground">This historical configuration is preserved and cannot be edited or reactivated.</p></div>}
       </Card>
     </section>
 
-    {editable ? <section aria-label="Delete Draft group"><Card className="border-danger/20 p-5 sm:p-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="font-semibold text-foreground">Delete Draft group</h3><p className="mt-1 text-sm text-muted-foreground">This removes only the unused Draft configuration.</p></div><MutationForm organisation={organisation} groupId={workspace.group.id} operation="delete_group" submitLabel="Delete Draft" pendingLabel="Deleting…" tone="danger" confirmMessage={`Delete Draft Concurrent Shooting group “${workspace.group.name}”?`} /></div></Card></section> : null}
+    {editable ? <section aria-label="Delete Draft group"><Card className="border-danger/20 p-5 sm:p-6"><div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between"><div><h3 className="font-semibold text-foreground">Delete Draft group</h3><p className="mt-1 text-sm text-muted-foreground">This removes only the unused Draft configuration.</p></div><MutationForm organisation={organisation} groupId={workspace.group.id} operation="delete_group" submitLabel="Delete Draft" pendingLabel="Deleting…" tone="danger" confirmation={{ title: "Delete Concurrent Shooting Draft?", description: "This permanently removes this unused Draft configuration.", confirmLabel: "Delete Draft" }} /></div></Card></section> : null}
   </div>;
 }
