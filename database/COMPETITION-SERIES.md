@@ -31,8 +31,9 @@ files in order:
 4. `database/competition-series-stage-2-management.sql`
 5. `database/competition-series-v1-identity-without-discipline.sql`
 6. `database/competition-series-one-edition-per-season.sql`
+7. `database/competition-shooting-details.sql`
 
-All six are rerunnable. The hardening file does not require either Stage 1 file
+All seven are rerunnable. The hardening file does not require either Stage 1 file
 to be rerun on an up-to-date installation. For a fresh installation run the existing
 foundations first, then these files last.
 If an earlier configuration/lifecycle file is reapplied later, rerun the listed
@@ -50,8 +51,9 @@ intact; all new fields start NULL. No script is applied automatically by the app
 `competition_series_score_components`. Editions retain their own operational
 Competition/component/Round records; existing Results never join Series tables.
 
-The Series contract includes entry format, normalised team size (1/2/3–20), sets,
-optional shots, and ordered Course-of-Fire labels, maxima and scoring methods.
+The original Series contract includes entry format, normalised team size
+(1/2/3–20), sets, optional legacy shots, and ordered Course-of-Fire labels,
+maxima and scoring methods.
 Series slugs are unique within an Organisation and immutable. Display names need
 not be unique. Multiple editions in one Season are allowed, while the existing
 Season-scoped Competition name/slug uniqueness still applies.
@@ -61,6 +63,27 @@ deprecated metadata for additive compatibility. Current RPC writes ignore them;
 they are not required, copied, compared, finalised, versioned or exposed in the UI.
 Existing values are neither rewritten nor inferred from Competition or Series names.
 They have no average, Concurrent Shooting or other compatibility meaning.
+
+The additive `competition-shooting-details.sql` upgrade extends that contract
+with physical sporting identity. Equipment is one stable built-in code or one
+reusable Organisation-scoped custom equipment ID. Every ordered component stores
+an explicit position/style state, distance state, and shot count. Fixed positions
+use a built-in code or Organisation custom ID; Fixed distances retain a positive
+numeric value and original metres/yards/feet unit. Variable and Not applicable are
+explicit states, not unexplained NULLs.
+
+For structured editions, `shots_per_round` is compatibility storage rather than
+another editable setting: the server derives it as `sets_per_round × SUM(component
+shots)`. This supports Dewar, Double Dewar, and three-position Courses of Fire
+without parsing labels. Continue Series copies equipment and every ordered
+component's position, distance, and shots from Series identity while ranking and
+other edition settings remain independently selectable.
+
+Legacy Series/Competitions keep `shooting_details_version IS NULL`; no name, label,
+or description is interpreted and existing scoring remains valid. Once a new or
+edited draft opts into version 1, complete physical details are required for
+publication. First publication/continuation locks these fields with the rest of
+Series sporting identity.
 
 The sole unpublished first draft may correct identity. Existing `update_competition`
 updates its provisional contract atomically. First publication or successful continuation sets a sticky
@@ -122,7 +145,12 @@ p_series_name text, p_configuration jsonb)`
 - `ranking_method`, `best_rounds_count`
 - `round_deadlines`, `round_shoot_by_dates`
 
-Components are ordered objects `{short_label, maximum_score, score_method}`.
+Structured components are ordered objects containing `short_label`,
+`maximum_score`, `score_method`, `shooting_position_mode`, one Fixed position
+identity where applicable, `distance_mode`, Fixed `distance_value` and
+`distance_unit` where applicable, and `shots`. Structured payloads also include
+`shooting_details_version: 1` and one equipment identity. `shots_per_round` is
+derived and any supplied legacy value is not authoritative for that version.
 Dates are ISO dates; schedules are arrays of dates/NULLs, with existing validation.
 Unsupported keys (including status, IDs or participation) fail. Omitted structural
 defaults: Individual, size 1, one set, ten Rounds, empty components, X off,

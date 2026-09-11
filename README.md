@@ -233,6 +233,43 @@ files in order:
 No existing SQL needs rerunning on an up-to-date installation. Both new files are
 additive and rerunnable; existing Competitions remain unlinked with unchanged IDs,
 configuration and participation. Run this upgrade last if reapplying earlier SQL.
+
+### Concurrent Shooting (Stages 1, 2, and 3A)
+
+After all existing Competition, score, Series, and Average migrations through
+`database/competition-averages-stage-3.sql`, run these complete files in order:
+
+1. [`database/concurrent-shooting.sql`](database/concurrent-shooting.sql)
+2. [`database/concurrent-shooting-stage-2.sql`](database/concurrent-shooting-stage-2.sql)
+3. [`database/concurrent-shooting-stage-3a.sql`](database/concurrent-shooting-stage-3a.sql)
+4. [`database/competition-shooting-details.sql`](database/competition-shooting-details.sql)
+5. [`database/concurrent-shooting-physical-compatibility.sql`](database/concurrent-shooting-physical-compatibility.sql)
+
+The first file adds opt-in Organisation/Season-scoped groups, explicit physical
+Round mappings, strict server-derived Course-of-Fire signatures, lifecycle
+guards, source association/version fields, and generic append-only audit
+storage. The second adds atomic shared-score resolution and usage propagation,
+optimistic conflicts, global clear, audit recording, late-entry reconciliation,
+and shared score-entry metadata. The third adds narrow management read models
+and an atomic Draft mapping setter for the Organisation Management workflow.
+Existing unmapped scoring and Results remain unchanged; none of these files
+creates links, merges sources, or backfills history.
+
+The fourth file adds stable built-in equipment and position taxonomies,
+normalised reusable Organisation custom values, Competition-level equipment,
+and component-level position/style, distance, and physical shots. New structured
+drafts derive `shots_per_round` on the server as sets multiplied by the sum of
+component shots. Existing rows remain explicitly legacy (`shooting_details_version
+IS NULL`) with no inferred values. Series identity and continuation preserve the
+physical definition. The fifth file installs exact physical compatibility V2;
+legacy or incomplete Competitions show “Physical shooting details required” and
+cannot be newly linked merely because their score-entry shapes match.
+
+See [the Concurrent Shooting architecture and deployment boundary](database/CONCURRENT-SHOOTING.md).
+See [the structured physical shooting model](database/COMPETITION-SHOOTING-DETAILS.md)
+for taxonomy, Series inheritance, legacy behavior, and analytics rationale.
+Run `npm run test:concurrent` and `npm run test:shooting-details` for the disposable
+PostgreSQL regression suites.
 No reset, reseed, name-based association or live database application is automated.
 
 This adds strict organisation-scoped Series identity, atomic first-draft and
@@ -465,7 +502,8 @@ and `git diff --check`.
 Countback and later tie-break criteria are intentionally deferred: the repository
 does not define them precisely. Also deferred: Best N Average, Round Robin, Gun
 Score standings, promotion/relegation, Starting Average, payments, Concurrent
-Shooting, organisation-wide result search, and live push updates to open Results.
+Shooting score orchestration, organisation-wide result search, and live push
+updates to open Results.
 
 ## Club competition entries
 

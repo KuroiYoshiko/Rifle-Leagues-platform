@@ -25,6 +25,17 @@ export const COMPETITION_RANKING_METHODS = [
   "round_robin",
   "gun_score",
 ] as const;
+export const SHOOTING_POSITION_MODES = [
+  "fixed",
+  "variable",
+  "not_applicable",
+] as const;
+export const SHOOTING_DISTANCE_MODES = [
+  "fixed",
+  "variable",
+  "not_applicable",
+] as const;
+export const SHOOTING_DISTANCE_UNITS = ["metres", "yards", "feet"] as const;
 
 export type CompetitionStatus = (typeof COMPETITION_STATUSES)[number];
 export type CompetitionEntryFormat =
@@ -37,6 +48,9 @@ export type CompetitionStartDateMode =
   (typeof COMPETITION_START_DATE_MODES)[number];
 export type CompetitionRankingMethod =
   (typeof COMPETITION_RANKING_METHODS)[number];
+export type ShootingPositionMode = (typeof SHOOTING_POSITION_MODES)[number];
+export type ShootingDistanceMode = (typeof SHOOTING_DISTANCE_MODES)[number];
+export type ShootingDistanceUnit = (typeof SHOOTING_DISTANCE_UNITS)[number];
 
 export type Competition = {
   id: number;
@@ -63,6 +77,9 @@ export type Competition = {
   ranking_method: CompetitionRankingMethod;
   best_rounds_count: number | null;
   local_scoring_enabled: boolean;
+  shooting_details_version: number | null;
+  equipment_type_code: string | null;
+  organisation_equipment_type_id: number | null;
   created_at: string;
   updated_at: string;
 };
@@ -84,8 +101,48 @@ export type CompetitionScoreComponent = {
   short_label: string | null;
   maximum_score: number;
   score_method: CompetitionScoringMethod;
+  shooting_position_mode: ShootingPositionMode | null;
+  shooting_position_code: string | null;
+  organisation_shooting_position_id: number | null;
+  distance_mode: ShootingDistanceMode | null;
+  distance_value: number | null;
+  distance_unit: ShootingDistanceUnit | null;
+  shots: number | null;
   created_at: string;
   updated_at: string;
+};
+
+export type ShootingTaxonomyOption = {
+  code: string;
+  display_name: string;
+  sort_order: number;
+};
+
+export type OrganisationShootingTaxonomyOption = {
+  id: number;
+  organisation_id: number;
+  display_name: string;
+};
+
+export type ShootingTaxonomy = {
+  equipmentTypes: ShootingTaxonomyOption[];
+  positions: ShootingTaxonomyOption[];
+  customEquipmentTypes: OrganisationShootingTaxonomyOption[];
+  customPositions: OrganisationShootingTaxonomyOption[];
+};
+
+export type CompetitionShootingDisplay = {
+  configured: boolean;
+  equipment_name: string | null;
+  components: Array<{
+    component_id: number;
+    position_mode: ShootingPositionMode;
+    position_name: string | null;
+    distance_mode: ShootingDistanceMode;
+    distance_value: number | null;
+    distance_unit: ShootingDistanceUnit | null;
+    shots: number | null;
+  }>;
 };
 
 export type CompetitionEffectiveDates = {
@@ -102,11 +159,11 @@ export type CompetitionLifecycleState = {
 };
 
 const competitionColumns =
-  "id, league_season_id, competition_series_id, name, slug, description, status, entry_format, team_size, scoring_method, maximum_score_per_round, shots_per_round, uses_x_score, number_of_rounds, entry_fee, entry_window_mode, custom_entry_opens_at, custom_entry_closes_at, start_date_mode, custom_starts_at, sets_per_round, ranking_method, best_rounds_count, local_scoring_enabled, created_at, updated_at";
+  "id, league_season_id, competition_series_id, name, slug, description, status, entry_format, team_size, scoring_method, maximum_score_per_round, shots_per_round, uses_x_score, number_of_rounds, entry_fee, entry_window_mode, custom_entry_opens_at, custom_entry_closes_at, start_date_mode, custom_starts_at, sets_per_round, ranking_method, best_rounds_count, local_scoring_enabled, shooting_details_version, equipment_type_code, organisation_equipment_type_id, created_at, updated_at";
 const competitionRoundColumns =
   "id, competition_id, round_number, deadline, shoot_by_date, created_at, updated_at";
 const competitionScoreComponentColumns =
-  "id, competition_id, position, short_label, maximum_score, score_method, created_at, updated_at";
+  "id, competition_id, position, short_label, maximum_score, score_method, shooting_position_mode, shooting_position_code, organisation_shooting_position_id, distance_mode, distance_value, distance_unit, shots, created_at, updated_at";
 const routeSafeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 const entryFormatLabels: Record<CompetitionEntryFormat, string> = {
@@ -224,6 +281,48 @@ export const getCompetitionScoreComponents = cache(
   },
 );
 
+export const getShootingTaxonomy = cache(async (organisationId: number) => {
+  const supabase = await createClient();
+  const [equipment, positions, customEquipment, customPositions] = await Promise.all([
+    supabase.from("shooting_equipment_types")
+      .select("code,display_name,sort_order").order("sort_order"),
+    supabase.from("shooting_positions")
+      .select("code,display_name,sort_order").order("sort_order"),
+    supabase.from("organisation_equipment_types")
+      .select("id,organisation_id,display_name")
+      .eq("organisation_id", organisationId).order("display_name").order("id"),
+    supabase.from("organisation_shooting_positions")
+      .select("id,organisation_id,display_name")
+      .eq("organisation_id", organisationId).order("display_name").order("id"),
+  ]);
+  if (equipment.error || positions.error || customEquipment.error || customPositions.error) {
+    throw new Error("Shooting equipment and position options could not be loaded.");
+  }
+  return {
+    equipmentTypes: (equipment.data ?? []) as ShootingTaxonomyOption[],
+    positions: (positions.data ?? []) as ShootingTaxonomyOption[],
+    customEquipmentTypes: (customEquipment.data ?? []) as OrganisationShootingTaxonomyOption[],
+    customPositions: (customPositions.data ?? []) as OrganisationShootingTaxonomyOption[],
+  } satisfies ShootingTaxonomy;
+});
+
+export const getCompetitionShootingDisplay = cache(async (
+  organisationId: number,
+  leagueSeasonId: number,
+  competitionId: number,
+) => {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("get_competition_shooting_display", {
+    p_organisation_id: organisationId,
+    p_league_season_id: leagueSeasonId,
+    p_competition_id: competitionId,
+  });
+  if (error || !data || typeof data !== "object" || Array.isArray(data)) {
+    throw new Error("Competition shooting details could not be loaded.");
+  }
+  return data as CompetitionShootingDisplay;
+});
+
 export const getCompetitionLifecycleState = cache(
   async (
     organisationId: number,
@@ -325,6 +424,19 @@ export function getCompetitionMaximumPerRound(
       (total, component) => total + Number(component.maximum_score),
       0,
     )
+  );
+}
+
+export function getCompetitionShotsPerRound(
+  setsPerRound: number,
+  components: Array<Pick<CompetitionScoreComponent, "shots">>,
+) {
+  if (!components.length || components.some((component) => component.shots === null)) {
+    return null;
+  }
+  return setsPerRound * components.reduce(
+    (total, component) => total + Number(component.shots),
+    0,
   );
 }
 

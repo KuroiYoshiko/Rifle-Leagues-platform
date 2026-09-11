@@ -3,6 +3,7 @@ import type {
   CompetitionEffectiveDates,
   CompetitionRound,
   CompetitionScoreComponent,
+  CompetitionShootingDisplay,
 } from "@/lib/competitions";
 import {
   getCompetitionMaximumPerRound,
@@ -49,12 +50,14 @@ export function CompetitionDetailsDisclosure({
   effectiveDates,
   rounds,
   scoreComponents,
+  shootingDisplay,
   showScoringAccess = true,
 }: {
   competition: Competition;
   effectiveDates: CompetitionEffectiveDates;
   rounds: CompetitionRound[];
   scoreComponents: CompetitionScoreComponent[];
+  shootingDisplay: CompetitionShootingDisplay;
   showScoringAccess?: boolean;
 }) {
   const entryWindow =
@@ -67,6 +70,9 @@ export function CompetitionDetailsDisclosure({
     scoreComponents,
   );
   const roundDateLabels = getCompactRoundDateLabels(rounds);
+  const physicalByComponentId = new Map(
+    shootingDisplay.components.map((component) => [component.component_id, component]),
+  );
 
   return (
     <details className="group mt-8 overflow-hidden rounded-2xl border border-border bg-surface shadow-xs">
@@ -76,7 +82,7 @@ export function CompetitionDetailsDisclosure({
             Competition details
           </span>
           <span className="mt-0.5 block text-sm text-muted-foreground">
-            Dates, scoring configuration and Round schedule
+            Dates, physical Course of Fire and Round schedule
           </span>
         </span>
         <svg
@@ -154,7 +160,21 @@ export function CompetitionDetailsDisclosure({
 
           {scoreComponents.length ? (
             <ol className="mt-4 divide-y divide-border rounded-xl border border-border">
-              {scoreComponents.map((component) => (
+              {scoreComponents.map((component) => {
+                const physical = physicalByComponentId.get(component.id);
+                const position = physical?.position_mode === "variable"
+                  ? "Variable position / style"
+                  : physical?.position_mode === "not_applicable"
+                    ? "Position / style not applicable"
+                    : physical?.position_name;
+                const distance = physical?.distance_mode === "variable"
+                  ? "Variable distance"
+                  : physical?.distance_mode === "not_applicable"
+                    ? "Distance not applicable"
+                    : physical?.distance_value != null && physical.distance_unit
+                      ? `${Number(physical.distance_value).toLocaleString("en-GB", { maximumFractionDigits: 3 })} ${physical.distance_unit}`
+                      : null;
+                return (
                 <li
                   key={component.id}
                   className="grid gap-1 px-4 py-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center sm:gap-6"
@@ -163,13 +183,18 @@ export function CompetitionDetailsDisclosure({
                     {component.short_label || `Score ${component.position}`}
                   </span>
                   <span className="text-sm text-muted-foreground sm:text-right">
-                    Ex {Number(component.maximum_score).toLocaleString("en-GB", {
+                    {shootingDisplay.configured && physical ? [
+                      position,
+                      distance,
+                      physical.shots ? `${physical.shots.toLocaleString("en-GB")} shot${physical.shots === 1 ? "" : "s"}` : null,
+                    ].filter(Boolean).join(" · ") + " · " : ""}Ex {Number(component.maximum_score).toLocaleString("en-GB", {
                       maximumFractionDigits: 2,
                     })}
                     {` · ${getCompetitionScoringMethodLabel(component.score_method)}`}
                   </span>
                 </li>
-              ))}
+                );
+              })}
             </ol>
           ) : (
             <p className="mt-3 text-sm text-muted-foreground">

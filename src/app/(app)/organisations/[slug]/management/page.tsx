@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
-import { CompetitionSeriesManager } from "@/components/competition-series-manager";
 import { OrganisationManagementNavigation } from "@/components/organisation-management-navigation";
 import {
   OrganisationManagerActions,
@@ -14,7 +13,6 @@ import {
   type ManagedOrganisationStaff,
 } from "@/lib/organisations";
 import { createClient } from "@/lib/supabase/server";
-import { getCompetitionSeriesManagementRows } from "@/lib/competition-series";
 
 export const metadata: Metadata = {
   title: "Organisation management",
@@ -56,9 +54,6 @@ export default async function OrganisationManagementPage({
     (person) => person.staff_status === "active",
   );
   const currentUserIsOwner = access.role === "owner";
-  const competitionSeries = currentUserIsOwner
-    ? await getCompetitionSeriesManagementRows(organisation.id)
-    : [];
 
   return (
     <OrganisationPageFrame
@@ -189,17 +184,6 @@ export default async function OrganisationManagementPage({
               </Card>
             )}
           </section>
-
-          {currentUserIsOwner ? <section className="mt-10" aria-labelledby="competition-series-heading">
-            <SectionHeader
-              title="Competition Series"
-              description="Rename or manage the availability of recurring Competitions"
-            />
-            <CompetitionSeriesManager
-              organisation={{ id: organisation.id, slug: organisation.slug }}
-              series={competitionSeries}
-            />
-          </section> : null}
         </>
       )}
     </OrganisationPageFrame>

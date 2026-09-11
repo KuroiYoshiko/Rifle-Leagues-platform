@@ -29,6 +29,28 @@ export type CompetitionScoreEntryParticipant = {
   club_name: string;
   first_name: string | null;
   last_name: string | null;
+  source_version: number | null;
+  source_updated_at: string | null;
+  shared: boolean;
+  shared_metadata: {
+    shared: boolean;
+    source_version: number | null;
+    source_updated_at: string | null;
+    can_edit_shared: boolean;
+    linked_competitions: Array<{
+      competition_id: number;
+      competition_name: string;
+      competition_round_id: number;
+      round_number: number;
+      participant_match:
+        | "matched"
+        | "missing"
+        | "ambiguous"
+        | "outside_club_scope"
+        | "source_conflict";
+      can_edit: boolean;
+    }>;
+  };
   values: CompetitionScoreEntryValue[];
 };
 
@@ -36,6 +58,22 @@ export type CompetitionScoreEntry = {
   access_scope: ScoreEntryAccessScope;
   database_today: string;
   can_edit: boolean;
+  concurrent_shooting:
+    | { shared: false }
+    | {
+        shared: true;
+        archived?: boolean;
+        group_id: number;
+        group_name: string;
+        physical_round_id: number;
+        physical_round_label: string | null;
+        linked_competitions: Array<{
+          competition_id: number;
+          competition_name: string;
+          competition_round_id: number;
+          round_number: number;
+        }>;
+      };
   competition: {
     id: number;
     name: string;

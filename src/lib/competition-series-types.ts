@@ -5,6 +5,9 @@ import type {
   CompetitionScoreComponent,
   CompetitionScoringMethod,
   CompetitionStatus,
+  ShootingDistanceMode,
+  ShootingDistanceUnit,
+  ShootingPositionMode,
 } from "@/lib/competitions";
 import type { LeagueSeasonStatus } from "@/lib/league-seasons";
 
@@ -18,6 +21,9 @@ export type CompetitionSeries = {
   team_size: number;
   sets_per_round: number;
   shots_per_round: number | null;
+  shooting_details_version: number | null;
+  equipment_type_code: string | null;
+  organisation_equipment_type_id: number | null;
   identity_locked_at: string | null;
   created_at: string;
   updated_at: string;
@@ -29,6 +35,13 @@ export type CompetitionSeriesScoreComponent = {
   short_label: string | null;
   maximum_score: number;
   score_method: CompetitionScoringMethod;
+  shooting_position_mode: ShootingPositionMode | null;
+  shooting_position_code: string | null;
+  organisation_shooting_position_id: number | null;
+  distance_mode: ShootingDistanceMode | null;
+  distance_value: number | null;
+  distance_unit: ShootingDistanceUnit | null;
+  shots: number | null;
 };
 
 export type CompetitionSeriesSources = {

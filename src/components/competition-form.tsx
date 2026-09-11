@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useActionState, useEffect, useMemo, useRef, useState } from "react";
+import { useUnsavedChangesForm } from "@/components/unsaved-changes";
 import {
   createCompetition,
   createCompetitionSeries,
@@ -20,6 +21,7 @@ import type {
   CompetitionRound,
   CompetitionScoreComponent,
   CompetitionStartDateMode,
+  ShootingTaxonomy,
 } from "@/lib/competitions";
 import {
   type CompetitionSeries,
@@ -48,7 +50,15 @@ const compactDateClassName =
   "min-h-10 w-full min-w-0 rounded-lg border border-border bg-surface px-2 text-xs text-foreground outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10 disabled:cursor-not-allowed disabled:bg-surface-muted";
 const sectionClassName = "space-y-5 border-b border-border pb-7 last:border-b-0 last:pb-0";
 const defaultScoreComponent: CompetitionScoreComponentValue = {
-  shortLabel: "", maximumScore: "100", scoreMethod: "points_dropped",
+  shortLabel: "",
+  maximumScore: "100",
+  scoreMethod: "points_dropped",
+  positionSelection: "",
+  customPositionName: "",
+  distanceMode: "",
+  distanceValue: "",
+  distanceUnit: "",
+  shots: "",
 };
 const rankingDescriptions: Record<CompetitionRankingMethod, string> = {
   aggregate: "Entrants are ranked within their division after each round and awarded ranking points based on finishing position. Overall standings use the total ranking points earned.",
@@ -74,7 +84,8 @@ const fieldFocusIds: Partial<Record<CompetitionField, string>> = {
   competitionStart: "custom-starts-at",
   setsPerRound: "sets-per-round",
   scoreComponents: "component-maximum-0",
-  shotsPerRound: "shots-per-round",
+  equipment: "equipment-selection",
+  physicalDetails: "component-position-0",
   numberOfRounds: "number-of-rounds",
   entryFee: "competition-entry-fee",
   rankingMethod: "ranking-method",
@@ -88,6 +99,33 @@ const dateFormatter = new Intl.DateTimeFormat("en-GB", {
 
 function formatDate(value: string | null) {
   return value ? dateFormatter.format(new Date(`${value}T00:00:00Z`)) : "Not set";
+}
+
+function taxonomySelectionLabel(
+  selection: string,
+  builtIns: ShootingTaxonomy["equipmentTypes"],
+  custom: ShootingTaxonomy["customEquipmentTypes"],
+) {
+  if (selection === "variable") return "Variable";
+  if (selection === "not_applicable") return "Not applicable";
+  if (selection.startsWith("builtin:")) {
+    return builtIns.find((option) => `builtin:${option.code}` === selection)?.display_name ?? "Unknown";
+  }
+  if (selection.startsWith("custom:")) {
+    return custom.find((option) => `custom:${option.id}` === selection)?.display_name ?? "Unknown";
+  }
+  return "Not configured";
+}
+
+function distanceLabel(component: CompetitionScoreComponentValue) {
+  if (component.distanceMode === "variable") return "Variable";
+  if (component.distanceMode === "not_applicable") return "Not applicable";
+  if (component.distanceMode === "fixed" && component.distanceValue && component.distanceUnit) {
+    const unit = component.distanceUnit === "metres" ? "m"
+      : component.distanceUnit === "yards" ? "yd" : "ft";
+    return `${component.distanceValue} ${unit}`;
+  }
+  return "Not configured";
 }
 
 function addCalendarDays(value: string, days: number) {
@@ -163,6 +201,7 @@ export function CompetitionForm({
   sourceContext,
   averageConfiguration = { contexts: [], policies: [] },
   inheritedAverageDefault,
+  shootingTaxonomy,
 }: {
   organisation: { id: number; name: string; slug: string };
   season: LeagueSeason;
@@ -175,6 +214,7 @@ export function CompetitionForm({
   sourceContext?: CompetitionSourceContext;
   averageConfiguration?: AverageConfiguration;
   inheritedAverageDefault?: SeriesAverageDefault | null;
+  shootingTaxonomy: ShootingTaxonomy;
   }) {
   const editing = Boolean(competition);
   const defaults = competition ?? initialCompetition;
@@ -194,8 +234,10 @@ export function CompetitionForm({
   );
   const formRef = useRef<HTMLFormElement>(null);
   const submitErrorRef = useRef<HTMLDivElement>(null);
-  const dirtyRef = useRef(false);
-  const submittingRef = useRef(false);
+  const unsavedChanges = useUnsavedChangesForm({
+    pending,
+    savedSignal: state.status === "success" ? state : null,
+  });
   const submitted = state.values;
   const initialCompetitionName = submitted?.name ?? defaults?.name ?? "";
   const [seriesName, setSeriesName] = useState(submitted?.seriesName ?? "");
@@ -240,12 +282,39 @@ export function CompetitionForm({
   const [setsPerRound, setSetsPerRound] = useState(
     submitted?.setsPerRound ?? String(defaults?.sets_per_round ?? 1),
   );
+  const initialEquipmentSelection = submitted?.equipmentSelection ?? (
+    defaults?.equipment_type_code
+      ? `builtin:${defaults.equipment_type_code}`
+      : defaults?.organisation_equipment_type_id
+        ? `custom:${defaults.organisation_equipment_type_id}`
+        : series?.equipment_type_code
+          ? `builtin:${series.equipment_type_code}`
+          : series?.organisation_equipment_type_id
+            ? `custom:${series.organisation_equipment_type_id}`
+            : ""
+  );
+  const [equipmentSelection, setEquipmentSelection] = useState(initialEquipmentSelection);
+  const [customEquipmentName, setCustomEquipmentName] = useState(
+    submitted?.customEquipmentName ?? "",
+  );
   const [components, setComponents] = useState<CompetitionScoreComponentValue[]>(() => {
     if (submitted?.scoreComponents) return submitted.scoreComponents;
     if (scoreComponents.length) return scoreComponents.map((component) => ({
       shortLabel: component.short_label ?? "",
       maximumScore: String(component.maximum_score),
       scoreMethod: component.score_method,
+      positionSelection: component.shooting_position_mode === "fixed"
+        ? component.shooting_position_code
+          ? `builtin:${component.shooting_position_code}`
+          : component.organisation_shooting_position_id
+            ? `custom:${component.organisation_shooting_position_id}`
+            : ""
+        : component.shooting_position_mode ?? "",
+      customPositionName: "",
+      distanceMode: component.distance_mode ?? "",
+      distanceValue: component.distance_value === null ? "" : String(component.distance_value),
+      distanceUnit: component.distance_unit ?? "",
+      shots: component.shots === null ? "" : String(component.shots),
     }));
     return [{ ...defaultScoreComponent }];
   });
@@ -282,43 +351,7 @@ export function CompetitionForm({
   const [generatorError, setGeneratorError] = useState<string | null>(null);
 
   useEffect(() => {
-    submittingRef.current = pending;
-  }, [pending]);
-
-  useEffect(() => {
-    function handleBeforeUnload(event: BeforeUnloadEvent) {
-      if (!dirtyRef.current || submittingRef.current) return;
-      event.preventDefault();
-      event.returnValue = "";
-    }
-
-    function handleDocumentClick(event: MouseEvent) {
-      if (!dirtyRef.current || submittingRef.current || event.defaultPrevented || event.button !== 0 ||
-        event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
-      if (!(event.target instanceof Element)) return;
-      const link = event.target.closest<HTMLAnchorElement>("a[href]");
-      if (!link || link.target === "_blank" || link.hasAttribute("download")) return;
-      const destination = new URL(link.href, window.location.href);
-      if (destination.href === window.location.href) return;
-      if (!window.confirm("You have unsaved Competition changes. Leave without saving?")) {
-        event.preventDefault();
-        event.stopImmediatePropagation();
-        return;
-      }
-      dirtyRef.current = false;
-    }
-
-    window.addEventListener("beforeunload", handleBeforeUnload);
-    document.addEventListener("click", handleDocumentClick, true);
-    return () => {
-      window.removeEventListener("beforeunload", handleBeforeUnload);
-      document.removeEventListener("click", handleDocumentClick, true);
-    };
-  }, []);
-
-  useEffect(() => {
     if (state.status !== "error") return;
-    submittingRef.current = false;
     const firstField = Object.keys(state.fieldErrors ?? {})[0] as CompetitionField | undefined;
     const fieldId = firstField ? fieldFocusIds[firstField] : undefined;
     const field = fieldId ? document.getElementById(fieldId) : null;
@@ -350,6 +383,19 @@ export function CompetitionForm({
     }, 0);
     return Number.isFinite(sets) && sets > 0 ? sets * componentTotal : 0;
   }, [components, setsPerRound]);
+  const derivedShotsPerRound = useMemo(() => {
+    const sets = Number(setsPerRound);
+    if (!Number.isInteger(sets) || sets < 1 || components.length === 0) return null;
+    const shotValues = components.map((component) => Number(component.shots));
+    if (components.some((component, index) => !/^\d+$/.test(component.shots) ||
+      !Number.isInteger(shotValues[index]) || shotValues[index] <= 0)) return null;
+    return sets * shotValues.reduce((total, shots) => total + shots, 0);
+  }, [components, setsPerRound]);
+  const equipmentLabel = taxonomySelectionLabel(
+    equipmentSelection,
+    shootingTaxonomy.equipmentTypes,
+    shootingTaxonomy.customEquipmentTypes,
+  );
   const compatibleAverageContexts = useMemo(() => averageConfiguration.contexts.filter(
     (context) => !context.archived_at && context.basis_maximum === derivedMaximum,
   ), [averageConfiguration.contexts, derivedMaximum]);
@@ -395,7 +441,7 @@ export function CompetitionForm({
   }
 
   function generateSchedule() {
-    dirtyRef.current = true;
+    unsavedChanges.markDirty();
     setGeneratorError(null);
     const interval = Number(repeatEvery);
     const maximum = repeatUnit === "days" ? 365 : 52;
@@ -438,11 +484,14 @@ export function CompetitionForm({
     action={formAction}
     className="space-y-7"
     noValidate
-    onChangeCapture={() => { dirtyRef.current = true; }}
-    onSubmitCapture={() => { submittingRef.current = true; }}
+    onChangeCapture={unsavedChanges.onChangeCapture}
+    onSubmitCapture={unsavedChanges.onSubmitCapture}
   >
     <input type="hidden" name="organisation_id" value={organisation.id} />
     <input type="hidden" name="league_season_id" value={season.id} />
+    <input type="hidden" name="shooting_details_version" value={identityControlsLocked
+      ? defaults?.shooting_details_version ?? series?.shooting_details_version ?? ""
+      : "1"} />
     <input type="hidden" name="creation_mode" value={editing ? "edit" : creationMode} />
     {competition ? <><input type="hidden" name="competition_id" value={competition.id} /><input type="hidden" name="current_status" value={competition.status} /></> : null}
     {series ? <input type="hidden" name="competition_series_id" value={series.id} /> : null}
@@ -454,10 +503,18 @@ export function CompetitionForm({
       <input type="hidden" name="entry_format" value={defaults?.entry_format ?? series?.entry_format ?? "individual"} />
       <input type="hidden" name="team_size" value={defaults?.team_size ?? series?.team_size ?? 1} />
       <input type="hidden" name="sets_per_round" value={defaults?.sets_per_round ?? series?.sets_per_round ?? 1} />
+      <input type="hidden" name="equipment_selection" value={equipmentSelection} />
+      <input type="hidden" name="custom_equipment_name" value={customEquipmentName} />
       {components.map((component, index) => <span key={`locked-component-${index}`}>
         <input type="hidden" name="component_label" value={component.shortLabel} />
         <input type="hidden" name="component_maximum" value={component.maximumScore} />
         <input type="hidden" name="component_method" value={component.scoreMethod} />
+        <input type="hidden" name="component_position_selection" value={component.positionSelection} />
+        <input type="hidden" name="component_custom_position_name" value={component.customPositionName} />
+        <input type="hidden" name="component_distance_mode" value={component.distanceMode} />
+        <input type="hidden" name="component_distance_value" value={component.distanceValue} />
+        <input type="hidden" name="component_distance_unit" value={component.distanceUnit} />
+        <input type="hidden" name="component_shots" value={component.shots} />
       </span>)}
       <input type="hidden" name="shots_per_round" value={defaults?.shots_per_round ?? series?.shots_per_round ?? ""} />
     </> : null}
@@ -494,11 +551,22 @@ export function CompetitionForm({
       <SectionTitle id="locked-series-format-title" title="Series format" description={`Inherited from ${series.name}. This shooting format is shared by every edition in this Series. To change it, create a new Series.`} />
       <dl className="grid gap-3 rounded-xl border border-brand/20 bg-brand-subtle p-4 text-sm sm:grid-cols-3">
         <div><dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Entry / team size</dt><dd className="mt-1 font-semibold text-foreground">{entryFormatLabels[series.entry_format]} · {series.team_size} shooter{series.team_size === 1 ? "" : "s"}</dd></div>
+        <div><dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Equipment</dt><dd className="mt-1 font-semibold text-foreground">{equipmentLabel}</dd></div>
         <div><dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Sets / Round</dt><dd className="mt-1 font-semibold text-foreground">{series.sets_per_round}</dd></div>
-        <div><dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Shots / Round</dt><dd className="mt-1 font-semibold text-foreground">{series.shots_per_round ?? "Not set"}</dd></div>
+        <div><dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Shots / Round</dt><dd className="mt-1 font-semibold text-foreground">{series.shots_per_round ?? "Not configured"}</dd></div>
       </dl>
-      <div className="overflow-hidden rounded-xl border border-border bg-surface"><div className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 border-b border-border bg-surface-muted px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground"><span>Component</span><span>Maximum</span><span>Scoring</span></div>{components.map((component, index) => <div key={index} className="grid grid-cols-[minmax(0,1fr)_auto_auto] gap-3 border-b border-border px-4 py-3 text-sm last:border-b-0"><span className="font-semibold text-foreground">{component.shortLabel || `Score ${index + 1}`}</span><span className="text-foreground">Ex {component.maximumScore}</span><span className="text-muted-foreground">{scoringMethodLabels[component.scoreMethod as keyof typeof scoringMethodLabels]}</span></div>)}</div>
-      <p className="text-xs leading-5 text-muted-foreground">Component count, order, labels, maximum Ex, and points scored / dropped are inherited and cannot be changed for this edition.</p>
+      <div className="overflow-x-auto rounded-xl border border-border bg-surface"><div className="grid min-w-[760px] grid-cols-[minmax(0,1fr)_repeat(4,minmax(0,auto))] gap-3 border-b border-border bg-surface-muted px-4 py-2 text-[0.65rem] font-semibold uppercase tracking-[0.08em] text-muted-foreground"><span>Component</span><span>Maximum</span><span>Scoring</span><span>Position</span><span>Distance · shots</span></div>{components.map((component, index) => <div key={index} className="grid min-w-[760px] grid-cols-[minmax(0,1fr)_repeat(4,minmax(0,auto))] gap-3 border-b border-border px-4 py-3 text-sm last:border-b-0"><span className="font-semibold text-foreground">{component.shortLabel || `Score ${index + 1}`}</span><span className="text-foreground">Ex {component.maximumScore}</span><span className="text-muted-foreground">{scoringMethodLabels[component.scoreMethod as keyof typeof scoringMethodLabels]}</span><span className="text-muted-foreground">{taxonomySelectionLabel(component.positionSelection, shootingTaxonomy.positions, shootingTaxonomy.customPositions)}</span><span className="text-muted-foreground">{distanceLabel(component)} · {component.shots || "?"}</span></div>)}</div>
+      {series.shooting_details_version === 1 ? <p className="text-xs leading-5 text-muted-foreground">Equipment, component order, scoring shape, position/style, distance and shots are inherited and cannot be changed for this edition.</p> : <p className="rounded-xl border border-warning/20 bg-warning-subtle px-4 py-3 text-sm text-warning">Physical shooting details are not configured for this legacy Series. Existing editions continue to work, but they are not eligible for new Concurrent Shooting groups.</p>}
+    </section> : null}
+
+    {identityControlsLocked && !series ? <section className={sectionClassName} aria-labelledby="locked-course-of-fire-title">
+      <SectionTitle id="locked-course-of-fire-title" title="Course of Fire" description="Sporting configuration is locked for this published Competition." />
+      <dl className="grid gap-3 rounded-xl border border-border bg-surface-muted p-4 text-sm sm:grid-cols-3">
+        <div><dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Equipment</dt><dd className="mt-1 font-semibold text-foreground">{equipmentLabel}</dd></div>
+        <div><dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Sets / Round</dt><dd className="mt-1 font-semibold text-foreground">{setsPerRound}</dd></div>
+        <div><dt className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">Shots / Round</dt><dd className="mt-1 font-semibold text-foreground">{competition?.shots_per_round ?? "Not configured"}</dd></div>
+      </dl>
+      {competition?.shooting_details_version !== 1 ? <p className="rounded-xl border border-warning/20 bg-warning-subtle px-4 py-3 text-sm text-warning">Physical shooting details are not configured for this legacy Competition. Existing scoring and Results continue to work, but it is not eligible for new Concurrent Shooting groups.</p> : null}
     </section> : null}
 
     <section className={sectionClassName} aria-labelledby="competition-details-title">
@@ -533,7 +601,19 @@ export function CompetitionForm({
     </section>
 
     {!seriesIdentityLocked ? <section className={sectionClassName} aria-labelledby="course-of-fire-title">
-      <SectionTitle id="course-of-fire-title" title="Course of Fire" description="Define how many sets and separate gun scores each shooter records in one round." />
+      <SectionTitle id="course-of-fire-title" title="Course of Fire" description="Define the equipment and the scoring and physical details for every component in one set." />
+      <div className="max-w-xl">
+        <label htmlFor="equipment-selection" className="text-sm font-semibold text-foreground">Equipment *</label>
+        <select id="equipment-selection" name="equipment_selection" value={equipmentSelection} onChange={(event) => setEquipmentSelection(event.target.value)} disabled={pending || sportingConfigurationLocked} className={inputClassName}>
+          <option value="">Choose equipment</option>
+          {shootingTaxonomy.equipmentTypes.map((option) => <option key={option.code} value={`builtin:${option.code}`}>{option.display_name}</option>)}
+          {shootingTaxonomy.customEquipmentTypes.length ? <optgroup label={`${organisation.name} custom equipment`}>{shootingTaxonomy.customEquipmentTypes.map((option) => <option key={option.id} value={`custom:${option.id}`}>{option.display_name}</option>)}</optgroup> : null}
+          <option value="custom:new">Other / Custom</option>
+        </select>
+        {equipmentSelection === "custom:new" ? <div className="mt-3"><label htmlFor="custom-equipment-name" className="text-sm font-medium text-foreground">New custom equipment name *</label><input id="custom-equipment-name" name="custom_equipment_name" maxLength={80} value={customEquipmentName} onChange={(event) => setCustomEquipmentName(event.target.value)} placeholder="Sniper Rifle" disabled={pending || sportingConfigurationLocked} className={inputClassName} /><p className="mt-2 text-xs leading-5 text-muted-foreground">Saved once for this Organisation and available in future Competition forms. Spacing and case variants reuse the same option.</p></div> : <input type="hidden" name="custom_equipment_name" value="" />}
+        <p className="mt-2 text-xs leading-5 text-muted-foreground">Choose the physical equipment category. Positions such as Prone or Benchrest are set per score component below.</p>
+        <FieldError field="equipment" message={state.fieldErrors?.equipment} />
+      </div>
       <div className="grid max-w-2xl gap-4 sm:grid-cols-2">
         <div><div className="flex items-center"><label htmlFor="sets-per-round" className="text-sm font-semibold text-foreground">Sets per round *</label><InfoHelp label="Sets per round">How many times each shooter completes the full set of scores during one round. Most competitions use 1. A Double Dewar may use 2.</InfoHelp></div><input id="sets-per-round" name="sets_per_round" type="number" min={1} max={100} step={1} value={setsPerRound} onChange={(event) => setSetsPerRound(event.target.value)} disabled={pending || sportingConfigurationLocked} className={inputClassName} /><FieldError field="setsPerRound" message={state.fieldErrors?.setsPerRound} /></div>
         <div><div className="flex items-center"><label htmlFor="scores-per-set" className="text-sm font-semibold text-foreground">Scores per set *</label><InfoHelp label="Scores per set">How many separate gun scores are recorded in each set. For example, 3P uses P, S and K: three scores per set.</InfoHelp></div><input id="scores-per-set" type="number" min={1} max={20} step={1} value={scoresPerSet} onChange={(event) => resizeComponents(event.target.value)} aria-invalid={Boolean(scoresPerSetError)} disabled={pending || sportingConfigurationLocked} className={inputClassName} />{scoresPerSetError ? <p className="mt-2 text-sm text-danger" role="alert">{scoresPerSetError}</p> : null}</div>
@@ -545,10 +625,51 @@ export function CompetitionForm({
           <div><label htmlFor={`component-maximum-${index}`} className="text-sm font-medium text-foreground">Maximum score (Ex) *</label><input id={`component-maximum-${index}`} name="component_maximum" type="text" inputMode="decimal" autoComplete="off" value={component.maximumScore} onChange={(event) => updateComponent(index, "maximumScore", event.target.value)} placeholder="200" disabled={pending || sportingConfigurationLocked} className={inputClassName} /><p className="mt-2 text-xs leading-5 text-muted-foreground">Maximum possible gun score for this score, e.g. 100 or 200. Up to two decimal places are supported.</p></div>
           <div><label htmlFor={`component-method-${index}`} className="text-sm font-medium text-foreground">Score entry *</label><select id={`component-method-${index}`} name="component_method" value={component.scoreMethod} onChange={(event) => updateComponent(index, "scoreMethod", event.target.value)} disabled={pending || sportingConfigurationLocked} className={inputClassName}><option value="points_scored">Points scored</option><option value="points_dropped">Points dropped</option></select><p className="mt-2 text-xs leading-5 text-muted-foreground">Choose whether scorers enter the achieved points or the points dropped from the maximum.</p></div>
         </div>
+        <div className="mt-5 border-t border-border pt-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-foreground">Physical shooting details</p>
+          <div className="mt-3 grid gap-4 lg:grid-cols-3">
+            <div>
+              <label htmlFor={`component-position-${index}`} className="text-sm font-medium text-foreground">Position / style *</label>
+              <select id={`component-position-${index}`} name="component_position_selection" value={component.positionSelection} onChange={(event) => updateComponent(index, "positionSelection", event.target.value)} disabled={pending || sportingConfigurationLocked} className={inputClassName}>
+                <option value="">Choose position / style</option>
+                {shootingTaxonomy.positions.map((option) => <option key={option.code} value={`builtin:${option.code}`}>{option.display_name}</option>)}
+                {shootingTaxonomy.customPositions.length ? <optgroup label={`${organisation.name} custom positions`}>{shootingTaxonomy.customPositions.map((option) => <option key={option.id} value={`custom:${option.id}`}>{option.display_name}</option>)}</optgroup> : null}
+                <option value="variable">Variable</option>
+                <option value="not_applicable">Not applicable</option>
+                <option value="custom:new">Other / Custom</option>
+              </select>
+              {component.positionSelection === "custom:new" ? <div className="mt-3"><label htmlFor={`component-custom-position-${index}`} className="text-xs font-medium text-foreground">New custom position / style *</label><input id={`component-custom-position-${index}`} name="component_custom_position_name" maxLength={80} value={component.customPositionName} onChange={(event) => updateComponent(index, "customPositionName", event.target.value)} placeholder="Supported Standing" disabled={pending || sportingConfigurationLocked} className={inputClassName} /></div> : <input type="hidden" name="component_custom_position_name" value="" />}
+            </div>
+            <div>
+              <label htmlFor={`component-distance-mode-${index}`} className="text-sm font-medium text-foreground">Distance *</label>
+              <select id={`component-distance-mode-${index}`} name="component_distance_mode" value={component.distanceMode} onChange={(event) => {
+                const mode = event.target.value;
+                updateComponent(index, "distanceMode", mode);
+                if (mode === "fixed" && !component.distanceUnit) updateComponent(index, "distanceUnit", "metres");
+                if (mode !== "fixed") {
+                  updateComponent(index, "distanceValue", "");
+                  updateComponent(index, "distanceUnit", "");
+                }
+              }} disabled={pending || sportingConfigurationLocked} className={inputClassName}>
+                <option value="">Choose distance state</option>
+                <option value="fixed">Fixed</option>
+                <option value="variable">Variable</option>
+                <option value="not_applicable">Not applicable</option>
+              </select>
+              {component.distanceMode === "fixed" ? <div className="mt-3 grid grid-cols-[minmax(0,1fr)_minmax(8rem,0.8fr)] gap-2"><label className="text-xs font-medium text-foreground">Value<input name="component_distance_value" type="number" inputMode="decimal" min="0.001" max="100000" step="0.001" value={component.distanceValue} onChange={(event) => updateComponent(index, "distanceValue", event.target.value)} disabled={pending || sportingConfigurationLocked} className={inputClassName} /></label><label className="text-xs font-medium text-foreground">Unit<select name="component_distance_unit" value={component.distanceUnit || "metres"} onChange={(event) => updateComponent(index, "distanceUnit", event.target.value)} disabled={pending || sportingConfigurationLocked} className={inputClassName}><option value="metres">metres</option><option value="yards">yards</option><option value="feet">feet</option></select></label></div> : <><input type="hidden" name="component_distance_value" value="" /><input type="hidden" name="component_distance_unit" value="" /></>}
+            </div>
+            <div>
+              <label htmlFor={`component-shots-${index}`} className="text-sm font-medium text-foreground">Shots *</label>
+              <input id={`component-shots-${index}`} name="component_shots" type="number" min={1} max={10000} step={1} value={component.shots} onChange={(event) => updateComponent(index, "shots", event.target.value)} placeholder="20" disabled={pending || sportingConfigurationLocked} className={inputClassName} />
+              <p className="mt-2 text-xs leading-5 text-muted-foreground">Physical shots represented by this component within one set.</p>
+            </div>
+          </div>
+        </div>
       </fieldset>)}</div>
       <p className="rounded-xl bg-surface-muted px-4 py-3 text-sm text-muted-foreground">Total possible gun score per shooter / round: <span className="font-semibold text-foreground">Ex {derivedMaximum.toLocaleString("en-GB", { maximumFractionDigits: 2 })}</span></p>
+      <p className="rounded-xl bg-surface-muted px-4 py-3 text-sm text-muted-foreground">Total physical shots per shooter / round: <span className="font-semibold text-foreground">{derivedShotsPerRound ?? "Complete component Shots to calculate"}</span>{derivedShotsPerRound !== null ? <span> ({setsPerRound} × {components.map((component) => component.shots).join(" + ")})</span> : null}</p>
       <FieldError field="scoreComponents" message={state.fieldErrors?.scoreComponents} />
-      <div className="max-w-xs"><label htmlFor="shots-per-round" className="text-sm font-semibold text-foreground">Shots per shooter / round (optional)</label><input id="shots-per-round" name="shots_per_round" type="number" min={1} max={10000} step={1} defaultValue={submitted?.shotsPerRound ?? defaults?.shots_per_round ?? ""} disabled={pending || sportingConfigurationLocked} className={inputClassName} /><p className="mt-2 text-xs text-muted-foreground">Informational only. The number of recorded scores is defined by the Course of Fire above.</p><FieldError field="shotsPerRound" message={state.fieldErrors?.shotsPerRound} /></div>
+      <FieldError field="physicalDetails" message={state.fieldErrors?.physicalDetails} />
     </section> : null}
 
     {!editing && creationMode !== "continue_series" ? <section className={sectionClassName} aria-labelledby="starting-averages-title">

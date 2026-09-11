@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useActionState } from "react";
+import { useUnsavedChangesForm } from "@/components/unsaved-changes";
 import {
   createLeagueSeason,
   updateLeagueSeason,
@@ -49,6 +50,10 @@ export function LeagueSeasonForm({
     editing ? updateLeagueSeason : createLeagueSeason,
     initialState,
   );
+  const unsavedChanges = useUnsavedChangesForm({
+    pending,
+    savedSignal: state.status === "success" ? state : null,
+  });
   const detailPath = season
     ? `/organisations/${organisation.slug}/leagues/${season.slug}`
     : `/organisations/${organisation.slug}/leagues`;
@@ -61,7 +66,13 @@ export function LeagueSeasonForm({
   const values = state.values;
 
   return (
-    <form action={formAction} className="space-y-5" noValidate>
+    <form
+      action={formAction}
+      className="space-y-5"
+      noValidate
+      onChangeCapture={unsavedChanges.onChangeCapture}
+      onSubmitCapture={unsavedChanges.onSubmitCapture}
+    >
       <input
         type="hidden"
         name="organisation_id"

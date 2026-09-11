@@ -6,12 +6,23 @@ import {
   saveCompetitionRoundScores,
   type CompetitionScoreActionState,
 } from "@/app/(app)/competition-score-actions";
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { Badge, Card } from "@/components/ui";
 import type {
   CompetitionEntryFormat,
   CompetitionRound,
 } from "@/lib/competitions";
 import { isCompetitionRoundWithinLocalCutoff } from "@/lib/competition-score-dates";
+import {
+  getAffectedLinkedCompetitions,
+  getGlobalClearParticipantIds,
+  getMissingLinkedCompetitions,
+  getSharedParticipantIssue,
+  isSubmittedScoreBlank,
+  retainReturnedSourceVersions,
+  sharedScoreSuccessMessage,
+  type SharedParticipantIssue,
+} from "@/lib/concurrent-score-entry";
 import type { CompetitionScoreEntry } from "@/lib/competition-scores";
 
 type EditableScoreValue = {
@@ -23,6 +34,11 @@ type EditableScoreValue = {
 
 type EditableParticipant = {
   participant_id: number;
+  source_version: number | null;
+  source_updated_at: string | null;
+  shared: boolean;
+  shared_metadata: CompetitionScoreEntry["participants"][number]["shared_metadata"];
+  has_recorded_score: boolean;
   entrant_id: number;
   entrant_position: number;
   club_id: number;
@@ -51,8 +67,22 @@ const roundDateFormatter = new Intl.DateTimeFormat("en-GB", {
   timeZone: "UTC",
 });
 
+const updatedDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+  hour: "2-digit",
+  minute: "2-digit",
+  hourCycle: "h23",
+  timeZone: "UTC",
+});
+
 function formatRoundDate(value: string) {
   return roundDateFormatter.format(new Date(`${value}T00:00:00Z`));
+}
+
+function formatUpdatedDate(value: string) {
+  return `${updatedDateFormatter.format(new Date(value))} UTC`;
 }
 
 function scoringMethodLabel(value: "points_scored" | "points_dropped") {
@@ -72,6 +102,9 @@ function participantName(
 function editableParticipants(data: CompetitionScoreEntry) {
   return data.participants.map((participant) => ({
     ...participant,
+    has_recorded_score: participant.values.some(
+      (value) => value.entered_score !== null,
+    ),
     values: participant.values.map((value) => ({
       ...value,
       entered_score:
@@ -79,6 +112,17 @@ function editableParticipants(data: CompetitionScoreEntry) {
       x_count: value.x_count === null ? "" : String(value.x_count),
     })),
   }));
+}
+
+function scoreEntryRevision(data: CompetitionScoreEntry) {
+  return JSON.stringify(
+    data.participants.map((participant) => [
+      participant.participant_id,
+      participant.source_version,
+      participant.source_updated_at,
+      participant.values,
+    ]),
+  );
 }
 
 function entrantLabel(format: CompetitionEntryFormat, position: number) {
@@ -106,6 +150,57 @@ function ReadOnlyMessage({ data }: { data: CompetitionScoreEntry }) {
         . Future Rounds remain selectable for review.
       </div>
     );
+  }
+
+  if (data.concurrent_shooting.shared) {
+    if (data.concurrent_shooting.archived) {
+      return (
+        <div className="rounded-2xl border border-border bg-surface-muted px-5 py-4 text-sm leading-6 text-muted-foreground">
+          This Concurrent Shooting group is archived. Its shared score and
+          Competition links are preserved as read-only provenance.
+        </div>
+      );
+    }
+    const issue = data.participants
+      .map((participant) => getSharedParticipantIssue(participant))
+      .find(Boolean);
+
+    if (issue === "ambiguous") {
+      return (
+        <div className="rounded-2xl border border-danger/20 bg-danger-subtle px-5 py-4 text-sm leading-6 text-danger">
+          Shared scoring is blocked because the same shooter appears more than
+          once in a linked Competition. Organisation staff must resolve the
+          participant data before shared scoring can continue.
+        </div>
+      );
+    }
+    if (issue === "source_conflict") {
+      return (
+        <div className="rounded-2xl border border-danger/20 bg-danger-subtle px-5 py-4 text-sm leading-6 text-danger">
+          Shared scoring is blocked by conflicting score data in a linked
+          Competition. Organisation staff must resolve the conflict before
+          shared scoring can continue.
+        </div>
+      );
+    }
+    if (issue === "outside_club_scope" || issue === "authority") {
+      if (data.access_scope === "organisation") {
+        return (
+          <div className="rounded-2xl border border-warning/20 bg-warning-subtle px-5 py-4 text-sm leading-6 text-warning">
+            This shared score cannot be edited because one or more linked
+            Competitions are not currently open for scoring. Review the linked
+            Competition status and scoring dates before trying again.
+          </div>
+        );
+      }
+      return (
+        <div className="rounded-2xl border border-warning/20 bg-warning-subtle px-5 py-4 text-sm leading-6 text-warning">
+          This shared score cannot be edited from this club account because one
+          or more linked Competitions are outside your scoring permissions or
+          scoring window. An Organisation scorer must make this change.
+        </div>
+      );
+    }
   }
 
   if (
@@ -137,6 +232,135 @@ function ReadOnlyMessage({ data }: { data: CompetitionScoreEntry }) {
   );
 }
 
+function sharedIssueMessage(
+  issue: SharedParticipantIssue,
+  accessScope: CompetitionScoreEntry["access_scope"],
+) {
+  if (issue === "ambiguous") {
+    return "The same shooter appears more than once in a linked Competition. Organisation staff must resolve the participant data before shared scoring can continue.";
+  }
+  if (issue === "source_conflict") {
+    return "A linked participant and Round has conflicting score data. Organisation staff must resolve the conflict before shared scoring can continue.";
+  }
+  if (issue === "outside_club_scope") {
+    return "This shooter is outside this club account’s scoring scope in a linked Competition. An Organisation scorer must make this change.";
+  }
+  if (accessScope === "organisation") {
+    return "One or more linked Competitions are not currently open for scoring. Review the linked Competition status and scoring dates before trying again.";
+  }
+  return "One or more linked Competitions are outside this account’s scoring permissions or scoring window. An Organisation scorer must make this change.";
+}
+
+export function ConcurrentScoreEntryBanner({
+  data,
+}: {
+  data: CompetitionScoreEntry;
+}) {
+  if (!data.concurrent_shooting.shared) return null;
+  const hasRecordedSharedScore = data.participants.some(
+    (participant) =>
+      participant.source_version !== null &&
+      participant.values.some((value) => value.entered_score !== null),
+  );
+
+  return (
+    <aside
+      className="mt-5 overflow-hidden rounded-2xl border border-brand/25 bg-brand-subtle"
+      aria-labelledby="concurrent-score-entry-title"
+    >
+      <div className="border-b border-brand/15 px-5 py-4 sm:px-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <Badge tone="brand">Concurrent Shooting</Badge>
+          <span className="text-xs font-semibold text-brand-deep">
+            Shared physical score
+          </span>
+        </div>
+        <h2
+          id="concurrent-score-entry-title"
+          className="mt-2 text-base font-semibold text-foreground"
+        >
+          {data.concurrent_shooting.group_name}
+        </h2>
+        {data.concurrent_shooting.physical_round_label ? (
+          <p className="mt-1 text-sm text-muted-foreground">
+            Physical Round: {data.concurrent_shooting.physical_round_label}
+          </p>
+        ) : null}
+      </div>
+      <div className="px-5 py-4 sm:px-6">
+        <p className="text-sm font-semibold text-foreground">
+          This physical score is used in:
+        </p>
+        <ul className="mt-3 grid min-w-0 gap-2 sm:grid-cols-2">
+          {data.concurrent_shooting.linked_competitions.map((competition) => (
+            <li
+              key={competition.competition_round_id}
+              className="min-w-0 rounded-lg border border-brand/15 bg-surface/80 px-3 py-2 text-sm"
+            >
+              <span className="block break-words font-semibold text-foreground">
+                {competition.competition_name}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                Round {competition.round_number}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <p className="mt-3 text-xs leading-5 text-muted-foreground">
+          Changes apply to every linked Competition where the shooter
+          participates. Each Competition keeps its own Results and release
+          schedule.
+        </p>
+        {hasRecordedSharedScore ? (
+          <p className="mt-3 border-t border-brand/15 pt-3 text-sm font-medium text-brand-deep">
+            Changes to an existing shared score will apply to all of its linked
+            Competition entries.
+          </p>
+        ) : null}
+      </div>
+    </aside>
+  );
+}
+
+function SharedParticipantSummary({
+  participant,
+  accessScope,
+}: {
+  participant: EditableParticipant;
+  accessScope: CompetitionScoreEntry["access_scope"];
+}) {
+  const issue = getSharedParticipantIssue(participant);
+  const missing = getMissingLinkedCompetitions(participant);
+
+  return (
+    <div className="mt-2 space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <Badge tone={issue ? "warning" : "brand"}>Shared score</Badge>
+        {participant.source_updated_at ? (
+          <span className="text-[11px] text-muted-foreground">
+            Last updated {formatUpdatedDate(participant.source_updated_at)}
+          </span>
+        ) : null}
+      </div>
+      {issue ? (
+        <p className="rounded-lg border border-warning/20 bg-warning-subtle px-3 py-2 text-xs leading-5 text-warning">
+          {sharedIssueMessage(issue, accessScope)}
+        </p>
+      ) : null}
+      {missing.length > 0 ? (
+        <p className="text-xs leading-5 text-muted-foreground">
+          This shooter does not participate in {missing
+            .map(
+              (competition) =>
+                `${competition.competition_name} — Round ${competition.round_number}`,
+            )
+            .join(", ")}. The score applies only where this shooter participates.
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 export function CompetitionScoreEntryEditor({
   data,
   rounds,
@@ -153,12 +377,30 @@ export function CompetitionScoreEntryEditor({
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const incomingRevision = scoreEntryRevision(data);
   const [participants, setParticipants] = useState<EditableParticipant[]>(() =>
     editableParticipants(data),
   );
+  const [loadedRevision, setLoadedRevision] = useState(incomingRevision);
   const [actionState, setActionState] =
     useState<CompetitionScoreActionState>({});
+  const [clearParticipantIds, setClearParticipantIds] = useState<number[]>([]);
   const [isPending, startTransition] = useTransition();
+  const [isRefreshing, startRefreshTransition] = useTransition();
+  const staleBlocked = actionState.errorKind === "stale";
+  const sharedMetadataBlocked =
+    data.concurrent_shooting.shared &&
+    participants.some(
+      (participant) => !participant.shared_metadata.can_edit_shared,
+    );
+  const editorCanEdit = data.can_edit && !sharedMetadataBlocked;
+
+  if (loadedRevision !== incomingRevision) {
+    setLoadedRevision(incomingRevision);
+    setParticipants(editableParticipants(data));
+    setClearParticipantIds([]);
+    if (staleBlocked) setActionState({});
+  }
   const componentByPosition = useMemo(
     () =>
       new Map(
@@ -261,7 +503,7 @@ export function CompetitionScoreEntryEditor({
     setActionState({});
   }
 
-  function saveScores() {
+  function persistScores(globallyClearedParticipantIds: number[] = []) {
     setActionState({});
     startTransition(async () => {
       const result = await saveCompetitionRoundScores({
@@ -272,6 +514,7 @@ export function CompetitionScoreEntryEditor({
         clubId,
         scores: participants.map((participant) => ({
           participant_id: participant.participant_id,
+          source_version: participant.source_version,
           values: participant.values.map((value) => ({
             set_number: value.set_number,
             component_position: value.component_position,
@@ -281,9 +524,63 @@ export function CompetitionScoreEntryEditor({
           })),
         })),
       });
-      setActionState(result);
+      let nextResult = result;
+      if (result.status === "success") {
+        if (result.sourceVersions) {
+          setParticipants((current) =>
+            retainReturnedSourceVersions(current, result.sourceVersions ?? {})
+              .map((participant) => ({
+                ...participant,
+                has_recorded_score: !isSubmittedScoreBlank(participant),
+              })),
+          );
+        }
+        if (result.shared) {
+          nextResult = {
+            ...result,
+            message: sharedScoreSuccessMessage({
+              participants,
+              clearedParticipantIds: globallyClearedParticipantIds,
+              sharedClearCount: result.sharedClearCount ?? 0,
+            }),
+          };
+        }
+        setClearParticipantIds([]);
+        router.refresh();
+      } else if (globallyClearedParticipantIds.length > 0) {
+        setClearParticipantIds([]);
+        if (result.errorKind === "unknown") {
+          nextResult = {
+            ...result,
+            message:
+              "The shared score could not be cleared. Nothing was changed. Refresh the page and try again.",
+          };
+        }
+      }
+      setActionState(nextResult);
     });
   }
+
+  function requestSave() {
+    const participantIds = getGlobalClearParticipantIds(
+      data.concurrent_shooting.shared,
+      participants,
+    );
+    if (participantIds.length > 0) {
+      setClearParticipantIds(participantIds);
+      return;
+    }
+    persistScores();
+  }
+
+  function refreshStaleScore() {
+    startRefreshTransition(() => router.refresh());
+  }
+
+  const clearedLinkedCompetitions = getAffectedLinkedCompetitions(
+    participants,
+    clearParticipantIds,
+  );
 
   return (
     <>
@@ -413,9 +710,32 @@ export function CompetitionScoreEntryEditor({
         </div>
       </Card>
 
-      {!data.can_edit ? (
+      <ConcurrentScoreEntryBanner data={data} />
+
+      {!editorCanEdit ? (
         <div className="mt-5">
           <ReadOnlyMessage data={data} />
+        </div>
+      ) : null}
+
+      {staleBlocked ? (
+        <div
+          className="mt-5 rounded-2xl border border-danger/20 bg-danger-subtle px-5 py-4"
+          role="alert"
+        >
+          <h2 className="font-semibold text-danger">Shared score changed</h2>
+          <p className="mt-1 text-sm leading-6 text-danger">
+            This score was updated elsewhere after you opened this page.
+            Refresh the latest score before editing again.
+          </p>
+          <button
+            type="button"
+            onClick={refreshStaleScore}
+            disabled={isRefreshing}
+            className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl border border-danger/30 bg-surface px-5 text-sm font-semibold text-danger transition hover:bg-danger-subtle disabled:cursor-wait disabled:opacity-60"
+          >
+            {isRefreshing ? "Refreshing score…" : "Refresh score"}
+          </button>
         </div>
       ) : null}
 
@@ -478,6 +798,12 @@ export function CompetitionScoreEntryEditor({
                             <p className="mt-1 text-xs text-muted-foreground">
                               Shooter {shooterIndex + 1}
                             </p>
+                            {participant.shared ? (
+                              <SharedParticipantSummary
+                                participant={participant}
+                                accessScope={data.access_scope}
+                              />
+                            ) : null}
                           </div>
 
                           <div
@@ -552,7 +878,9 @@ export function CompetitionScoreEntryEditor({
                                                 )
                                               }
                                               disabled={
-                                                !data.can_edit || isPending
+                                                !editorCanEdit ||
+                                                staleBlocked ||
+                                                isPending
                                               }
                                               aria-label={`${participantName(participant)}, Set ${setNumber}, ${label}, ${scoringMethodLabel(component.score_method)}`}
                                               className="mt-1.5 min-h-10 w-full rounded-lg border border-border bg-surface px-3 text-sm tabular-nums text-foreground outline-none transition focus:border-brand focus:ring-4 focus:ring-brand/10 disabled:cursor-not-allowed disabled:bg-surface-muted disabled:opacity-70"
@@ -582,7 +910,8 @@ export function CompetitionScoreEntryEditor({
                                                   )
                                                 }
                                                 disabled={
-                                                  !data.can_edit ||
+                                                  !editorCanEdit ||
+                                                  staleBlocked ||
                                                   isPending ||
                                                   value.entered_score.trim() ===
                                                     ""
@@ -611,30 +940,87 @@ export function CompetitionScoreEntryEditor({
       )}
 
       {actionState.message ? (
-        <p
-          className={`mt-6 rounded-xl px-4 py-3 text-sm ${
-            actionState.status === "error"
-              ? "bg-danger-subtle text-danger"
-              : "bg-success-subtle text-success"
-          }`}
-          role={actionState.status === "error" ? "alert" : "status"}
-        >
-          {actionState.message}
-        </p>
+        actionState.errorKind === "stale" ? null : (
+          <p
+            className={`mt-6 rounded-xl px-4 py-3 text-sm ${
+              actionState.status === "error"
+                ? "bg-danger-subtle text-danger"
+                : "bg-success-subtle text-success"
+            }`}
+            role={actionState.status === "error" ? "alert" : "status"}
+          >
+            {actionState.message}
+          </p>
+        )
       ) : null}
 
-      {data.can_edit && participants.length > 0 ? (
+      {editorCanEdit && participants.length > 0 ? (
         <div className="mt-6 flex justify-end border-t border-border pt-6">
           <button
             type="button"
-            onClick={saveScores}
-            disabled={isPending}
+            onClick={requestSave}
+            disabled={isPending || staleBlocked}
             className="inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-primary px-7 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep disabled:cursor-wait disabled:opacity-60 sm:w-auto"
           >
-            {isPending ? "Saving scores…" : "Save scores"}
+            {staleBlocked
+              ? "Refresh before saving"
+              : isPending
+                ? "Saving scores…"
+                : "Save scores"}
           </button>
         </div>
       ) : null}
+
+      <ConfirmationDialog
+        open={clearParticipantIds.length > 0}
+        title="Clear shared score?"
+        description={
+          <>
+            <p>
+              {clearParticipantIds.length === 1
+                ? "This physical score is used in:"
+                : `${clearParticipantIds.length} physical shooter scores are used in:`}
+            </p>
+            <ul className="mt-3 space-y-2">
+              {clearedLinkedCompetitions.map((competition) => (
+                <li
+                  key={competition.competition_round_id}
+                  className="rounded-lg bg-surface-muted px-3 py-2"
+                >
+                  <span className="block break-words font-semibold text-foreground">
+                    {competition.competition_name}
+                  </span>
+                  <span className="text-xs">Round {competition.round_number}</span>
+                </li>
+              ))}
+            </ul>
+            <p className="mt-3">
+              Clearing {clearParticipantIds.length === 1 ? "it" : "them"} will
+              remove the recorded score from every linked Competition. The
+              Competition entries will remain linked.
+            </p>
+          </>
+        }
+        onCancel={() => setClearParticipantIds([])}
+        cancelDisabled={isPending}
+      >
+        <button
+          type="button"
+          onClick={() => setClearParticipantIds([])}
+          disabled={isPending}
+          className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold transition hover:bg-surface-muted disabled:opacity-60"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          onClick={() => persistScores(clearParticipantIds)}
+          disabled={isPending}
+          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-danger px-5 text-sm font-semibold text-white transition hover:brightness-95 disabled:cursor-wait disabled:opacity-60"
+        >
+          {isPending ? "Clearing shared score…" : "Clear shared score"}
+        </button>
+      </ConfirmationDialog>
     </>
   );
 }

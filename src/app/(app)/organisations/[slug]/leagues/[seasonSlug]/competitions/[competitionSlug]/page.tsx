@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { CompetitionDetailsDisclosure } from "@/components/competition-details-disclosure";
+import { CompetitionConcurrentShootingIndicator } from "@/components/competition-concurrent-shooting-indicator";
 import { CompetitionEntryControls } from "@/components/competition-entry-controls";
 import {
   CompetitionAggregateResultsTable,
@@ -32,11 +33,13 @@ import {
   getCompetitionRankingMethodLabel,
   getCompetitionRounds,
   getCompetitionScoreComponents,
+  getCompetitionShootingDisplay,
   getCompetitionScoringMethodLabel,
   getCompetitionStatusLabel,
   resolveCompetitionEffectiveDates,
 } from "@/lib/competitions";
 import { getCompetitionClubEntryContext } from "@/lib/competition-entries";
+import { getCompetitionConcurrentShootingSummary } from "@/lib/concurrent-shooting";
 import {
   formatLeagueSeasonDate,
   getLeagueSeasonBySlug,
@@ -113,13 +116,14 @@ export default async function CompetitionDetailPage({
     competitionPublished: competition.status === "published",
     hasDivisionManagement: false,
   });
-  const [rounds, scoreComponents, entryContexts, divisionManagement, publishedDivisions, lifecycleState, aggregateResults, gunScoreResults, roundRobinResults, resultAverages] = await Promise.all([
+  const [rounds, scoreComponents, shootingDisplay, entryContexts, divisionManagement, publishedDivisions, lifecycleState, aggregateResults, gunScoreResults, roundRobinResults, resultAverages, concurrentShootingSummary] = await Promise.all([
     viewerId
       ? getCompetitionRounds(competition.id)
       : Promise.resolve(publicCatalog?.rounds ?? []),
     viewerId
       ? getCompetitionScoreComponents(competition.id)
       : Promise.resolve(publicCatalog?.score_components ?? []),
+    getCompetitionShootingDisplay(organisation.id, season.id, competition.id),
     initialCapabilities.loadEntryContext
       ? getCompetitionClubEntryContext(competition.id)
       : Promise.resolve([]),
@@ -151,6 +155,9 @@ export default async function CompetitionDetailPage({
       : Promise.resolve(null),
     competition.status === "published" && ["aggregate", "gun_score", "round_robin"].includes(competition.ranking_method)
       ? getCompetitionResultAverages(organisation.id, season.id, competition.id)
+      : Promise.resolve(null),
+    managementContext
+      ? getCompetitionConcurrentShootingSummary(organisation.id, competition.id)
       : Promise.resolve(null),
   ]);
   const aggregateResultsWithAverages = addAveragesToCompetitionResults(
@@ -214,6 +221,7 @@ export default async function CompetitionDetailPage({
       ? `${formatLeagueSeasonDate(effectiveDates.effective_entry_opens_at)} – ${formatLeagueSeasonDate(effectiveDates.effective_entry_closes_at)}`
       : "Not configured";
   const summaryItems = [
+    ...(shootingDisplay.equipment_name ? [shootingDisplay.equipment_name] : []),
     entryFormatDetail,
     `${competition.number_of_rounds} round${competition.number_of_rounds === 1 ? "" : "s"}`,
     getCompetitionRankingMethodLabel(competition.ranking_method),
@@ -336,6 +344,13 @@ export default async function CompetitionDetailPage({
         </p>
       </Card>
 
+      {concurrentShootingSummary ? (
+        <CompetitionConcurrentShootingIndicator
+          organisationSlug={organisation.slug}
+          summary={concurrentShootingSummary}
+        />
+      ) : null}
+
       {capabilities.showEntryControls ? (
         <CompetitionEntryControls
           contexts={entryContexts}
@@ -368,6 +383,7 @@ export default async function CompetitionDetailPage({
         effectiveDates={effectiveDates}
         rounds={rounds}
         scoreComponents={scoreComponents}
+        shootingDisplay={shootingDisplay}
         showScoringAccess={capabilities.showScoringAccess}
       />
 
