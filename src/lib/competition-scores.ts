@@ -62,6 +62,7 @@ export type CompetitionScoreEntry = {
     | { shared: false }
     | {
         shared: true;
+        archived?: boolean;
         group_id: number;
         group_name: string;
         physical_round_id: number;

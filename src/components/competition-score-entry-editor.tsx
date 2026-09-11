@@ -153,6 +153,14 @@ function ReadOnlyMessage({ data }: { data: CompetitionScoreEntry }) {
   }
 
   if (data.concurrent_shooting.shared) {
+    if (data.concurrent_shooting.archived) {
+      return (
+        <div className="rounded-2xl border border-border bg-surface-muted px-5 py-4 text-sm leading-6 text-muted-foreground">
+          This Concurrent Shooting group is archived. Its shared score and
+          Competition links are preserved as read-only provenance.
+        </div>
+      );
+    }
     const issue = data.participants
       .map((participant) => getSharedParticipantIssue(participant))
       .find(Boolean);

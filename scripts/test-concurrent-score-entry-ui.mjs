@@ -241,6 +241,20 @@ test("existing shared scores show a compact correction notice and safe last-upda
   assert.doesNotMatch(html, />4<|source version/i);
 });
 
+test("Archived mapped Rounds explain preserved read-only shared provenance", async () => {
+  const { editor } = await loadScoreEntryModules();
+  const html = renderEditor(editor, scoreEntry({
+    can_edit: false,
+    concurrent_shooting: {
+      ...scoreEntry().concurrent_shooting,
+      archived: true,
+    },
+  }));
+  assert.match(html, /Concurrent Shooting group is archived/);
+  assert.match(html, /preserved as read-only provenance/);
+  assert.doesNotMatch(html, /cannot be edited from this club account/);
+});
+
 test("shared create, correction, clear feedback and returned versions are participant-safe", async () => {
   const { concurrentState } = await loadScoreEntryModules();
   const draft = {
@@ -477,6 +491,11 @@ test("friendly Concurrent action errors classify expected backend failures witho
       "Shared score requires Organisation scoring because a linked participant is outside this club scope.",
       "shared_authority",
     ],
+    [
+      "22023",
+      "Archived Concurrent score provenance is read-only.",
+      "unavailable",
+    ],
   ];
   for (const [code, databaseMessage, errorKind] of cases) {
     const actions = await loadModule("src/app/(app)/competition-score-actions.ts", {
@@ -497,6 +516,9 @@ test("friendly Concurrent action errors classify expected backend failures witho
       scores: [],
     });
     assert.equal(result.errorKind, errorKind);
-    assert.doesNotMatch(result.message, /Private Name|different score source|club scope/i);
+    assert.doesNotMatch(
+      result.message,
+      /Private Name|different score source|club scope|Archived Concurrent score provenance/i,
+    );
   }
 });

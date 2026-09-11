@@ -330,11 +330,12 @@ Deploy the existing migrations through
 4. `database/competition-shooting-details.sql`
 5. `database/concurrent-shooting-physical-compatibility.sql`
 6. `database/concurrent-shooting-management-ux.sql`
+7. `database/concurrent-shooting-final-audit.sql`
 
-All six files are additive and rerunnable. The final three are the physical-model
+All seven files are additive and rerunnable. The final four are the physical-model
 upgrade and management UX contracts for an existing Stage 3A deployment; on
 such a deployment that already has structured details and physical compatibility,
-run only file 6. They create no groups, do no
+run files 6 and 7. They create no groups, do no
 historical backfill or source merge, and infer no relationship. Stage 2 must be
 deployed before Active groups are used for score entry; Stage 3A must be
 deployed before exposing its management routes. Run `npm run test:concurrent`

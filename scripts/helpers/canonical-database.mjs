@@ -54,6 +54,7 @@ export async function installCanonicalDatabase(db, {
     ...(concurrentShootingStage3a ? ["concurrent-shooting-stage-3a"] : []),
     ...(concurrentShootingStage3a ? ["concurrent-shooting-physical-compatibility"] : []),
     ...(concurrentShootingStage3a ? ["concurrent-shooting-management-ux"] : []),
+    ...(concurrentShootingStage3a ? ["concurrent-shooting-final-audit"] : []),
   ]) {
     try { await db.exec(await sqlFile(name)); }
     catch (error) { throw new Error(`Schema ${name}: ${error.message}`, { cause: error }); }

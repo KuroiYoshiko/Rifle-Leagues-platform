@@ -87,6 +87,15 @@ function scoreError(
 ): CompetitionScoreActionState {
   const message = databaseMessage ?? "";
 
+  if (/Archived Concurrent score provenance is read-only/i.test(message)) {
+    return {
+      status: "error",
+      errorKind: "unavailable",
+      message:
+        "This Concurrent Shooting group was archived while you were editing. Its shared scores are now read-only; refresh the page to view the preserved result.",
+    };
+  }
+
   if (/ambiguous|appears more than once/i.test(message)) {
     return {
       status: "error",

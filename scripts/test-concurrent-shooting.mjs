@@ -362,9 +362,34 @@ test("management surfaces are hardened SECURITY DEFINER RPCs and all foundation 
     from pg_proc procedure
     join pg_namespace namespace on namespace.oid=procedure.pronamespace
     where namespace.nspname='public'
-      and procedure.proname like '%concurrent_shooting%'
+      and (procedure.proname like '%concurrent_shooting%'
+        or procedure.proname in (
+          'get_individual_competition_score_entry',
+          'save_individual_competition_round_scores'
+        ))
       and (not procedure.prosecdef or not coalesce(procedure.proconfig,'{}') @> array['search_path=""'])`)).rows;
   assert.deepEqual(unsafe, []);
+  const scoreEntryPrivileges = (await admin(`select
+    has_function_privilege('authenticated',
+      'public.get_individual_competition_score_entry(bigint,bigint,bigint,bigint,bigint)', 'execute') read_authenticated,
+    has_function_privilege('anon',
+      'public.get_individual_competition_score_entry(bigint,bigint,bigint,bigint,bigint)', 'execute') read_anon,
+    has_function_privilege('authenticated',
+      'public.save_individual_competition_round_scores(bigint,bigint,bigint,bigint,bigint,jsonb)', 'execute') write_authenticated,
+    has_function_privilege('anon',
+      'public.save_individual_competition_round_scores(bigint,bigint,bigint,bigint,bigint,jsonb)', 'execute') write_anon,
+    has_function_privilege('authenticated',
+      'private.get_individual_competition_score_entry_base(bigint,bigint,bigint,bigint,bigint)', 'execute') private_read_authenticated,
+    has_function_privilege('authenticated',
+      'private.save_individual_competition_round_scores_base(bigint,bigint,bigint,bigint,bigint,jsonb)', 'execute') private_write_authenticated`)).rows[0];
+  assert.deepEqual(scoreEntryPrivileges, {
+    read_authenticated: true,
+    read_anon: false,
+    write_authenticated: true,
+    write_anon: false,
+    private_read_authenticated: false,
+    private_write_authenticated: false,
+  });
   const tables = [
     "concurrent_shooting_groups",
     "concurrent_shooting_group_competitions",
@@ -893,6 +918,88 @@ test("shared corrections use optimistic versions, update both Competitions, audi
   assert.deepEqual(events[2].after_state.values, []);
 });
 
+test("Concurrent provenance cannot be reassigned or unlinked and Archived mapped scores stay read-only", async () => {
+  const fixture = await createStage2Group({
+    formats: ["pairs", "pairs"],
+    rosters: [
+      [actors.normal, actors.shooter2],
+      [actors.normal, actors.shooter2],
+    ],
+  });
+  await startSeason();
+  await saveScore(
+    fixture.competitions[0], fixture.entries[0].participantIds[0], 95,
+  );
+
+  const source = (await admin(`select source.id,usage.id usage_id
+    from shooting_score_sources source
+    join competition_score_usages usage on usage.shooting_score_source_id=source.id
+    where source.concurrent_shooting_round_id=$1
+      and source.shooter_profile_id=$2
+    order by usage.id limit 1`, [fixture.physicalId, actors.normal])).rows[0];
+  const ordinaryNormalSource = (await admin(
+    "insert into shooting_score_sources(shooter_profile_id) values($1) returning id",
+    [actors.normal],
+  )).rows[0].id;
+  await adminRejected(
+    "update shooting_score_sources set shooter_profile_id=$1 where id=$2",
+    [actors.shooter2, source.id], /cannot be reassigned/,
+  );
+  await adminRejected(
+    "delete from shooting_score_sources where id=$1",
+    [source.id], /cannot be deleted/,
+  );
+  await adminRejected(
+    "update competition_score_usages set shooting_score_source_id=$1 where id=$2",
+    [ordinaryNormalSource, source.usage_id], /cannot be reassigned/,
+  );
+  await adminRejected(
+    "delete from competition_score_usages where id=$1",
+    [source.usage_id], /cannot be unlinked/,
+  );
+
+  const ordinarySecondSource = (await admin(
+    "insert into shooting_score_sources(shooter_profile_id) values($1) returning id",
+    [actors.shooter2],
+  )).rows[0].id;
+  await adminRejected(`insert into competition_score_usages(
+      shooting_score_source_id,competition_id,competition_round_id,
+      competition_entrant_participant_id
+    ) values($1,$2,$3,$4)`, [
+    ordinarySecondSource,
+    fixture.competitions[0].id,
+    await competitionRound(fixture.competitions[0], 1),
+    fixture.entries[0].participantIds[1],
+  ], /must use its physical Concurrent score source/);
+
+  await db.query(
+    "select public.archive_concurrent_shooting_group(1,$1)", [fixture.group.id],
+  );
+  const archived = await scoreEntry(fixture.competitions[0]);
+  assert.equal(archived.can_edit, false);
+  assert.equal(archived.concurrent_shooting.shared, true);
+  assert.equal(archived.concurrent_shooting.archived, true);
+  assert.equal(archived.participants[0].values[0].entered_score, 95);
+  await rejected(
+    "select public.save_individual_competition_round_scores(1,1,$1,$2,null,$3)",
+    [fixture.competitions[0].id, await competitionRound(fixture.competitions[0], 1),
+      scorePayload(archived, fixture.entries[0].participantIds[1], 90)],
+    /Archived Concurrent score provenance is read-only/,
+  );
+  await adminRejected(
+    "update shooting_score_values set achieved_score=94 where shooting_score_source_id=$1",
+    [source.id], /Archived Concurrent score provenance is read-only/,
+  );
+  await adminRejected(
+    "update shooting_score_sources set version=version+1 where id=$1",
+    [source.id], /Archived Concurrent score provenance is read-only|Active physical Concurrent Round/,
+  );
+  assert.equal((await admin(
+    "select count(*)::int n from competition_score_usages where shooting_score_source_id=$1",
+    [ordinarySecondSource],
+  )).rows[0].n, 0);
+});
+
 test("club scoring succeeds only with authority across every linked usage", async () => {
   const valid = await createStage2Group();
   const cutoff = await createStage2Group();
@@ -1363,6 +1470,7 @@ test("the additive migration is rerunnable", async () => {
     const stage3a = await sqlFile("concurrent-shooting-stage-3a");
     const physicalCompatibility = await sqlFile("concurrent-shooting-physical-compatibility");
     const managementUx = await sqlFile("concurrent-shooting-management-ux");
+    const finalAudit = await sqlFile("concurrent-shooting-final-audit");
     await rerun.exec(shootingDetails);
     await rerun.exec(shootingDetails);
     await rerun.exec(sql);
@@ -1375,6 +1483,8 @@ test("the additive migration is rerunnable", async () => {
     await rerun.exec(physicalCompatibility);
     await rerun.exec(managementUx);
     await rerun.exec(managementUx);
+    await rerun.exec(finalAudit);
+    await rerun.exec(finalAudit);
     assert.equal((await rerun.query(
       "select count(*)::int n from information_schema.tables where table_schema='public' and table_name like 'concurrent_shooting%'",
     )).rows[0].n, 4);
