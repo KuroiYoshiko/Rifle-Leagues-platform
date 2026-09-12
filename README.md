@@ -272,6 +272,18 @@ Run `npm run test:concurrent` and `npm run test:shooting-details` for the dispos
 PostgreSQL regression suites.
 No reset, reseed, name-based association or live database application is automated.
 
+### Shooter performance analytics
+
+After the complete Competition, Results, Series, Averages, structured shooting
+details, and Concurrent Shooting chain (including the current management/final
+audit files), run
+[`database/shooter-analytics.sql`](database/shooter-analytics.sql). It adds one
+authenticated current-shooter read RPC and no score table, cached total, or data
+backfill. The application exposes the result at `/statistics`.
+
+See [the analytics model audit and deployment notes](database/SHOOTER-ANALYTICS.md)
+and run `npm run test:analytics` for the data/security and UI contract suite.
+
 This adds strict organisation-scoped Series identity, atomic first-draft and
 continuation RPCs, manager draft authoring, source selection metadata and owner-only
 Series lifecycle. It also repairs unchanged-component upserts when editing a scored
