@@ -19,7 +19,8 @@
     "test:ux-consistency": "node --test scripts/test-ux-consistency.mjs",
     "test:shooting-details": "node --test scripts/test-competition-shooting-details.mjs",
     "test:averages": "node --test scripts/test-competition-averages.mjs scripts/test-development-averages-fixture.mjs scripts/test-running-averages.mjs",
-    "test:results": "npm run test:aggregate && npm run test:gun-score && npm run test:round-robin && npm run test:public-results && npm run test:saved-results"
+    "test:results": "npm run test:aggregate && npm run test:gun-score && npm run test:round-robin && npm run test:public-results && npm run test:saved-results",
+    "test:analytics": "node --test scripts/test-shooter-analytics.mjs scripts/test-shooter-analytics-ui.mjs"
   },
   "dependencies": {
     "@dnd-kit/react": "0.5.0",
@@ -36,7 +37,9 @@
     "next": "16.3.3",
     "react": "19.2.8",
     "react-dom": "19.2.8",
-    "react-markdown": "10.1.0"
+    "react-is": "19.2.8",
+    "react-markdown": "10.1.0",
+    "recharts": "3.10.1"
   },
   "devDependencies": {
     "@electric-sql/pglite": "0.5.8",

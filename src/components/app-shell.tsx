@@ -44,9 +44,8 @@ const shootingNavigationItems: NavigationItem[] = [
   },
   {
     label: "Statistics",
-    href: "/dashboard#statistics",
+    href: "/statistics",
     mark: "S",
-    disabledReason: "Competition statistics are not available yet",
   },
 ];
 
@@ -57,6 +56,7 @@ const utilityNavigationItems: NavigationItem[] = [
 const pageDetails: Record<string, { eyebrow: string; title: string }> = {
   "/dashboard": { eyebrow: "Shooter profile", title: "My dashboard" },
   "/profile": { eyebrow: "Account", title: "Your profile" },
+  "/statistics": { eyebrow: "My shooting", title: "Performance analytics" },
   "/clubs": { eyebrow: "Membership", title: "Find a club" },
   "/clubs/register": { eyebrow: "Club administration", title: "Register a club" },
   "/organisations": {
