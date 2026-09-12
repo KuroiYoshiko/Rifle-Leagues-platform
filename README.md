@@ -31,6 +31,29 @@ enables owner-only Row Level Security policies.
 No service-role key is used by the application and no additional environment
 variables are required.
 
+## Destructive development/staging data reset
+
+[`database/dev-reset-all-data.sql`](database/dev-reset-all-data.sql) is manual,
+destructive local/staging tooling. It is **not a migration**, is not part of the
+canonical database installer/deployment chain, and must never be run against
+production.
+
+Before each reset, copy the complete file into the Supabase SQL Editor and
+replace only the zero UUID assigned to `v_keep_user_id` in that copied text with
+the UUID of the existing developer/showcase Auth account to preserve. Do not put
+the real UUID in the repository. The unchanged placeholder aborts before any
+data is changed.
+
+The reset transaction empties every current Rifle Leagues domain table, removes
+all other Auth users through `auth.users` and Supabase's Auth-owned cascades,
+and verifies that the selected user and all of that user's Auth identities still
+exist. It deliberately preserves the built-in `shooting_equipment_types` and
+`shooting_positions` taxonomies. If a disposable user owns a Supabase Storage
+object, remove that object through the Storage API or Dashboard first; the reset
+will abort rather than modify Storage internals.
+
+Run `npm run test:dev-reset` after changing the canonical schema or this tool.
+
 ## Organisation management access
 
 Run the complete [`database/organisation-staff.sql`](database/organisation-staff.sql)

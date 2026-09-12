@@ -20,7 +20,8 @@
     "test:shooting-details": "node --test scripts/test-competition-shooting-details.mjs",
     "test:averages": "node --test scripts/test-competition-averages.mjs scripts/test-development-averages-fixture.mjs scripts/test-running-averages.mjs",
     "test:results": "npm run test:aggregate && npm run test:gun-score && npm run test:round-robin && npm run test:public-results && npm run test:saved-results",
-    "test:analytics": "node --test scripts/test-shooter-analytics.mjs scripts/test-shooter-analytics-ui.mjs"
+    "test:analytics": "node --test scripts/test-shooter-analytics.mjs scripts/test-shooter-analytics-ui.mjs",
+    "test:dev-reset": "node --test scripts/test-dev-reset-all-data.mjs"
   },
   "dependencies": {
     "@dnd-kit/react": "0.5.0",
