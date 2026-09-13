@@ -391,7 +391,9 @@ test("result merge and compact UX show Individual and Pair participant R/Av with
   });
   assert.match(html, /R\/Av 98\.00/);
   assert.match(html, /R\/Av 97\.25/);
-  assert.doesNotMatch(html, /S\/Av/);
+  assert.match(html, /title="Starting Average"[^>]*>S\/Av/);
+  assert.match(html, /title="Running Average"[^>]*>R\/Av/);
+  assert.match(html, /data-entrant-row="10"[\s\S]*?results-average-cell[^>]*>—<\/td>[\s\S]*?results-average-cell[^>]*>—<\/td>/);
 
   const individualResults = structuredClone(results);
   individualResults.groups[0].entrants[0].entrant_format = "individual";

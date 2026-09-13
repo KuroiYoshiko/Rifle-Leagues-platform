@@ -79,7 +79,7 @@ test("Pair/Team disclosure belongs to the sticky entrant cell and controls a tri
     const unit=entrant(1,"Basildon Rifle Club",label,"Isla","Morgan");
     const html=renderToStaticMarkup(createElement(Table,{data:{status:"ready",display_scoring_mode:"points_scored",uses_x_score:false,released_round_count:0,
       rounds:[{id:1,round_number:1,deadline:"2026-09-20",released:false}],groups:[{id:1,name:"Division 1",entrants:[unit]}]}}));
-    const stickyCell=html.match(/<th scope="row" class="sticky left-0[^>]*>(.*?)<\/th>/s)?.[1];
+    const stickyCell=html.match(/<th scope="row" class="results-sticky-entrant[^>]*>(.*?)<\/th>/s)?.[1];
     if (label.startsWith("Individual")) {
       assert.doesNotMatch(stickyCell,/<summary/);
       assert.doesNotMatch(html,/id="rr-participants-/);
@@ -87,7 +87,7 @@ test("Pair/Team disclosure belongs to the sticky entrant cell and controls a tri
       assert.match(stickyCell,/<details[^>]*><summary aria-controls="rr-participants-1-1"/);
       assert.match(stickyCell,/Participants/);
       assert.equal((html.match(/<summary/g) ?? []).length,1);
-      const breakdown=html.match(/<tr id="rr-participants-1-1" class="hidden[^>]*>(.*?)<\/tr>/s)?.[1];
+      const breakdown=html.match(/<tr id="rr-participants-1-1"[^>]*class="hidden[^>]*>(.*?)<\/tr>/s)?.[1];
       assert.match(breakdown,/Released shooting results by participant/);
       assert.doesNotMatch(breakdown,/<summary|<details/);
       assert.match(html,/\[&amp;:has\(details\[open\]\)\+tr\]:table-row/);

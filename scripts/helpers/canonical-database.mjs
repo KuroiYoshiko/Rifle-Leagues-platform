@@ -29,7 +29,8 @@ export async function installCanonicalDatabase(db, {
     "competition-configuration-save-fix", "competition-configuration-owner-save-fix",
     "competition-lifecycle-management", "competition-scores",
     "competition-scores-deferred-trigger-security", "competition-scores-participant-formats",
-    "competition-results", "competition-aggregate-results", "competition-gun-score-results", "public-results",
+    "competition-results", "competition-aggregate-results", "competition-gun-score-results",
+    "competition-best-n-average-results", "public-results",
     "competition-round-robin", "competition-round-robin-results",
     ...(competitionSeries ? [
       "competition-series", "competition-series-management",

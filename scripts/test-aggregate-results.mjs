@@ -162,10 +162,10 @@ test("actual Competition route -> Supabase SSR RPC -> SQL -> rendered cells: Sum
   for (const [index, row] of renderedRows.entries()) {
     assert.ok(row.includes(`Pair ${index + 1}`));
     assert.match(row, new RegExp(`>${index + 3}<span class="sr-only"> gun result`));
-    assert.match(row, new RegExp(`data-total-cell="true"[\\s\\S]*?>${index + 3}<span class="sr-only"> total gun result`));
-    assert.match(row, new RegExp(`>${2 - index} <span aria-hidden="true">pts</span><span class="sr-only">total aggregate ranking points`));
+    assert.match(row, new RegExp(`data-total-cell="true"[\\s\\S]*?>${2 - index} pts<span class="sr-only"> total aggregate ranking points`));
+    assert.match(row, new RegExp(`>${index + 3} result`));
     assert.ok(!row.includes("397") && !row.includes("396"), "Must not render achieved totals");
-    assert.match(row, />Pending</);
+    assert.match(row, /Unreleased/);
   }
 });
 
@@ -180,15 +180,15 @@ test("historical Competition Results route redirects to the embedded Results anc
   );
 });
 
-test("points-scored Total renders gun_total first and total_points in the Round-style badge", async () => {
+test("points-scored final column leads with ranking points and retains the gun result", async () => {
   await maximum400Fixture("team", 4, "points_scored");
   const competition = (await db.query("select * from competitions where id=1")).rows[0];
   const { html, call } = await renderAggregateResultsRoute({ competition, readRpc: parameters =>
     read(parameters.p_organisation_id, parameters.p_league_season_id, parameters.p_competition_id) });
   const first = renderedEntrantRows(html)[0].html;
-  const gunTotal = first.indexOf('>397<span class="sr-only"> total gun result');
-  const rankingTotal = first.indexOf('>5 <span aria-hidden="true">pts</span><span class="sr-only">total aggregate ranking points');
-  assert.ok(gunTotal >= 0 && rankingTotal > gunTotal, "Total must render achieved gun_total above total_points");
+  const gunTotal = first.indexOf('>397 result');
+  const rankingTotal = first.indexOf('>5 pts<span class="sr-only"> total aggregate ranking points');
+  assert.ok(rankingTotal >= 0 && gunTotal > rankingTotal, "Aggregate final must lead with the ranking result");
   assert.ok(!first.includes("Gun 397"));
   const winningTeam = entrants(call.payload)[0];
   assert.deepEqual(winningTeam.participants.map(participant => participant.gun_total), [97, 100, 100, 100]);
@@ -212,8 +212,8 @@ test("live source totals reproduce 397/396 through the UI; corrected achieved to
     ["Pair 2", 4, 396, 2], ["Pair 1", 3, 397, 1],
   ]);
   const rows = renderedEntrantRows(before.html).map((row) => row.html);
-  assert.ok(rows[0].includes("Pair 2") && rows[0].includes('>396<span class="sr-only"> total gun result'));
-  assert.ok(rows[1].includes("Pair 1") && rows[1].includes('>397<span class="sr-only"> total gun result'));
+  assert.ok(rows[0].includes("Pair 2") && rows[0].includes('>396 result'));
+  assert.ok(rows[1].includes("Pair 1") && rows[1].includes('>397 result'));
 
   // Model the canonical outcome of verified dropped-point entry: 1+2 dropped
   // becomes 199+198 achieved; 2+2 dropped becomes 198+198 achieved. This only
@@ -226,8 +226,8 @@ test("live source totals reproduce 397/396 through the UI; corrected achieved to
     ["Pair 1", 397, 3, 2], ["Pair 2", 396, 4, 1],
   ]);
   const correctedRows = renderedEntrantRows(after.html).map((row) => row.html);
-  assert.ok(correctedRows[0].includes("Pair 1") && correctedRows[0].includes('>3<span class="sr-only"> total gun result'));
-  assert.ok(correctedRows[1].includes("Pair 2") && correctedRows[1].includes('>4<span class="sr-only"> total gun result'));
+  assert.ok(correctedRows[0].includes("Pair 1") && correctedRows[0].includes('>3 result'));
+  assert.ok(correctedRows[1].includes("Pair 2") && correctedRows[1].includes('>4 result'));
   assert.ok(entrants(after.call.payload).every(e => e.rounds.slice(1).every(r => r.state === "pending" && r.gun_score === null)));
 });
 
@@ -439,8 +439,8 @@ for (const [format, size] of [["pairs", 2], ["team", 4]]) {
     assert.equal([...html.matchAll(/<tr data-participant-row=/g)].length, 5 * size);
     const firstParticipant = html.match(/<tr data-participant-row="1">([\s\S]*?)<\/tr>/)[0];
     assert.ok(firstParticipant.includes("Shooter 1 Slot 1"));
-    assert.match(firstParticipant, /data-participant-round="1"[\s\S]*?>1<[\s\S]*?>1 X</);
-    assert.match(firstParticipant, /data-participant-total="true"[\s\S]*?>1<[\s\S]*?>1 X</);
+    assert.match(firstParticipant, /data-participant-round="1"[\s\S]*?>1<[\s\S]*?>1X</);
+    assert.match(firstParticipant, /data-participant-total="true"[\s\S]*?>1<[\s\S]*?>1X</);
 
     await db.exec("delete from shooting_score_values where shooting_score_source_id=111");
     data = await read();
