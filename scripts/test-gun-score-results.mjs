@@ -388,6 +388,9 @@ test("Competition page renders Gun Score in the existing matrix without Aggregat
   assert.match(html, /<section id="results"/);
   assert.match(html, /data-ranking-method="gun_score"/);
   assert.match(html, /Gun Score standings/);
+  assert.match(html, />Gun total<\/th>/);
+  assert.match(html, /data-average-columns="0"/);
+  assert.doesNotMatch(html, />S\/Av<|>R\/Av</);
   assert.match(html, /Released shooting results by participant for Pair 1/);
   assert.doesNotMatch(html, /aggregate ranking points/);
   assert.doesNotMatch(html, />pts</);

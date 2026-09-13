@@ -37,6 +37,8 @@ export async function renderAggregateResultsRoute({
   const averageCalls = [];
   const rpcName = competition.ranking_method === "gun_score"
     ? "get_competition_gun_score_results"
+    : competition.ranking_method === "best_n_average"
+    ? "get_competition_best_n_average_results"
     : competition.ranking_method === "round_robin"
     ? "get_competition_round_robin_results"
     : "get_competition_aggregate_results";
@@ -77,6 +79,10 @@ export async function renderAggregateResultsRoute({
       "@/lib/competition-aggregate-results": resultsLoader,
       "@/lib/supabase/server": serverClient,
     });
+    const bestNAverageResultsLoader = await loadModule("src/lib/competition-best-n-average-results.ts", {
+      "@/lib/competition-aggregate-results": resultsLoader,
+      "@/lib/supabase/server": serverClient,
+    });
     const ui = await loadModule("src/components/ui.tsx");
     const resultsTable = await loadModule("src/components/competition-aggregate-results.tsx", {
       "@/components/ui": ui,
@@ -108,12 +114,16 @@ export async function renderAggregateResultsRoute({
       },
       "@/components/competition-aggregate-results": resultsTable,
       "@/components/competition-round-robin-results": roundRobinTable,
+      "@/components/print-results-button": {
+        PrintResultsButton: () => createElement("button", { "data-print-results": "true" }, "Print results"),
+      },
       "@/components/competition-lifecycle-actions": {
         CompetitionLifecycleActions: () => createElement("div", { "data-lifecycle-actions": "true" }),
       },
       "@/components/organisation-page-frame": { OrganisationPageFrame: ({ children }) => children },
       "@/components/published-competition-divisions": { PublishedCompetitionDivisionsView: () => null },
       "@/lib/competition-aggregate-results": resultsLoader,
+      "@/lib/competition-best-n-average-results": bestNAverageResultsLoader,
       "@/lib/competition-gun-score-results": gunScoreResultsLoader,
       "@/lib/competition-round-robin-results": roundRobinLoader,
       "@/lib/competition-result-averages": resultAveragesLoader,

@@ -6,9 +6,11 @@ import { CompetitionConcurrentShootingIndicator } from "@/components/competition
 import { CompetitionEntryControls } from "@/components/competition-entry-controls";
 import {
   CompetitionAggregateResultsTable,
+  CompetitionBestNAverageResultsTable,
   CompetitionGunScoreResultsTable,
 } from "@/components/competition-aggregate-results";
 import { getCompetitionAggregateResults } from "@/lib/competition-aggregate-results";
+import { getCompetitionBestNAverageResults } from "@/lib/competition-best-n-average-results";
 import { getCompetitionGunScoreResults } from "@/lib/competition-gun-score-results";
 import { getCompetitionRoundRobinResults } from "@/lib/competition-round-robin-results";
 import {
@@ -19,6 +21,7 @@ import { CompetitionRoundRobinResultsTable } from "@/components/competition-roun
 import { CompetitionLifecycleActions } from "@/components/competition-lifecycle-actions";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { PublishedCompetitionDivisionsView } from "@/components/published-competition-divisions";
+import { PrintResultsButton } from "@/components/print-results-button";
 import { Badge, Card, SectionHeader } from "@/components/ui";
 import {
   getCompetitionDivisionManagement,
@@ -116,7 +119,7 @@ export default async function CompetitionDetailPage({
     competitionPublished: competition.status === "published",
     hasDivisionManagement: false,
   });
-  const [rounds, scoreComponents, shootingDisplay, entryContexts, divisionManagement, publishedDivisions, lifecycleState, aggregateResults, gunScoreResults, roundRobinResults, resultAverages, concurrentShootingSummary] = await Promise.all([
+  const [rounds, scoreComponents, shootingDisplay, entryContexts, divisionManagement, publishedDivisions, lifecycleState, aggregateResults, bestNAverageResults, gunScoreResults, roundRobinResults, resultAverages, concurrentShootingSummary] = await Promise.all([
     viewerId
       ? getCompetitionRounds(competition.id)
       : Promise.resolve(publicCatalog?.rounds ?? []),
@@ -147,13 +150,16 @@ export default async function CompetitionDetailPage({
     competition.status === "published" && competition.ranking_method === "aggregate"
       ? getCompetitionAggregateResults(organisation.id, season.id, competition.id)
       : Promise.resolve(null),
+    competition.status === "published" && competition.ranking_method === "best_n_average"
+      ? getCompetitionBestNAverageResults(organisation.id, season.id, competition.id)
+      : Promise.resolve(null),
     competition.status === "published" && competition.ranking_method === "gun_score"
       ? getCompetitionGunScoreResults(organisation.id, season.id, competition.id)
       : Promise.resolve(null),
     competition.status === "published" && competition.ranking_method === "round_robin"
       ? getCompetitionRoundRobinResults(organisation.id, season.id, competition.id)
       : Promise.resolve(null),
-    competition.status === "published" && ["aggregate", "gun_score", "round_robin"].includes(competition.ranking_method)
+    competition.status === "published" && ["aggregate", "best_n_average", "gun_score", "round_robin"].includes(competition.ranking_method)
       ? getCompetitionResultAverages(organisation.id, season.id, competition.id)
       : Promise.resolve(null),
     managementContext
@@ -162,6 +168,10 @@ export default async function CompetitionDetailPage({
   ]);
   const aggregateResultsWithAverages = addAveragesToCompetitionResults(
     aggregateResults,
+    resultAverages,
+  );
+  const bestNAverageResultsWithAverages = addAveragesToCompetitionResults(
+    bestNAverageResults,
     resultAverages,
   );
   const gunScoreResultsWithAverages = addAveragesToCompetitionResults(
@@ -235,8 +245,26 @@ export default async function CompetitionDetailPage({
     );
   }
   if (fee) summaryItems.push(fee);
-  const resultsDuplicateDivisionRoster =
-    aggregateResultsWithAverages?.status === "ready" || gunScoreResultsWithAverages?.status === "ready" || roundRobinResultsWithAverages?.status === "ready";
+  const resultSets = [
+    aggregateResultsWithAverages,
+    bestNAverageResultsWithAverages,
+    gunScoreResultsWithAverages,
+    roundRobinResultsWithAverages,
+  ];
+  const resultsDuplicateDivisionRoster = resultSets.some((results) => results?.status === "ready");
+  const printableResults = resultSets.some((results) =>
+    results?.status === "ready" &&
+    results.released_round_count > 0 &&
+    results.groups.some((group) => group.entrants.length > 0),
+  );
+  const visibleDivisions = publishedDivisions?.divisions.filter((division) => division.entrants.length > 0) ?? [];
+  const divisionEntrantCount = visibleDivisions.reduce((total, division) => total + division.entrants.length, 0);
+  const yourDivision = visibleDivisions.find((division) =>
+    division.entrants.some((entrant) => entrant.is_current_user),
+  );
+  const divisionSummary = visibleDivisions.length
+    ? `${visibleDivisions.length} division${visibleDivisions.length === 1 ? "" : "s"} · ${divisionEntrantCount} entrant${divisionEntrantCount === 1 ? "" : "s"}${yourDivision ? ` · Your division: ${yourDivision.name}` : ""}`
+    : null;
 
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="leagues">
@@ -360,10 +388,31 @@ export default async function CompetitionDetailPage({
       ) : null}
 
       {competition.status === "published" ? (
-        <section id="results" className="mt-8 min-w-0 scroll-mt-24" aria-label="Competition results">
-          <SectionHeader title="Results" />
+        <section id="results" data-print-document className="mt-8 min-w-0 scroll-mt-24" aria-label="Competition results">
+          <div data-print-only className="hidden">
+            <p className="text-[9pt] font-semibold uppercase tracking-[0.12em] text-neutral-strong">{organisation.name}</p>
+            <h1 className="mt-1 text-[18pt] font-bold leading-tight text-foreground">{competition.name}</h1>
+            <p className="mt-1 text-[10pt] text-neutral-strong">{season.name}</p>
+            <dl className="mt-4 grid grid-cols-4 gap-x-5 gap-y-2 border-y border-border py-3 text-[8.5pt]">
+              <div><dt className="text-muted-foreground">Status / start</dt><dd className="font-semibold">{getCompetitionStatusLabel(competition.status)} · {formatLeagueSeasonDate(effectiveDates.effective_starts_at) ?? "Not configured"}</dd></div>
+              <div><dt className="text-muted-foreground">Equipment</dt><dd className="font-semibold">{shootingDisplay.equipment_name ?? "Not specified"}</dd></div>
+              <div><dt className="text-muted-foreground">Course of Fire</dt><dd className="font-semibold">{scoreComponents.length ? `Ex ${derivedMaximum.toLocaleString("en-GB", { maximumFractionDigits: 2 })} · ${courseOfFireScoring}` : "Not configured"}</dd></div>
+              <div><dt className="text-muted-foreground">Ranking</dt><dd className="font-semibold">{getCompetitionRankingMethodLabel(competition.ranking_method)}</dd></div>
+              <div><dt className="text-muted-foreground">Format</dt><dd className="font-semibold">{entryFormatDetail}</dd></div>
+              <div><dt className="text-muted-foreground">Rounds</dt><dd className="font-semibold">{competition.number_of_rounds}</dd></div>
+              <div><dt className="text-muted-foreground">Scoring</dt><dd className="font-semibold">{competition.uses_x_score ? "X recorded for ties" : "No X tie-break"}</dd></div>
+              <div><dt className="text-muted-foreground">Shots / Round</dt><dd className="font-semibold">{competition.shots_per_round?.toLocaleString("en-GB") ?? "Not specified"}</dd></div>
+            </dl>
+          </div>
+          <div data-screen-only className="mb-4 flex flex-wrap items-center justify-between gap-3">
+            <SectionHeader title="Results" />
+            {printableResults ? <PrintResultsButton /> : null}
+          </div>
+          {divisionSummary ? <p data-results-division-summary className="mb-4 text-sm text-muted-foreground">{divisionSummary}</p> : null}
           {aggregateResultsWithAverages ? (
             <CompetitionAggregateResultsTable data={aggregateResultsWithAverages} />
+          ) : bestNAverageResultsWithAverages ? (
+            <CompetitionBestNAverageResultsTable data={bestNAverageResultsWithAverages} />
           ) : gunScoreResultsWithAverages ? (
             <CompetitionGunScoreResultsTable data={gunScoreResultsWithAverages} />
           ) : roundRobinResultsWithAverages ? (
@@ -387,10 +436,9 @@ export default async function CompetitionDetailPage({
         showScoringAccess={capabilities.showScoringAccess}
       />
 
-      {publishedDivisions ? (
+      {publishedDivisions && !resultsDuplicateDivisionRoster ? (
         <PublishedCompetitionDivisionsView
           data={publishedDivisions}
-          collapseRoster={resultsDuplicateDivisionRoster}
         />
       ) : null}
 

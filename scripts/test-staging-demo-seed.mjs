@@ -354,6 +354,34 @@ test("domain writer satisfies the complete canonical schema and its validations"
     assert.equal(summary.integrity.implausible_source_timestamps, 0);
     assert.ok(summary.integrity.frozen_calculated_averages > 0);
 
+    const realisticResults = (await database.query(`
+      select c.slug, c.ranking_method,
+        case c.ranking_method
+          when 'best_n_average' then public.get_competition_best_n_average_results(o.id,s.id,c.id)
+          when 'aggregate' then public.get_competition_aggregate_results(o.id,s.id,c.id)
+        end as result
+      from public.organisations o
+      join public.league_seasons s on s.organisation_id=o.id
+      join public.competitions c on c.league_season_id=s.id
+      where o.slug='eastern-region-shooting-association'
+        and s.slug='summer-2026'
+        and c.slug in ('benchrest','prone-individual')
+      order by c.slug
+    `)).rows;
+    const benchrest = realisticResults.find((row) => row.ranking_method === "best_n_average")?.result;
+    const divisionlessAggregate = realisticResults.find((row) => row.ranking_method === "aggregate")?.result;
+    assert.equal(benchrest.status, "ready");
+    assert.equal(benchrest.best_rounds_count, 8);
+    assert.equal(benchrest.rounds.length, 10);
+    assert.ok(benchrest.groups.length >= 3);
+    assert.ok(benchrest.groups.flatMap((group) => group.entrants).length >= 10);
+    assert.ok(benchrest.groups.flatMap((group) => group.entrants)
+      .every((entrant) => entrant.rounds.filter((_, index) => !benchrest.rounds[index].released)
+        .every((round) => round.state === "pending" && round.gun_score === null)));
+    assert.equal(divisionlessAggregate.status, "ready");
+    assert.deepEqual(divisionlessAggregate.groups.map((group) => group.name), ["Competition results"]);
+    assert.equal(divisionlessAggregate.rounds.length, 10);
+
     const audit = (await database.query(`
       select count(*)::integer as event_count,
         bool_and(jsonb_typeof(event.after_state) = 'object') as objects_only,

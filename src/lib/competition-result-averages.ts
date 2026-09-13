@@ -1,5 +1,6 @@
 import { cache } from "react";
 import type { CompetitionAggregateResults } from "@/lib/competition-aggregate-results";
+import type { CompetitionBestNAverageResults } from "@/lib/competition-best-n-average-results";
 import type { CompetitionGunScoreResults } from "@/lib/competition-gun-score-results";
 import type { CompetitionRoundRobinResults } from "@/lib/competition-round-robin-results";
 import { createClient } from "@/lib/supabase/server";
@@ -17,6 +18,7 @@ export type CompetitionResultAverages = {
 
 type ResultsProjection =
   | CompetitionAggregateResults
+  | CompetitionBestNAverageResults
   | CompetitionGunScoreResults
   | CompetitionRoundRobinResults;
 

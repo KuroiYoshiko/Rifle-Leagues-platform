@@ -424,6 +424,35 @@ fields or badges. Anonymous readers call only the context-checked RPC; score-tab
 grants and RLS remain unchanged. Run `npm run test:gun-score` for its disposable
 PGlite, route, loader, public-boundary, and rendered-matrix coverage.
 
+## Best N Average Competition Results
+
+After `database/competition-results.sql`, run
+[`database/competition-best-n-average-results.sql`](database/competition-best-n-average-results.sql).
+It adds the public `get_competition_best_n_average_results` projection without
+persisting standings. Each entrant's highest configured N complete, released
+canonical achieved-score Round totals form the ranking average. Before N complete
+returns exist, every complete released return counts. NSR and unreleased values
+are excluded rather than converted to zero; exact averages remain tied. The
+existing configuration rule continues to prohibit X ranking for Best N.
+
+The projection supports Individual, Pair, and Team entrants, published Division
+groups, and competitions with no Division configuration. Draft or incomplete
+Division allocations fail closed exactly like Aggregate and Gun Score. Pair/Team
+participant breakdowns remain participant-owned and do not create a historical
+Pair/Team Average identity. Run `npm run test:best-n` for the SQL, release/security,
+division, participant, route, compact-table, and print contracts.
+
+Best-N entrants qualify for a ranking position only after returning
+`min(Best N, released Rounds)` complete results. Their real provisional average
+remains visible when they are not yet qualified; NSR is never converted to zero.
+
+All Results methods share the compact desktop matrix. At desktop widths it uses
+an Entrant column with an integrated ranking position, S/Av and R/Av columns only
+when entrant-level values apply, compact Round columns, and a ranking-aware final
+column. Narrow screens keep Entrant sticky and may scroll. Browser print uses an A4-portrait Results-only document with
+Competition context, repeated table headers, non-splitting entrant rows, and no
+application navigation, management controls, or expanded participant tables.
+
 The exact 397/400 versus 396/400 example also passes against the preceding
 checked-in SQL: achieved descending is equivalent to dropped ascending for equal
 maxima. A later live diagnostic resolved the Summer Pairs 200 discrepancy:
