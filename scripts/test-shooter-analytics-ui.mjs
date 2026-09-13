@@ -30,7 +30,9 @@ test("analytics UI covers empty, one-point, responsive, filter, tooltip and text
   assert.match(dashboard, /defaultValue=\{value\}/);
   assert.match(dashboard, /Component view:/);
   assert.match(dashboard, /max-w-full overflow-x-auto/);
-  assert.match(chart, /ResponsiveContainer width="100%" height="100%"/);
+  assert.match(chart, /<ResponsiveContainer[\s\S]*width="100%"[\s\S]*height="100%"/);
+  assert.match(chart, /ticks=\{xAxisTicks\}/);
+  assert.match(chart, /buildPerformanceChartData\(points\)/);
   assert.match(chart, /accessibilityLayer/);
   assert.match(chart, /View chart as text/);
   assert.match(chart, /Round end/);
