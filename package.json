@@ -21,7 +21,10 @@
     "test:averages": "node --test scripts/test-competition-averages.mjs scripts/test-development-averages-fixture.mjs scripts/test-running-averages.mjs",
     "test:results": "npm run test:aggregate && npm run test:gun-score && npm run test:round-robin && npm run test:public-results && npm run test:saved-results",
     "test:analytics": "node --test scripts/test-shooter-analytics.mjs scripts/test-shooter-analytics-ui.mjs",
-    "test:dev-reset": "node --test scripts/test-dev-reset-all-data.mjs"
+    "test:dev-reset": "node --test scripts/test-dev-reset-all-data.mjs",
+    "test:staging-demo": "node --test scripts/test-staging-demo-seed.mjs",
+    "test:staging-seed": "npm run test:staging-demo",
+    "seed:staging-demo": "node scripts/seed-staging-demo.mjs"
   },
   "dependencies": {
     "@dnd-kit/react": "0.5.0",
@@ -36,6 +39,7 @@
     "@supabase/supabase-js": "^2.112.4",
     "lexical": "0.49.0",
     "next": "16.3.3",
+    "postgres": "3.4.7",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "react-is": "19.2.8",
