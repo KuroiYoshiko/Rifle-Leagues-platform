@@ -125,7 +125,7 @@ Stage 2A adds two narrow RPCs. `create_competition_with_average_settings` compos
 
 ## Security and deferred scope
 
-All public management tables have RLS. Direct anonymous/authenticated writes are revoked. Contextual active Organisation owners and managers use narrow `SECURITY DEFINER` RPCs with `search_path = ''`; `user_organisations` is never used for authorisation. Private derivation functions are not executable by API roles. Starting Average and provenance remain management-only; the Stage 3 Results projection includes S/Av only after the same contextual staff check and only when the snapshot is frozen.
+All public management tables have RLS. Direct anonymous/authenticated writes are revoked. Contextual active Organisation owners and managers use narrow `SECURITY DEFINER` RPCs with `search_path = ''`; `user_organisations` is never used for authorisation. Private derivation functions are not executable by API roles. Starting Average management and provenance remain staff-only. The Stage 3 Results projection exposes only frozen participant S/Av for public Individual Results; Pair/Team participant S/Av remains behind the contextual staff check and is never aggregated into a persistent or entrant-level group Average.
 
 The application does not persist Running Average. Stage 3 also does not implement persistent Pair/Team averages, entrant-level Pair/Team R/Av, Concurrent Shooting, substitutions, promotion/relegation, or Results ranking changes. Competition Best N standings are supplied by the separate released Results projection in `competition-best-n-average-results.sql` and remain separate from historical Average Policy.
 

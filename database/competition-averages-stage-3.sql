@@ -3,8 +3,9 @@
 --
 -- R/Av is intentionally not stored. This narrow projection derives one live
 -- participant value from canonical achieved scores in complete released
--- Competition Rounds. Public callers receive R/Av only; contextual active
--- Organisation owners/managers additionally receive the existing frozen S/Av.
+-- Competition Rounds. Public Individual Results also receive the existing
+-- frozen participant S/Av. Pair/Team S/Av remains available only to contextual
+-- active Organisation owners/managers and is never aggregated to entrant level.
 begin;
 
 create or replace function public.get_competition_result_averages(
@@ -20,10 +21,10 @@ set search_path = ''
 as $$
 declare
   v_include_starting_average boolean := false;
+  v_entry_format text;
   v_result jsonb;
 begin
-  if not exists (
-    select 1
+  select competition.entry_format into v_entry_format
     from public.competitions as competition
     join public.league_seasons as season
       on season.id = competition.league_season_id
@@ -36,14 +37,14 @@ begin
       and season.status in ('open', 'active', 'completed')
       and competition.status = 'published'
       and competition.ranking_method in (
-        'aggregate', 'gun_score', 'round_robin'
-      )
-  ) then
+        'aggregate', 'best_n_average', 'gun_score', 'round_robin'
+      );
+  if not found then
     raise exception 'Published Competition result context was not found.'
       using errcode = 'P0002';
   end if;
 
-  select exists (
+  select v_entry_format = 'individual' or exists (
     select 1
     from public.organisation_staff as staff
     where staff.organisation_id = p_organisation_id
@@ -158,6 +159,6 @@ grant execute on function public.get_competition_result_averages(
 comment on function public.get_competition_result_averages(
   bigint, bigint, bigint
 ) is
-  'Released Results participant statistics. R/Av is the unrounded numeric mean of complete released canonical achieved scores in this Competition, with null for no qualifying score. Frozen S/Av is included only for contextual active Organisation owners/managers. No ranking or score state is written.';
+  'Released Results participant statistics for Aggregate, Best-N Average, Gun Score, and Round Robin. R/Av is the unrounded numeric mean of complete released canonical achieved scores in this Competition, with null for no qualifying score. Frozen S/Av is public for Individual Results and staff-only for Pair/Team participant breakdowns; no entrant-level Pair/Team average is created. No ranking or score state is written.';
 
 commit;

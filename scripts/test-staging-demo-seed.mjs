@@ -526,6 +526,41 @@ test("domain writer satisfies the complete canonical schema and its validations"
     assert.ok(proneAggregate.groups.every((group) => /^Division \d+$/.test(group.name)));
     assert.equal(proneAggregate.rounds.length, 10);
 
+    const publicIndividualAverageContexts = (await database.query(`
+      select o.id as organisation_id, s.id as season_id, c.id as competition_id,
+        c.slug, c.ranking_method
+      from public.organisations o
+      join public.league_seasons s on s.organisation_id = o.id
+      join public.competitions c on c.league_season_id = s.id
+      where o.slug = 'eastern-region-shooting-association'
+        and s.slug = 'summer-2026'
+        and c.slug in ('benchrest', 'three-position')
+      order by c.slug
+    `)).rows;
+    await database.exec("set role anon");
+    const publicIndividualAverageResults = [];
+    for (const context of publicIndividualAverageContexts) {
+      const [{ averages }] = (await database.query(
+        "select public.get_competition_result_averages($1,$2,$3) as averages",
+        [context.organisation_id, context.season_id, context.competition_id],
+      )).rows;
+      publicIndividualAverageResults.push({ ...context, averages });
+    }
+    await database.exec("reset role");
+    assert.deepEqual(
+      publicIndividualAverageResults.map((row) => row.ranking_method).sort(),
+      ["aggregate", "best_n_average"],
+    );
+    for (const row of publicIndividualAverageResults) {
+      assert.ok(row.averages.participants.length > 0, `${row.slug} has no Average participants`);
+      assert.ok(row.averages.participants.some((participant) => (
+        participant.starting_average !== null
+      )), `${row.slug} has no public frozen S/Av`);
+      assert.ok(row.averages.participants.some((participant) => (
+        participant.running_average !== null
+      )), `${row.slug} has no live released R/Av`);
+    }
+
     const audit = (await database.query(`
       select count(*)::integer as event_count,
         bool_and(jsonb_typeof(event.after_state) = 'object') as objects_only,
