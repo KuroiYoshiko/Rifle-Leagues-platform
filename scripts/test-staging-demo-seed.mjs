@@ -269,6 +269,43 @@ test("Concurrent fixture reuses exactly one physical source per shooter/Round", 
   assert.equal(new Set(model.scores.map((item) => item.key)).size, model.scores.length);
 });
 
+test("Average programs separate incompatible structured disciplines and map intended Series", () => {
+  const eastern = model.averagePrograms.find((program) => program.organisationKey === "eastern");
+  assert.equal(model.averagePrograms.length, 3);
+  assert.equal(model.averagePrograms.reduce((sum, program) => sum + program.contexts.length, 0), 14);
+  assert.deepEqual(eastern.contexts.map((context) => context.seriesKeys), [
+    ["prone-individual", "prone-pairs"],
+    ["club-team"],
+    ["benchrest"],
+    ["air-rifle"],
+    ["three-position"],
+    ["gallery-rifle"],
+  ]);
+  assert.ok(model.averagePrograms.every((program) => (
+    program.strategy === "current_then_preceding"
+    && program.configuration.fallback === "manual"
+  )));
+
+  for (const program of model.averagePrograms) {
+    const configuredSeries = program.contexts.flatMap((context) => context.seriesKeys);
+    assert.equal(new Set(configuredSeries).size, configuredSeries.length);
+    for (const context of program.contexts) {
+      const signatures = context.seriesKeys.map((localKey) => {
+        const series = model.series.find((item) => (
+          item.organisationKey === program.organisationKey && item.slug === localKey
+        ));
+        return JSON.stringify({
+          equipment: series.equipment,
+          customEquipment: series.customEquipment,
+          usesX: series.usesX,
+          components: series.components,
+        });
+      });
+      assert.equal(new Set(signatures).size, 1, `${program.organisationKey}:${context.key} mixes Courses`);
+    }
+  }
+});
+
 test("runner has hard safety guards and stays outside canonical deployment", async () => {
   const [runner, domain, canonical, packageJson] = await Promise.all([
     readFile(new URL("./seed-staging-demo.mjs", import.meta.url), "utf8"),
@@ -285,6 +322,9 @@ test("runner has hard safety guards and stays outside canonical deployment", asy
   assert.match(runner, /createdSyntheticUserIds\.push\(data\.user\.id\)/);
   assert.match(runner, /admin\.deleteUser\(userId\)/);
   assert.match(domain, /private\.shooting_score_source_state\(event\.shooting_score_source_id\)/);
+  assert.match(domain, /calculate_competition_starting_averages/);
+  assert.match(domain, /freeze_competition_starting_averages/);
+  assert.doesNotMatch(domain, /insert into public\.competition_participant_starting_averages/i);
   assert.doesNotMatch(domain, /after_state:\s*JSON\.stringify/);
   assert.doesNotMatch(`${runner}\n${domain}`, /\b(?:truncate|delete\s+from|drop\s+(?:table|schema|function|trigger|view))\b/i);
   assert.doesNotMatch(canonical, /seed-staging-demo|staging-demo-model/);
@@ -302,7 +342,7 @@ test("model does not embed the runtime showcase identity", () => {
   assert.equal(seasonByKey.get("eastern:summer-2026").status, "active");
 });
 
-test("domain writer satisfies the complete canonical schema and its validations", { timeout: 120_000 }, async () => {
+test("domain writer satisfies the complete canonical schema and its validations", { timeout: 300_000 }, async () => {
   const database = new PGlite();
   try {
     await installCanonicalDatabase(database, { concurrentShootingStage3a: true });
@@ -344,7 +384,7 @@ test("domain writer satisfies the complete canonical schema and its validations"
         competitions: 91,
         rounds: 910,
         concurrentGroups: 1,
-        averageContexts: 1,
+        averageContexts: 14,
       },
     );
     assert.equal(summary.showcaseStatistics.physical_shoot_count, 138);
@@ -353,6 +393,44 @@ test("domain writer satisfies the complete canonical schema and its validations"
     assert.equal(summary.integrity.invalid_concurrent_audit_events, 0);
     assert.equal(summary.integrity.implausible_source_timestamps, 0);
     assert.ok(summary.integrity.frozen_calculated_averages > 0);
+    assert.deepEqual({
+      policies: summary.average_policies,
+      policyVersions: summary.average_policy_versions,
+      seriesDefaults: summary.series_average_defaults,
+      competitionSettings: summary.competition_average_settings,
+      finalisations: summary.average_finalisations,
+      snapshots: summary.starting_average_snapshots,
+      frozenSnapshots: summary.frozen_starting_averages,
+      frozenValues: summary.frozen_starting_average_values,
+      frozenNoHistory: summary.frozen_no_history_snapshots,
+      provisionalSnapshots: summary.provisional_starting_averages,
+      publishedDivisionConfigs: summary.published_division_configs,
+      draftDivisionConfigs: summary.draft_division_configs,
+    }, {
+      policies: 3,
+      policyVersions: 3,
+      seriesDefaults: 17,
+      competitionSettings: 78,
+      finalisations: 65,
+      snapshots: 1306,
+      frozenSnapshots: 1095,
+      frozenValues: 805,
+      frozenNoHistory: 290,
+      provisionalSnapshots: 211,
+      publishedDivisionConfigs: 71,
+      draftDivisionConfigs: 13,
+    });
+    assert.equal(summary.integrity.incompatible_structured_contexts, 0);
+    assert.equal(summary.integrity.incompatible_score_bases, 0);
+    assert.equal(summary.integrity.calculated_provenance_mismatches, 0);
+    assert.equal(summary.integrity.nonchronological_starting_averages, 0);
+    assert.equal(summary.integrity.manually_supplied_starting_averages, 0);
+    assert.equal(summary.integrity.persisted_running_average_columns, 0);
+    assert.ok(summary.integrity.current_running_average_values > 0);
+    assert.ok(summary.integrity.showcase_frozen_average_series >= 4);
+    assert.ok(summary.integrity.current_frozen_average_values > summary.integrity.current_frozen_no_history);
+    assert.equal(summary.integrity.deliberate_first_time_nulls, 1);
+    assert.equal(summary.integrity.eastern_prone_division_configs, 6);
 
     const realisticResults = (await database.query(`
       select c.slug, c.ranking_method,
@@ -369,7 +447,7 @@ test("domain writer satisfies the complete canonical schema and its validations"
       order by c.slug
     `)).rows;
     const benchrest = realisticResults.find((row) => row.ranking_method === "best_n_average")?.result;
-    const divisionlessAggregate = realisticResults.find((row) => row.ranking_method === "aggregate")?.result;
+    const proneAggregate = realisticResults.find((row) => row.ranking_method === "aggregate")?.result;
     assert.equal(benchrest.status, "ready");
     assert.equal(benchrest.best_rounds_count, 8);
     assert.equal(benchrest.rounds.length, 10);
@@ -378,9 +456,10 @@ test("domain writer satisfies the complete canonical schema and its validations"
     assert.ok(benchrest.groups.flatMap((group) => group.entrants)
       .every((entrant) => entrant.rounds.filter((_, index) => !benchrest.rounds[index].released)
         .every((round) => round.state === "pending" && round.gun_score === null)));
-    assert.equal(divisionlessAggregate.status, "ready");
-    assert.deepEqual(divisionlessAggregate.groups.map((group) => group.name), ["Competition results"]);
-    assert.equal(divisionlessAggregate.rounds.length, 10);
+    assert.equal(proneAggregate.status, "ready");
+    assert.ok(proneAggregate.groups.length >= 3);
+    assert.ok(proneAggregate.groups.every((group) => /^Division \d+$/.test(group.name)));
+    assert.equal(proneAggregate.rounds.length, 10);
 
     const audit = (await database.query(`
       select count(*)::integer as event_count,

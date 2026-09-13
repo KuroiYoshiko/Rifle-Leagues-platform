@@ -64,6 +64,12 @@ export async function seedStagingDemoDomain(sql, model) {
     ]));
 
     const shooterByKey = new Map(model.shooters.map((shooter) => [shooter.key, shooter]));
+    const organisationActorIdByKey = new Map(model.organisations.map((organisation) => [
+      organisation.key,
+      (organisation.key === "eastern"
+        ? shooterByKey.get("showcase")
+        : model.shooters.find((shooter) => shooter.organisationKey === organisation.key)).authId,
+    ]));
     const organisationStaff = [];
     for (const organisation of model.organisations) {
       const members = model.shooters.filter((shooter) => shooter.organisationKey === organisation.key);
@@ -194,6 +200,39 @@ export async function seedStagingDemoDomain(sql, model) {
         "shooting_position_mode", "shooting_position_code", "organisation_shooting_position_id",
         "distance_mode", "distance_value", "distance_unit", "shots"]);
 
+    // Establish organisation-owned Average configuration before editions are
+    // attached to their Series. Attaching each edition below then exercises the
+    // production copy-on-create default workflow instead of fabricating settings.
+    for (const program of model.averagePrograms) {
+      const organisationId = organisationIdByKey.get(program.organisationKey);
+      await tx`select pg_catalog.set_config(
+        'request.jwt.claim.sub', ${organisationActorIdByKey.get(program.organisationKey)}, true
+      )`;
+      const [{ result: policy }] = await tx`
+        select public.create_average_policy(
+          ${organisationId}, ${program.policyName}, ${program.strategy},
+          ${tx.json(program.configuration)}
+        ) as result
+      `;
+      for (const context of program.contexts) {
+        const [{ result: createdContext }] = await tx`
+          select public.create_average_context(
+            ${organisationId}, ${context.name}, ${context.basisMaximum}
+          ) as result
+        `;
+        for (const localSeriesKey of context.seriesKeys) {
+          await tx`
+            select public.set_competition_series_average_defaults(
+              ${organisationId},
+              ${seriesIdByKey.get(`${program.organisationKey}:${localSeriesKey}`)},
+              ${createdContext.id}, ${policy.version_id}
+            )
+          `;
+        }
+      }
+    }
+    await tx`select pg_catalog.set_config('request.jwt.claim.sub', ${model.showcaseUserId}, true)`;
+
     const competitionRows = model.competitions.map((competition) => ({
       league_season_id: seasonIdByKey.get(competition.seasonKey), name: competition.name,
       slug: competition.slug,
@@ -209,7 +248,7 @@ export async function seedStagingDemoDomain(sql, model) {
       entry_window_mode: "season_default", start_date_mode: "season_default",
       sets_per_round: competition.setsPerRound, ranking_method: competition.ranking,
       best_rounds_count: competition.bestRounds, local_scoring_enabled: true,
-      competition_series_id: competition.seriesKey ? seriesIdByKey.get(competition.seriesKey) : null,
+      competition_series_id: null,
       shooting_details_version: 1, equipment_type_code: competition.equipment,
       organisation_equipment_type_id: competition.customEquipment ? customEquipment.id : null,
     }));
@@ -255,6 +294,17 @@ export async function seedStagingDemoDomain(sql, model) {
       ["competition_id", "position", "short_label", "maximum_score", "score_method",
         "shooting_position_mode", "shooting_position_code", "organisation_shooting_position_id",
         "distance_mode", "distance_value", "distance_unit", "shots"]);
+
+    // The real continuation workflow attaches the Series after creating the
+    // draft. That update copies the Series Average defaults to each edition.
+    for (const competition of model.competitions.filter((item) => item.seriesKey)) {
+      await tx`
+        update public.competitions
+        set competition_series_id = ${seriesIdByKey.get(competition.seriesKey)},
+            updated_by = ${model.showcaseUserId}
+        where id = ${competitionIdByKey.get(competition.key)}
+      `;
+    }
 
     await tx`
       update public.competitions
@@ -325,101 +375,65 @@ export async function seedStagingDemoDomain(sql, model) {
     const currentProneKey = "eastern:summer-2026:prone-individual";
     const currentPairsKey = "eastern:summer-2026:prone-pairs";
     const divisionCompetitionKeys = model.competitions
-      .filter((competition) => (competition.organisationKey === "eastern" && competition.templateKey !== "prone-individual")
-        || competition.ranking === "round_robin")
+      .filter((competition) => !competition.oneOff
+        && (competition.organisationKey === "eastern" || competition.templateKey !== "gallery-rifle"))
       .map((competition) => competition.key);
-    const divisionConfigs = divisionCompetitionKeys.map((key) => ({
-      competition_id: competitionIdByKey.get(key), target_size: key.startsWith("eastern:") ? 6 : 5,
-      status: "draft", created_by: model.showcaseUserId, updated_by: model.showcaseUserId,
-    }));
-    await insertChunks(tx, "public.competition_division_configs", divisionConfigs,
-      ["competition_id", "target_size", "status", "created_by", "updated_by"]);
-
-    const divisionRows = [];
-    const divisionCountByCompetition = new Map();
-    for (const key of divisionCompetitionKeys) {
-      const entrantCount = model.participations.filter((item) => item.competitionKey === key)
-        .reduce((sum, item) => sum + item.entrants.length, 0);
-      const count = key.startsWith("eastern:") ? Math.min(entrantCount, entrantCount >= 16 ? 4 : 3) : 2;
-      divisionCountByCompetition.set(key, count);
-      for (let position = 1; position <= count; position += 1) {
-        divisionRows.push({
-          competition_id: competitionIdByKey.get(key), name: `Division ${position}`,
-          position,
-        });
-      }
-    }
-    const insertedDivisions = await insertChunks(tx, "public.competition_divisions", divisionRows,
-      ["competition_id", "name", "position"], "id, competition_id, position");
-    const divisionId = new Map(insertedDivisions.map((row) => [
-      `${scalar(row.competition_id)}:${row.position}`, row.id,
-    ]));
-    const assignmentRows = [];
+    const divisionAllocationsByCompetition = new Map();
     for (const key of divisionCompetitionKeys) {
       const entrantKeys = model.participations.filter((item) => item.competitionKey === key)
         .flatMap((item) => item.entrants.map((entrant) => entrant.key));
-      const divisionCount = divisionCountByCompetition.get(key);
-      entrantKeys.forEach((entrantKey, index) => assignmentRows.push({
-        competition_entrant_id: entrantIdByKey.get(entrantKey),
-        competition_id: competitionIdByKey.get(key),
-        competition_division_id: divisionId.get(`${scalar(competitionIdByKey.get(key))}:${index % divisionCount + 1}`),
-      }));
+      const entrantCount = entrantKeys.length;
+      const count = key.startsWith("eastern:") ? Math.min(entrantCount, entrantCount >= 16 ? 4 : 3) : 2;
+      divisionAllocationsByCompetition.set(key, Array.from({ length: count }, (_, index) => ({
+        name: `Division ${index + 1}`,
+        entrant_ids: entrantKeys.filter((_, entrantIndex) => entrantIndex % count === index)
+          .map((entrantKey) => entrantIdByKey.get(entrantKey)),
+      })));
     }
-    await insertChunks(tx, "public.competition_division_assignments", assignmentRows,
-      ["competition_entrant_id", "competition_id", "competition_division_id"]);
 
     const roundRobinCompetitionKeys = divisionCompetitionKeys.filter((item) => (
       model.competitions.find((competition) => competition.key === item).ranking === "round_robin"
     ));
-    // Round Robin publication correctly refuses to create a schedule after
-    // Competition Start. Within this one seed transaction, temporarily give
-    // historical editions a future effective Start, publish them, and let the
-    // real Division lifecycle generate the immutable fixtures below. Their
-    // canonical season-default Start is restored before commit. No trigger or
-    // constraint is disabled and no fixture row is fabricated directly.
+    // Historical Round Robin schedules cannot be generated after their Start.
+    // Recreate the original pre-Start publication moment locally, using the
+    // production draft writer and the fixture-generation trigger. The canonical
+    // Start is restored as soon as the immutable schedule exists.
     for (const key of roundRobinCompetitionKeys) {
+      const competition = model.competitions.find((item) => item.key === key);
+      const season = model.seasons.find((item) => item.key === competition.seasonKey);
+      const organisationId = organisationIdByKey.get(competition.organisationKey);
+      const competitionId = competitionIdByKey.get(key);
+      await tx`select pg_catalog.set_config(
+        'request.jwt.claim.sub', ${organisationActorIdByKey.get(competition.organisationKey)}, true
+      )`;
+      await tx`
+        select public.save_competition_division_draft(
+          ${organisationId}, ${seasonIdByKey.get(competition.seasonKey)}, ${competitionId},
+          ${competition.organisationKey === "eastern" ? 6 : 5},
+          ${tx.json(divisionAllocationsByCompetition.get(key))}
+        )
+      `;
       await tx`
         update public.competitions
-        set start_date_mode = 'custom', custom_starts_at = '2099-01-01'
-        where id = ${competitionIdByKey.get(key)}
+        set start_date_mode = 'custom', custom_starts_at = '2099-01-01', status = 'published'
+        where id = ${competitionId}
       `;
-    }
-    await tx`
-      update public.competitions
-      set status = 'published'
-      where status = 'draft' and ranking_method = 'round_robin'
-    `;
-    await tx`
-      update public.competition_division_configs
-      set status = 'published', published_at = clock_timestamp()
-      where competition_id in ${tx(divisionCompetitionKeys.map((key) => competitionIdByKey.get(key)))}
-    `;
-    for (const key of roundRobinCompetitionKeys.filter((item) => item !== currentPairsKey)) {
-      await tx`
-        update public.competitions
-        set start_date_mode = 'season_default', custom_starts_at = null
-        where id = ${competitionIdByKey.get(key)}
-      `;
-    }
-
-    // Establish edition provenance from each preceding canonical configuration.
-    for (const series of model.series) {
-      const editions = model.competitions.filter((competition) => competition.seriesKey === series.key)
-        .sort((left, right) => left.seasonIndex - right.seasonIndex);
-      for (let index = 1; index < editions.length; index += 1) {
-        const currentId = competitionIdByKey.get(editions[index].key);
-        const previousId = competitionIdByKey.get(editions[index - 1].key);
-        const [{ version }] = await tx`
-          select private.competition_configuration_version(${previousId}) as version
+      if (season.entryClosesAt < model.asOfDate) {
+        await tx`
+          update public.competition_division_configs
+          set status = 'published', published_at = clock_timestamp()
+          where competition_id = ${competitionId}
         `;
+      }
+      if (key !== currentPairsKey) {
         await tx`
           update public.competitions
-          set configuration_source_competition_id = ${previousId},
-              configuration_source_version = ${version}
-          where id = ${currentId}
+          set start_date_mode = 'season_default', custom_starts_at = null
+          where id = ${competitionId}
         `;
       }
     }
+    await tx`select pg_catalog.set_config('request.jwt.claim.sub', ${model.showcaseUserId}, true)`;
 
     const currentSeasonId = seasonIdByKey.get("eastern:summer-2026");
     const [concurrentGroup] = await tx`
@@ -454,9 +468,7 @@ export async function seedStagingDemoDomain(sql, model) {
       ["concurrent_shooting_group_id", "concurrent_shooting_round_id", "competition_id",
         "competition_round_id", "created_by"]);
     // Reconstruct an already-active current group through the real V2
-    // activation RPC. Both members receive a transaction-local future Start;
-    // the RPC performs its full compatibility and mapping validation, then the
-    // canonical Starts are restored before any scores or commit.
+    // activation RPC while both members temporarily share a future Start.
     await tx`
       update public.competitions
       set start_date_mode = 'custom', custom_starts_at = '2099-01-01'
@@ -540,51 +552,135 @@ export async function seedStagingDemoDomain(sql, model) {
       `;
     }
 
-    const [averageContext] = await tx`
-      insert into public.average_contexts
-        (organisation_id, name, basis_maximum, created_by, updated_by)
-      values (${easternOrganisationId}, 'Smallbore Prone Ex100', 100,
-        ${model.showcaseUserId}, ${model.showcaseUserId})
-      returning id
-    `;
-    const [averagePolicy] = await tx`
-      insert into public.average_policies
-        (organisation_id, name, created_by, updated_by)
-      values (${easternOrganisationId}, 'Current then preceding league history',
-        ${model.showcaseUserId}, ${model.showcaseUserId})
-      returning id
-    `;
-    const [averagePolicyVersion] = await tx`
-      insert into public.average_policy_versions
-        (average_policy_id, version_number, strategy, configuration, created_by)
-      values (${averagePolicy.id}, 1, 'current_then_preceding',
-        ${tx.json({ minimum_current_scores: 4, minimum_preceding_scores: 4, fallback: "manual" })},
-        ${model.showcaseUserId})
-      returning id
-    `;
-    const averageCompetitionKeys = model.competitions
-      .filter((competition) => competition.organisationKey === "eastern"
-        && competition.templateKey === "prone-individual")
-      .map((competition) => competition.key);
-    await insertChunks(tx, "public.competition_average_settings", averageCompetitionKeys.map((key) => ({
-      competition_id: competitionIdByKey.get(key), average_context_id: averageContext.id,
-      average_policy_version_id: averagePolicyVersion.id, contributes_to_history: true,
-      created_by: model.showcaseUserId, updated_by: model.showcaseUserId,
-    })), ["competition_id", "average_context_id", "average_policy_version_id",
-      "contributes_to_history", "created_by", "updated_by"]);
+    const configuredSeriesKeys = new Set(model.averagePrograms.flatMap((program) => (
+      program.contexts.flatMap((context) => context.seriesKeys.map((seriesKey) => (
+        `${program.organisationKey}:${seriesKey}`
+      )))
+    )));
+    const divisionCompetitionKeySet = new Set(divisionCompetitionKeys);
+    const roundRobinCompetitionKeySet = new Set(roundRobinCompetitionKeys);
 
-    for (const key of ["eastern:winter-2025:prone-individual", currentProneKey]) {
-      const competition = model.competitions.find((item) => item.key === key);
-      await tx`
-        select public.calculate_competition_starting_averages(
-          ${easternOrganisationId}, ${seasonIdByKey.get(competition.seasonKey)}, ${competitionIdByKey.get(key)}
-        )
-      `;
-      await tx`
-        select public.finalise_competition_starting_averages(
-          ${easternOrganisationId}, ${seasonIdByKey.get(competition.seasonKey)}, ${competitionIdByKey.get(key)}
-        )
-      `;
+    // Scores carry their historical Round timestamps, while the resolver also
+    // enforces each target edition's effective Start. Processing editions in
+    // season order therefore recreates the real calculate/finalise progression:
+    // first editions resolve to no_history, and later editions use only earlier
+    // compatible released canonical scores.
+    const lifecycleCompetitions = [...model.competitions].sort((left, right) => (
+      left.seasonIndex - right.seasonIndex
+      || model.competitions.indexOf(left) - model.competitions.indexOf(right)
+    ));
+    for (const competition of lifecycleCompetitions) {
+      const organisationId = organisationIdByKey.get(competition.organisationKey);
+      const competitionId = competitionIdByKey.get(competition.key);
+      const seasonId = seasonIdByKey.get(competition.seasonKey);
+      const season = model.seasons.find((item) => item.key === competition.seasonKey);
+      const usesAverages = configuredSeriesKeys.has(competition.seriesKey);
+      const usesDivisions = divisionCompetitionKeySet.has(competition.key);
+      const isRoundRobin = roundRobinCompetitionKeySet.has(competition.key);
+      const readyToFinalise = season.entryClosesAt < model.asOfDate;
+
+      await tx`select pg_catalog.set_config(
+        'request.jwt.claim.sub', ${organisationActorIdByKey.get(competition.organisationKey)}, true
+      )`;
+
+      if (usesAverages) {
+        await tx`
+          select public.calculate_competition_starting_averages(
+            ${organisationId}, ${seasonId}, ${competitionId}
+          )
+        `;
+      }
+
+      if (usesDivisions) {
+        const allocation = divisionAllocationsByCompetition.get(competition.key);
+        const targetSize = competition.organisationKey === "eastern" ? 6 : 5;
+        if (isRoundRobin && usesAverages) {
+          const [{ projection }] = await tx`
+            select public.get_competition_division_average_projection(
+              ${organisationId}, ${seasonId}, ${competitionId}
+            ) as projection
+          `;
+          if (readyToFinalise) {
+            // The immutable historical Round Robin schedule was reconstructed
+            // before its real Start above. Complete the same reviewed freeze
+            // internals used by Division publication without reshuffling it.
+            await tx`
+              select private.record_competition_starting_average_review(
+                ${competitionId}, ${projection.current_fingerprint},
+                ${organisationActorIdByKey.get(competition.organisationKey)}
+              )
+            `;
+            await tx`
+              select * from private.freeze_competition_starting_averages(
+                ${competitionId},
+                ${organisationActorIdByKey.get(competition.organisationKey)}, true
+              )
+            `;
+          } else {
+            await tx`
+              select public.save_competition_division_draft_with_average_review(
+                ${organisationId}, ${seasonId}, ${competitionId}, ${targetSize},
+                ${tx.json(allocation)}, ${projection.current_fingerprint}
+              )
+            `;
+          }
+        } else if (!isRoundRobin) {
+          if (usesAverages) {
+            const [{ projection }] = await tx`
+              select public.get_competition_division_average_projection(
+                ${organisationId}, ${seasonId}, ${competitionId}
+              ) as projection
+            `;
+            await tx`
+              select public.save_competition_division_draft_with_average_review(
+                ${organisationId}, ${seasonId}, ${competitionId}, ${targetSize},
+                ${tx.json(allocation)}, ${projection.current_fingerprint}
+              )
+            `;
+          } else {
+            await tx`
+              select public.save_competition_division_draft(
+                ${organisationId}, ${seasonId}, ${competitionId}, ${targetSize},
+                ${tx.json(allocation)}
+              )
+            `;
+          }
+          if (readyToFinalise) {
+            await tx`
+              select public.publish_competition_divisions(
+                ${organisationId}, ${seasonId}, ${competitionId}
+              )
+            `;
+          }
+        }
+      } else if (usesAverages && readyToFinalise) {
+        await tx`
+          select public.finalise_competition_starting_averages(
+            ${organisationId}, ${seasonId}, ${competitionId}
+          )
+        `;
+      }
+    }
+    await tx`select pg_catalog.set_config('request.jwt.claim.sub', ${model.showcaseUserId}, true)`;
+
+    // Recompute continuation provenance after all transaction-local lifecycle
+    // dates are restored so each version describes the committed edition.
+    for (const series of model.series) {
+      const editions = model.competitions.filter((competition) => competition.seriesKey === series.key)
+        .sort((left, right) => left.seasonIndex - right.seasonIndex);
+      for (let index = 1; index < editions.length; index += 1) {
+        const currentId = competitionIdByKey.get(editions[index].key);
+        const previousId = competitionIdByKey.get(editions[index - 1].key);
+        const [{ version }] = await tx`
+          select private.competition_configuration_version(${previousId}) as version
+        `;
+        await tx`
+          update public.competitions
+          set configuration_source_competition_id = ${previousId},
+              configuration_source_version = ${version}
+          where id = ${currentId}
+        `;
+      }
     }
 
     const showcaseAnalytics = await tx`
@@ -607,10 +703,55 @@ export async function seedStagingDemoDomain(sql, model) {
         (select count(*)::integer from public.shooting_score_values) as values,
         (select count(*)::integer from public.competition_score_usages) as usages,
         (select count(*)::integer from public.concurrent_shooting_groups) as concurrent_groups,
-        (select count(*)::integer from public.average_contexts) as average_contexts
+        (select count(*)::integer from public.average_contexts) as average_contexts,
+        (select count(*)::integer from public.average_policies) as average_policies,
+        (select count(*)::integer from public.average_policy_versions) as average_policy_versions,
+        (select count(*)::integer from public.competition_series_average_defaults) as series_average_defaults,
+        (select count(*)::integer from public.competition_average_settings) as competition_average_settings,
+        (select count(*)::integer from public.competition_participant_starting_averages) as starting_average_snapshots,
+        (select count(*)::integer from public.competition_participant_starting_averages
+          where status = 'frozen') as frozen_starting_averages,
+        (select count(*)::integer from public.competition_participant_starting_averages
+          where status = 'frozen' and starting_average is not null) as frozen_starting_average_values,
+        (select count(*)::integer from public.competition_participant_starting_averages
+          where status = 'frozen' and origin = 'no_history') as frozen_no_history_snapshots,
+        (select count(*)::integer from public.competition_participant_starting_averages
+          where status = 'provisional') as provisional_starting_averages,
+        (select count(*)::integer from public.competition_starting_average_finalisations) as average_finalisations,
+        (select count(*)::integer from public.competition_division_configs
+          where status = 'published') as published_division_configs,
+        (select count(*)::integer from public.competition_division_configs
+          where status = 'draft') as draft_division_configs
     `)[0];
 
     const fail = (condition, message) => { if (condition) throw new Error(`Post-seed validation failed: ${message}`); };
+    const expectedAverageContexts = model.averagePrograms
+      .reduce((sum, program) => sum + program.contexts.length, 0);
+    const expectedAverageDefaults = model.averagePrograms.reduce((sum, program) => (
+      sum + program.contexts.reduce((contextSum, context) => contextSum + context.seriesKeys.length, 0)
+    ), 0);
+    const expectedAverageSettings = model.competitions
+      .filter((competition) => configuredSeriesKeys.has(competition.seriesKey)).length;
+    const expectedMatureAverageCompetitions = model.competitions.filter((competition) => (
+      configuredSeriesKeys.has(competition.seriesKey)
+      && model.seasons.find((season) => season.key === competition.seasonKey).entryClosesAt < model.asOfDate
+    )).length;
+    const expectedStartingAverageSnapshots = model.participations
+      .filter((participation) => configuredSeriesKeys.has(
+        model.competitions.find((competition) => competition.key === participation.competitionKey).seriesKey,
+      ))
+      .flatMap((participation) => participation.entrants)
+      .flatMap((entrant) => entrant.members).length;
+    const expectedFrozenStartingAverages = model.participations.filter((participation) => {
+      const competition = model.competitions.find((item) => item.key === participation.competitionKey);
+      const season = model.seasons.find((item) => item.key === competition.seasonKey);
+      return configuredSeriesKeys.has(competition.seriesKey) && season.entryClosesAt < model.asOfDate;
+    }).flatMap((participation) => participation.entrants)
+      .flatMap((entrant) => entrant.members).length;
+    const expectedPublishedDivisionConfigs = model.competitions.filter((competition) => (
+      divisionCompetitionKeySet.has(competition.key)
+      && model.seasons.find((season) => season.key === competition.seasonKey).entryClosesAt < model.asOfDate
+    )).length;
     fail(counts.organisations !== 3, `expected 3 Organisations, found ${counts.organisations}`);
     fail(counts.clubs !== 15, `expected 15 Clubs, found ${counts.clubs}`);
     fail(counts.shooters !== 96, `expected 96 shooters, found ${counts.shooters}`);
@@ -624,6 +765,23 @@ export async function seedStagingDemoDomain(sql, model) {
       || counts.values !== model.scores.flatMap((item) => item.values).length
       || counts.usages !== model.scores.flatMap((item) => item.usages).length,
     "entry, participant, or canonical score totals are incorrect");
+    fail(counts.average_contexts !== expectedAverageContexts
+      || counts.average_policies !== model.averagePrograms.length
+      || counts.average_policy_versions !== model.averagePrograms.length,
+    "Average Context or versioned Policy totals are incorrect");
+    fail(counts.series_average_defaults !== expectedAverageDefaults
+      || counts.competition_average_settings !== expectedAverageSettings,
+    "Series Average defaults were not copied to every intended edition");
+    fail(counts.average_finalisations !== expectedMatureAverageCompetitions,
+      `expected ${expectedMatureAverageCompetitions} mature Average finalisations, found ${counts.average_finalisations}`);
+    fail(counts.starting_average_snapshots !== expectedStartingAverageSnapshots
+      || counts.frozen_starting_averages !== expectedFrozenStartingAverages
+      || counts.provisional_starting_averages
+        !== expectedStartingAverageSnapshots - expectedFrozenStartingAverages,
+    "Starting Average snapshot/frozen/provisional totals are incorrect");
+    fail(counts.published_division_configs !== expectedPublishedDivisionConfigs
+      || counts.draft_division_configs !== divisionCompetitionKeys.length - expectedPublishedDivisionConfigs,
+    "published/draft Division lifecycle totals are incorrect");
     fail(payload.summary.physical_shoot_count < 20, "showcase analytics has fewer than 20 physical shoots");
     fail(payload.chart_points.length !== payload.summary.physical_shoot_count,
       "analytics chart does not deduplicate to one point per physical source");
@@ -707,6 +865,115 @@ export async function seedStagingDemoDomain(sql, model) {
           where deadline >= current_date) as unreleased_rounds,
         (select count(*)::integer from public.average_policy_versions
           where strategy = 'current_then_preceding') as current_then_preceding_policies,
+        (select count(*)::integer
+          from public.competition_series_average_defaults defaults
+          join public.average_policy_versions version
+            on version.id = defaults.average_policy_version_id
+          where version.strategy = 'current_then_preceding') as current_then_preceding_defaults,
+        (select count(*)::integer
+          from public.competition_average_settings setting
+          join public.average_policy_versions version
+            on version.id = setting.average_policy_version_id
+          where version.strategy = 'current_then_preceding') as current_then_preceding_settings,
+        (select count(*)::integer from (
+          select configuration.average_context_id
+          from (
+            select setting.average_context_id,
+              jsonb_build_object(
+                'equipment_type_code', competition.equipment_type_code,
+                'organisation_equipment_type_id', competition.organisation_equipment_type_id,
+                'sets_per_round', competition.sets_per_round,
+                'uses_x_score', competition.uses_x_score,
+                'components', (
+                  select jsonb_agg(jsonb_build_object(
+                    'position', component.position,
+                    'maximum_score', component.maximum_score,
+                    'score_method', component.score_method,
+                    'shooting_position_mode', component.shooting_position_mode,
+                    'shooting_position_code', component.shooting_position_code,
+                    'organisation_shooting_position_id', component.organisation_shooting_position_id,
+                    'distance_mode', component.distance_mode,
+                    'distance_value', component.distance_value,
+                    'distance_unit', component.distance_unit,
+                    'shots', component.shots
+                  ) order by component.position)
+                  from public.competition_score_components component
+                  where component.competition_id = competition.id
+                )
+              ) as structured_signature
+            from public.competition_average_settings setting
+            join public.competitions competition on competition.id = setting.competition_id
+          ) configuration
+          group by configuration.average_context_id
+          having count(distinct configuration.structured_signature) > 1
+        ) mixed) as incompatible_structured_contexts,
+        (select count(*)::integer
+          from public.competition_average_settings setting
+          join public.average_contexts context on context.id = setting.average_context_id
+          where private.competition_average_shooter_maximum(setting.competition_id)
+            is distinct from context.basis_maximum) as incompatible_score_bases,
+        (select count(*)::integer
+          from public.competition_participant_starting_averages snapshot
+          where snapshot.origin = 'calculated'
+            and snapshot.qualifying_score_count <> (
+              select count(*) from public.starting_average_score_sources source
+              where source.starting_average_id = snapshot.id
+            )) as calculated_provenance_mismatches,
+        (select count(*)::integer
+          from public.competition_participant_starting_averages snapshot
+          where snapshot.origin = 'manual') as manually_supplied_starting_averages,
+        (select count(*)::integer
+          from public.competition_participant_starting_averages snapshot
+          join public.competitions target on target.id = snapshot.competition_id
+          join public.competitions source on source.id = snapshot.source_competition_id
+          cross join lateral private.get_competition_effective_dates(target.id) target_dates
+          cross join lateral private.get_competition_effective_dates(source.id) source_dates
+          where snapshot.origin = 'calculated'
+            and source_dates.effective_starts_at >= target_dates.effective_starts_at
+        ) as nonchronological_starting_averages,
+        (select count(*)::integer
+          from information_schema.columns
+          where table_schema = 'public' and column_name = 'running_average') as persisted_running_average_columns,
+        (select count(*)::integer
+          from jsonb_array_elements((public.get_competition_result_averages(
+            ${easternOrganisationId}, ${seasonIdByKey.get("eastern:summer-2026")},
+            ${competitionIdByKey.get(currentProneKey)}
+          )->'participants')) participant
+          where participant->>'running_average' is not null) as current_running_average_values,
+        (select count(distinct competition.competition_series_id)::integer
+          from public.competition_participant_starting_averages snapshot
+          join public.competitions competition on competition.id = snapshot.competition_id
+          where snapshot.shooter_profile_id = ${model.showcaseUserId}
+            and snapshot.status = 'frozen' and snapshot.starting_average is not null
+        ) as showcase_frozen_average_series,
+        (select count(*)::integer
+          from public.competition_participant_starting_averages snapshot
+          join public.competitions competition on competition.id = snapshot.competition_id
+          join public.league_seasons season on season.id = competition.league_season_id
+          where season.slug = 'summer-2026' and snapshot.status = 'frozen'
+            and snapshot.starting_average is not null) as current_frozen_average_values,
+        (select count(*)::integer
+          from public.competition_participant_starting_averages snapshot
+          join public.competitions competition on competition.id = snapshot.competition_id
+          join public.league_seasons season on season.id = competition.league_season_id
+          where season.slug = 'summer-2026' and snapshot.status = 'frozen'
+            and snapshot.origin = 'no_history' and snapshot.starting_average is null
+        ) as current_frozen_no_history,
+        (select count(*)::integer
+          from public.competition_participant_starting_averages snapshot
+          join public.competitions competition on competition.id = snapshot.competition_id
+          join public.league_seasons season on season.id = competition.league_season_id
+          where snapshot.shooter_profile_id = ${shooterByKey.get("eastern-31").authId}
+            and snapshot.status = 'frozen' and snapshot.origin = 'no_history'
+            and season.slug = 'summer-2026' and competition.slug = 'three-position'
+        ) as deliberate_first_time_nulls,
+        (select count(*)::integer
+          from public.competition_division_configs config
+          join public.competitions competition on competition.id = config.competition_id
+          join public.league_seasons season on season.id = competition.league_season_id
+          join public.organisations organisation on organisation.id = season.organisation_id
+          where organisation.name = 'Eastern Region Shooting Association'
+            and competition.slug = 'prone-individual') as eastern_prone_division_configs,
         (select count(*)::integer from public.competitions
           where organisation_equipment_type_id = ${customEquipment.id}) as custom_equipment_editions,
         (select count(*)::integer from public.competition_score_components
@@ -761,9 +1028,32 @@ export async function seedStagingDemoDomain(sql, model) {
     fail(integrity.spanning_series !== counts.series, "not every recurring Series spans Seasons");
     fail(integrity.bad_round_counts !== 0 || integrity.released_rounds < 1 || integrity.unreleased_rounds < 1,
       "Round counts or released/unreleased chronology is invalid");
-    fail(integrity.current_then_preceding_policies !== 1 || integrity.custom_equipment_editions < 2
+    fail(integrity.current_then_preceding_policies !== model.averagePrograms.length
+      || integrity.current_then_preceding_defaults !== expectedAverageDefaults
+      || integrity.current_then_preceding_settings !== expectedAverageSettings
+      || integrity.custom_equipment_editions < 2
       || integrity.custom_position_components < 2,
     "Average policy or reusable custom taxonomy fixture is missing");
+    fail(integrity.incompatible_structured_contexts !== 0
+      || integrity.incompatible_score_bases !== 0,
+    "an Average Context mixes incompatible structured shooting or score-basis configurations");
+    fail(integrity.calculated_provenance_mismatches !== 0
+      || integrity.nonchronological_starting_averages !== 0
+      || integrity.manually_supplied_starting_averages !== 0,
+    "Starting Averages did not come from canonical chronological calculation provenance");
+    fail(integrity.persisted_running_average_columns !== 0
+      || integrity.current_running_average_values < 1,
+    "Running Average is not being derived from released canonical result scores");
+    fail(integrity.showcase_frozen_average_series < 4,
+      "showcase shooter does not have frozen S/Av across four recurring Series");
+    fail(integrity.current_frozen_average_values < 1
+      || integrity.current_frozen_no_history < 1
+      || integrity.deliberate_first_time_nulls !== 1,
+    "current mature editions do not contain both real S/Av values and a deliberate no-history entrant");
+    fail(integrity.current_frozen_average_values <= integrity.current_frozen_no_history,
+      "current mature editions are dominated by missing Starting Averages");
+    fail(integrity.eastern_prone_division_configs !== 6,
+      "every Eastern prone-individual edition should now have a Division configuration");
     fail(integrity.eastern_summer_2026_competitions !== 6 || integrity.unreleased_score_usages !== 0,
       "Eastern Summer 2026 Competition count or unreleased-score exclusion is invalid");
     fail(integrity.duplicate_concurrent_sources !== 0 || integrity.concurrent_round_mappings !== 20,
