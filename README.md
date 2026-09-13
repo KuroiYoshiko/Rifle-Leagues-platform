@@ -31,6 +31,64 @@ enables owner-only Row Level Security policies.
 No service-role key is used by the application and no additional environment
 variables are required.
 
+## Destructive development/staging data reset
+
+[`database/dev-reset-all-data.sql`](database/dev-reset-all-data.sql) is manual,
+destructive local/staging tooling. It is **not a migration**, is not part of the
+canonical database installer/deployment chain, and must never be run against
+production.
+
+Before each reset, copy the complete file into the Supabase SQL Editor and
+replace only the zero UUID assigned to `v_keep_user_id` in that copied text with
+the UUID of the existing developer/showcase Auth account to preserve. Do not put
+the real UUID in the repository. The unchanged placeholder aborts before any
+data is changed.
+
+The reset transaction empties every current Rifle Leagues domain table, removes
+all other Auth users through `auth.users` and Supabase's Auth-owned cascades,
+and verifies that the selected user and all of that user's Auth identities still
+exist. It deliberately preserves the built-in `shooting_equipment_types` and
+`shooting_positions` taxonomies. If a disposable user owns a Supabase Storage
+object, remove that object through the Storage API or Dashboard first; the reset
+will abort rather than modify Storage internals.
+
+Run `npm run test:dev-reset` after changing the canonical schema or this tool.
+
+## Deterministic development/staging history seed
+
+The new staging-history seed is implemented by
+[`scripts/seed-staging-demo.mjs`](scripts/seed-staging-demo.mjs). It is separate
+from the reset and from the canonical migration installer. It must only be run
+after `database/dev-reset-all-data.sql` has left exactly one Auth user and no
+application data, and it must never be run against production.
+
+The CLI uses the Supabase Auth Admin API to create 95 passwordless synthetic
+principals at non-routable `shooters.invalid` addresses; it does not manually
+insert or modify Supabase Auth internals. The real showcase UUID, email, and
+profile name are supplied only at runtime. Domain writes and post-seed checks
+run in one PostgreSQL transaction. If that transaction fails, the CLI attempts
+to remove every synthetic Auth principal it created.
+
+The history is deliberately anchored to the 2026 season calendar. To keep
+Summer 2026 Rounds 1–9 released and Round 10 unreleased, the database date must
+be between 2026-09-06 and 2026-09-19 inclusive; the preflight aborts outside
+that window instead of silently producing different Results or Statistics.
+
+Set `SUPABASE_URL`, `SUPABASE_SECRET_KEY`, and `SUPABASE_DB_URL`, then run:
+
+```bash
+npm run seed:staging-demo -- \
+  --showcase-user-id "YOUR-EXISTING-AUTH-UUID" \
+  --showcase-email "YOUR-EXISTING-AUTH-EMAIL" \
+  --showcase-first-name "YOUR-FIRST-NAME" \
+  --showcase-last-name "YOUR-LAST-NAME"
+```
+
+On PowerShell, place the command on one line or use PowerShell backticks instead
+of the Bash continuations shown above. Never save the real showcase values or a
+Supabase secret key in Git. Run `npm run test:staging-demo` after changing the
+seed model or runner.
+
 ## Organisation management access
 
 Run the complete [`database/organisation-staff.sql`](database/organisation-staff.sql)
