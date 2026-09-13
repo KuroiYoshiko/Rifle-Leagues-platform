@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import {
   CartesianGrid,
   Line,
@@ -10,6 +11,13 @@ import {
   YAxis,
 } from "recharts";
 import type { ShooterAnalyticsPoint } from "@/lib/shooter-analytics";
+import {
+  buildPerformanceChartData,
+  selectXAxisTicks,
+  xAxisTickLimit,
+} from "@/lib/shooter-chart-axis.mjs";
+
+const SIX_MONTHS_IN_MILLISECONDS = 183 * 86_400_000;
 
 function formatDate(value: string, compact = false) {
   const date = new Date(`${value}T00:00:00Z`);
@@ -17,6 +25,13 @@ function formatDate(value: string, compact = false) {
     ? { day: "2-digit", month: "short", timeZone: "UTC" }
     : { day: "numeric", month: "long", year: "numeric", timeZone: "UTC" }
   ).format(date);
+}
+
+function formatAxisDate(value: number, longRange: boolean) {
+  return new Intl.DateTimeFormat("en-GB", longRange
+    ? { month: "short", year: "2-digit", timeZone: "UTC" }
+    : { day: "2-digit", month: "short", timeZone: "UTC" }
+  ).format(new Date(value));
 }
 
 function score(value: number) {
@@ -85,10 +100,14 @@ function PerformanceTooltip({
 }
 
 export function ShooterPerformanceChart({ points }: { points: ShooterAnalyticsPoint[] }) {
-  const chartData = points.map((point) => ({
-    ...point,
-    round_end_timestamp: Date.parse(`${point.round_end_date}T00:00:00Z`),
-  }));
+  const [chartWidth, setChartWidth] = useState<number | null>(null);
+  const [printing, setPrinting] = useState(false);
+  const chartData = useMemo(() => buildPerformanceChartData(points), [points]);
+  const timestamps = chartData.map((point) => point.round_end_timestamp);
+  const tickLimit = xAxisTickLimit(chartWidth, printing);
+  const xAxisTicks = selectXAxisTicks(timestamps, tickLimit);
+  const longRange = xAxisTicks.length > 1 &&
+    xAxisTicks[xAxisTicks.length - 1] - xAxisTicks[0] >= SIX_MONTHS_IN_MILLISECONDS;
   const percentages = points.map((point) => point.score_percentage);
   const minimum = Math.min(...percentages);
   const maximum = Math.max(...percentages);
@@ -98,10 +117,25 @@ export function ShooterPerformanceChart({ points }: { points: ShooterAnalyticsPo
     ? [Math.max(0, lower - 1), Math.min(100, upper + 1)]
     : [lower, upper];
 
+  useEffect(() => {
+    const beforePrint = () => setPrinting(true);
+    const afterPrint = () => setPrinting(false);
+    window.addEventListener("beforeprint", beforePrint);
+    window.addEventListener("afterprint", afterPrint);
+    return () => {
+      window.removeEventListener("beforeprint", beforePrint);
+      window.removeEventListener("afterprint", afterPrint);
+    };
+  }, []);
+
   return (
     <figure aria-labelledby="performance-chart-title" className="min-w-0">
       <div className="h-72 w-full sm:h-80 lg:h-96">
-        <ResponsiveContainer width="100%" height="100%">
+        <ResponsiveContainer
+          width="100%"
+          height="100%"
+          onResize={(width) => setChartWidth(width)}
+        >
           <LineChart
             accessibilityLayer
             data={chartData}
@@ -115,7 +149,8 @@ export function ShooterPerformanceChart({ points }: { points: ShooterAnalyticsPo
               domain={chartData.length === 1
                 ? [chartData[0].round_end_timestamp - 86_400_000, chartData[0].round_end_timestamp + 86_400_000]
                 : ["dataMin", "dataMax"]}
-              tickFormatter={(value) => formatDate(new Date(Number(value)).toISOString().slice(0, 10), true)}
+              ticks={xAxisTicks}
+              tickFormatter={(value) => formatAxisDate(Number(value), longRange)}
               tick={{ fill: "var(--muted-foreground)", fontSize: 11 }}
               axisLine={{ stroke: "var(--border)" }}
               tickLine={false}
