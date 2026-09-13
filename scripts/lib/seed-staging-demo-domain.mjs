@@ -18,6 +18,14 @@ async function insertChunks(tx, table, rows, columns, returning = false) {
 const scalar = (value) => String(value);
 const instantKey = (value) => new Date(value).toISOString();
 
+function jsonInteger(value, label) {
+  const number = Number(value);
+  if (!Number.isSafeInteger(number) || number <= 0) {
+    throw new Error(`${label} must be a positive safe integer.`);
+  }
+  return number;
+}
+
 export async function seedStagingDemoDomain(sql, model) {
   const summary = await sql.begin(async (tx) => {
     await tx`select pg_catalog.set_config('request.jwt.claim.sub', ${model.showcaseUserId}, true)`;
@@ -387,7 +395,13 @@ export async function seedStagingDemoDomain(sql, model) {
       divisionAllocationsByCompetition.set(key, Array.from({ length: count }, (_, index) => ({
         name: `Division ${index + 1}`,
         entrant_ids: entrantKeys.filter((_, entrantIndex) => entrantIndex % count === index)
-          .map((entrantKey) => entrantIdByKey.get(entrantKey)),
+          // Postgres.js deliberately decodes bigint as text. The public RPC's
+          // JSON contract requires numeric competition_entrants.id values, so
+          // normalise the canonical entrant-unit IDs before JSON encoding.
+          .map((entrantKey) => jsonInteger(
+            entrantIdByKey.get(entrantKey),
+            `Division entrant unit ${entrantKey}`,
+          )),
       })));
     }
 

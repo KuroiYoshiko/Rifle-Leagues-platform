@@ -22,7 +22,7 @@ const hasShooter = (participation, shooterKey) => participation.entrants.some((e
 const quoteIdentifier = (value) => value.split(".")
   .map((part) => `"${part.replaceAll('"', '""')}"`).join(".");
 
-function pglitePostgresTag(database) {
+function pglitePostgresTag(database, { onJson = () => {} } = {}) {
   const makeTag = (connection) => {
     function helper(value, ...columns) {
       if (typeof value === "string" && columns.length === 0) {
@@ -60,9 +60,24 @@ function pglitePostgresTag(database) {
         }
         statement += strings[index + 1];
       });
-      return (await connection.query(statement, parameters)).rows;
+      const result = await connection.query(statement, parameters);
+      const bigintFields = new Set(
+        result.fields.filter((field) => field.dataTypeID === 20).map((field) => field.name),
+      );
+      // Match Postgres.js' default int8 decoder. Without this parity layer,
+      // PGlite returns bigint IDs as numbers and can conceal JSON payload bugs
+      // that only occur through the hosted seed's Postgres.js connection.
+      return result.rows.map((row) => Object.fromEntries(
+        Object.entries(row).map(([name, value]) => [
+          name,
+          bigintFields.has(name) && value !== null ? String(value) : value,
+        ]),
+      ));
     };
-    tag.json = (value) => ({ fragment: "$1::jsonb", parameters: [JSON.stringify(value)] });
+    tag.json = (value) => {
+      onJson(value);
+      return { fragment: "$1::jsonb", parameters: [JSON.stringify(value)] };
+    };
     return new Proxy(tag, { apply: (_target, _this, argumentsList) => (
       Array.isArray(argumentsList[0]) && Object.hasOwn(argumentsList[0], "raw")
         ? tag(...argumentsList)
@@ -362,7 +377,14 @@ test("domain writer satisfies the complete canonical schema and its validations"
       );
     }
 
-    const summary = await seedStagingDemoDomain(pglitePostgresTag(database), integrationModel);
+    const submittedDivisionPayloads = [];
+    const summary = await seedStagingDemoDomain(pglitePostgresTag(database, {
+      onJson(value) {
+        if (Array.isArray(value) && value.every((item) => (
+          item && typeof item === "object" && Array.isArray(item.entrant_ids)
+        ))) submittedDivisionPayloads.push(value);
+      },
+    }), integrationModel);
     assert.deepEqual(
       {
         organisations: summary.organisations,
@@ -431,6 +453,49 @@ test("domain writer satisfies the complete canonical schema and its validations"
     assert.ok(summary.integrity.current_frozen_average_values > summary.integrity.current_frozen_no_history);
     assert.equal(summary.integrity.deliberate_first_time_nulls, 1);
     assert.equal(summary.integrity.eastern_prone_division_configs, 6);
+
+    const historicalPairDivisionRegression = (await database.query(`
+      select
+        c.entry_format,
+        c.ranking_method,
+        count(distinct e.id)::integer as entrant_units,
+        count(distinct a.competition_entrant_id)::integer as assigned_units,
+        count(*) filter (
+          where a.competition_entrant_id is not null
+            and (ae.competition_id <> c.id or ae.status <> 'submitted')
+        )::integer as invalid_assignments
+      from public.organisations o
+      join public.league_seasons s on s.organisation_id = o.id
+      join public.competitions c on c.league_season_id = s.id
+      join public.club_competition_entries e0
+        on e0.competition_id = c.id and e0.status = 'submitted'
+      join public.competition_entrants e on e.club_competition_entry_id = e0.id
+      left join public.competition_division_assignments a
+        on a.competition_id = c.id and a.competition_entrant_id = e.id
+      left join public.competition_entrants assigned on assigned.id = a.competition_entrant_id
+      left join public.club_competition_entries ae on ae.id = assigned.club_competition_entry_id
+      where o.slug = 'eastern-region-shooting-association'
+        and s.slug = 'summer-2024'
+        and c.slug = 'prone-pairs'
+      group by c.id, c.entry_format, c.ranking_method
+    `)).rows[0];
+    assert.deepEqual(historicalPairDivisionRegression, {
+      entry_format: "pairs",
+      ranking_method: "round_robin",
+      entrant_units: historicalPairDivisionRegression.entrant_units,
+      assigned_units: historicalPairDivisionRegression.entrant_units,
+      invalid_assignments: 0,
+    });
+    assert.ok(historicalPairDivisionRegression.entrant_units > 0);
+    const firstRoundRobinPayload = submittedDivisionPayloads[0];
+    assert.ok(firstRoundRobinPayload.length > 0);
+    assert.equal(
+      firstRoundRobinPayload.flatMap((division) => division.entrant_ids).length,
+      historicalPairDivisionRegression.entrant_units,
+    );
+    assert.ok(firstRoundRobinPayload.every((division) => division.entrant_ids.every((entrantId) => (
+      Number.isSafeInteger(entrantId) && entrantId > 0
+    ))));
 
     const realisticResults = (await database.query(`
       select c.slug, c.ranking_method,
