@@ -23,8 +23,10 @@ export type BestNAverageEntrant = {
   entrant_label: string;
   club_name: string;
   participants: BestNAverageParticipant[];
-  position: number;
+  position: number | null;
   tied: boolean;
+  ranking_eligible: boolean;
+  required_complete_results: number;
   scored_rounds: number;
   nsr_rounds: number;
   counted_rounds: number;

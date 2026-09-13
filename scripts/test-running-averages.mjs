@@ -341,7 +341,7 @@ test("safe projection rejects wrong or draft contexts and keeps S/Av staff-only"
   );
 });
 
-test("result merge and compact UX show Individual and Pair participant R/Av without changing ranking fields", async () => {
+test("result merge keeps Pair averages participant-owned and preserves Individual standings averages without changing ranking fields", async () => {
   const averagesModule = await loadModule("src/lib/competition-result-averages.ts", {
     "@/lib/supabase/server": { createClient: async () => null },
   });
@@ -391,9 +391,11 @@ test("result merge and compact UX show Individual and Pair participant R/Av with
   });
   assert.match(html, /R\/Av 98\.00/);
   assert.match(html, /R\/Av 97\.25/);
-  assert.match(html, /title="Starting Average"[^>]*>S\/Av/);
-  assert.match(html, /title="Running Average"[^>]*>R\/Av/);
-  assert.match(html, /data-entrant-row="10"[\s\S]*?results-average-cell[^>]*>—<\/td>[\s\S]*?results-average-cell[^>]*>—<\/td>/);
+  assert.match(html, /data-average-columns="0" class="results-score-table/);
+  const pairStandings = html.slice(html.indexOf('class="results-score-table'), html.indexOf('data-participant-breakdown'));
+  assert.doesNotMatch(pairStandings, /title="Starting Average"[^>]*>S\/Av/);
+  assert.doesNotMatch(pairStandings, /title="Running Average"[^>]*>R\/Av/);
+  assert.match(html, /data-participant-breakdown[\s\S]*data-average-columns="1"[\s\S]*title="Running Average"[^>]*>R\/Av/);
 
   const individualResults = structuredClone(results);
   individualResults.groups[0].entrants[0].entrant_format = "individual";

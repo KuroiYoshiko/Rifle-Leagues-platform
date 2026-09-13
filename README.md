@@ -442,12 +442,16 @@ participant breakdowns remain participant-owned and do not create a historical
 Pair/Team Average identity. Run `npm run test:best-n` for the SQL, release/security,
 division, participant, route, compact-table, and print contracts.
 
+Best-N entrants qualify for a ranking position only after returning
+`min(Best N, released Rounds)` complete results. Their real provisional average
+remains visible when they are not yet qualified; NSR is never converted to zero.
+
 All Results methods share the compact desktop matrix. At desktop widths it uses
-separate Position, Entrant, S/Av, and R/Av columns, 3.65rem standard Round columns,
-and a ranking-aware final column. Narrow screens keep Position and Entrant sticky
-and may scroll. Browser print uses an A4-landscape Results-only document with
+an Entrant column with an integrated ranking position, S/Av and R/Av columns only
+when entrant-level values apply, compact Round columns, and a ranking-aware final
+column. Narrow screens keep Entrant sticky and may scroll. Browser print uses an A4-portrait Results-only document with
 Competition context, repeated table headers, non-splitting entrant rows, and no
-application navigation or management controls.
+application navigation, management controls, or expanded participant tables.
 
 The exact 397/400 versus 396/400 example also passes against the preceding
 checked-in SQL: achieved descending is equivalent to dropped ascending for equal

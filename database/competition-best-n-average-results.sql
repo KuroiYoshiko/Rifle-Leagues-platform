@@ -141,17 +141,27 @@ begin
       ) as rounds
     from ranked_cells
     group by entrant_id, division_key
-  ), standings as (
+  ), eligibility as (
     select totals.*,
-      rank() over (
-        partition by division_key
-        order by (qualifying_average is not null) desc,
-          qualifying_average desc nulls last
-      ) as position,
-      count(*) over (
-        partition by division_key, qualifying_average
-      ) > 1 as tied
+      least(
+        v_competition.best_rounds_count,
+        (select count(*)::integer from rounds where released)
+      ) as required_complete_results,
+      scored_rounds >= least(
+        v_competition.best_rounds_count,
+        (select count(*)::integer from rounds where released)
+      ) as ranking_eligible
     from totals
+  ), standings as (
+    select eligibility.*,
+      case when ranking_eligible then rank() over (
+        partition by division_key, ranking_eligible
+        order by qualifying_average desc nulls last
+      ) end as position,
+      case when ranking_eligible then count(*) over (
+        partition by division_key, ranking_eligible, qualifying_average
+      ) > 1 else false end as tied
+    from eligibility
   ), entrant_names as (
     select distinct on (entrant_id)
       entrant_id, entrant_format, entrant_label, club_name, participants
@@ -232,12 +242,15 @@ begin
         end,
         'position', standings.position,
         'tied', standings.tied,
+        'ranking_eligible', standings.ranking_eligible,
+        'required_complete_results', standings.required_complete_results,
         'scored_rounds', standings.scored_rounds,
         'nsr_rounds', standings.nsr_rounds,
         'counted_rounds', standings.counted_rounds,
         'qualifying_average', standings.qualifying_average,
         'rounds', standings.rounds
-      ) order by standings.position, standings.entrant_id)
+      ) order by standings.ranking_eligible desc, standings.position nulls last,
+        standings.qualifying_average desc nulls last, standings.entrant_id)
       from standings
       join entrant_names as names using (entrant_id)
       where standings.division_key = groups.division_key), '[]'::jsonb)
@@ -258,6 +271,6 @@ grant execute on function public.get_competition_best_n_average_results(
 comment on function public.get_competition_best_n_average_results(
   bigint, bigint, bigint
 ) is
-  'Public released Best N Average standings for an exact active organisation, public season, and published competition. The highest N complete released entrant achieved-score totals form the live arithmetic mean; before N returns, every complete released result counts. NSR and unreleased values are excluded. X ranking is not defined. Pair/Team participant breakdowns contain only released derived achieved values. No stored totals or source-score writes.';
+  'Public released Best N Average standings for an exact active organisation, public season, and published competition. Eligibility requires min(Best N, released Round count) complete results; ineligible entrants remain visible after ranked entrants without a position. Eligible entrants rank by the highest N complete released entrant achieved-score totals; before N returns, every complete released result counts. NSR and unreleased values are excluded. X ranking is not defined. Pair/Team participant breakdowns contain only released derived achieved values. No stored totals or source-score writes.';
 
 commit;
