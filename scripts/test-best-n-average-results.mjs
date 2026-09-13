@@ -10,6 +10,7 @@ const viewer = "00000000-0000-0000-0000-000000000001";
 before(async () => {
   await db.exec(`
     create role anon; create role authenticated;
+    set timezone = 'UTC';
     create schema auth; create schema private;
     grant usage on schema public, auth to authenticated, anon;
     create function auth.uid() returns uuid language sql stable as

@@ -83,19 +83,21 @@ async function addCompetition({
   name,
   mode = "points_scored",
   ranking = "aggregate",
+  bestRounds = null,
   deadlines = [-5],
 } = {}) {
   const competition = (await admin(`insert into competitions(
       league_season_id,name,slug,status,entry_format,team_size,scoring_method,
       maximum_score_per_round,shots_per_round,uses_x_score,number_of_rounds,
-      entry_window_mode,start_date_mode,sets_per_round,ranking_method
+      entry_window_mode,start_date_mode,sets_per_round,ranking_method,best_rounds_count
     ) values(1,$1,$2,'draft','individual',1,$3,100,10,false,$4,
-      'season_default','season_default',1,$5) returning id`, [
+      'season_default','season_default',1,$5,$6) returning id`, [
     name,
     name.toLowerCase().replaceAll(" ", "-"),
     mode,
     deadlines.length,
     ranking,
+    bestRounds,
   ])).rows[0].id;
   for (const [position, label] of ["A", "B"].entries()) {
     await admin(`insert into competition_score_components(
@@ -169,10 +171,12 @@ function averageFor(data, participant) {
 async function configureAndFreezeStartingAverages(fixture, alpha) {
   await actor("owner");
   const context = (await db.query(
-    "select public.create_average_context(1,'Ex100',100) data",
+    "select public.create_average_context(1,$1,100) data",
+    [`Ex100 ${fixture.competition}`],
   )).rows[0].data;
   const policy = (await db.query(
-    "select public.create_average_policy(1,'Manual','manual','{}'::jsonb) data",
+    "select public.create_average_policy(1,$1,'manual','{}'::jsonb) data",
+    [`Manual ${fixture.competition}`],
   )).rows[0].data;
   await db.query(
     "select public.set_competition_average_settings(1,1,$1,$2,$3,true)",
@@ -232,7 +236,8 @@ test("R/Av uses complete released canonical achieved scores, preserves precision
   assert.equal(averageFor(publicData, partial).running_average, null);
   assert.equal(averageFor(publicData, missing).running_average, null);
   assert.equal(averageFor(publicData, nsr).running_average, null);
-  assert.ok(publicData.participants.every((row) => !("starting_average" in row)));
+  assert.equal(averageFor(publicData, alpha).starting_average, 88);
+  assert.equal(averageFor(publicData, zero).starting_average, null);
 
   const standingsBefore = (await db.query(
     "select public.get_competition_aggregate_results(1,1,$1) data",
@@ -319,12 +324,12 @@ test("source scope and usage constraints prevent duplicate counting", async () =
   assert.equal(averageFor(await averages(fixture), participant).running_average, 100);
 });
 
-test("safe projection rejects wrong or draft contexts and keeps S/Av staff-only", async () => {
+test("safe projection rejects wrong or draft contexts and exposes only frozen Individual S/Av", async () => {
   const fixture = await addCompetition({ name: "Security Running Average" });
   const participant = await addParticipant(fixture.competition, "alpha", 1);
   await configureAndFreezeStartingAverages(fixture, participant);
   await addScore(fixture, participant, 0, [50, 50]);
-  assert.ok(!("starting_average" in averageFor(await averages(fixture), participant)));
+  assert.equal(averageFor(await averages(fixture), participant).starting_average, 88);
   assert.equal(averageFor(await averages(fixture, "owner"), participant).starting_average, 88);
 
   await actor("anon");
@@ -339,6 +344,48 @@ test("safe projection rejects wrong or draft contexts and keeps S/Av staff-only"
     [fixture.competition],
     /context was not found/i,
   );
+});
+
+test("public Individual Aggregate and Best-N Results render frozen S/Av and live R/Av end to end", async () => {
+  for (const scenario of [
+    { name: "Aggregate Average Columns", ranking: "aggregate", bestRounds: null },
+    { name: "Best N Average Columns", ranking: "best_n_average", bestRounds: 1 },
+  ]) {
+    const fixture = await addCompetition(scenario);
+    const participant = await addParticipant(fixture.competition, "alpha", 1);
+    await configureAndFreezeStartingAverages(fixture, participant);
+    await addScore(fixture, participant, 0, [49, 48]);
+    await actor("anon");
+
+    const readResults = async () => (await db.query(
+      `select public.${scenario.ranking === "aggregate"
+        ? "get_competition_aggregate_results"
+        : "get_competition_best_n_average_results"}(1,1,$1) data`,
+      [fixture.competition],
+    )).rows[0].data;
+    const readAverages = async () => (await db.query(
+      "select public.get_competition_result_averages(1,1,$1) data",
+      [fixture.competition],
+    )).rows[0].data;
+    const { html } = await renderAggregateResultsRoute({
+      viewerId: null,
+      competition: {
+        id: fixture.competition,
+        name: scenario.name,
+        slug: scenario.name.toLowerCase().replaceAll(" ", "-"),
+        status: "published",
+        ranking_method: scenario.ranking,
+        entry_format: "individual",
+        team_size: 1,
+      },
+      readRpc: readResults,
+      readAveragesRpc: readAverages,
+    });
+    assert.match(html, /title="Starting Average"/);
+    assert.match(html, /title="Running Average"/);
+    assert.match(html, />88\.00</);
+    assert.match(html, />97\.00</);
+  }
 });
 
 test("result merge keeps Pair averages participant-owned and preserves Individual standings averages without changing ranking fields", async () => {

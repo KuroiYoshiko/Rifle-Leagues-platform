@@ -133,6 +133,80 @@ const seriesTemplates = [
   },
 ];
 
+const averagePrograms = [
+  {
+    organisationKey: "eastern",
+    policyName: "Current then preceding league history",
+    contexts: [
+      {
+        key: "smallbore-prone-25yd",
+        name: "Smallbore Prone 25 yd Ex100",
+        seriesKeys: ["prone-individual", "prone-pairs"],
+      },
+      {
+        key: "smallbore-prone-50m",
+        name: "Smallbore Prone 50 m Ex100",
+        seriesKeys: ["club-team"],
+      },
+      {
+        key: "smallbore-benchrest-25yd",
+        name: "Smallbore Benchrest 25 yd Ex100",
+        seriesKeys: ["benchrest"],
+      },
+      {
+        key: "air-rifle-standing-10m",
+        name: "Air Rifle Standing 10 m Ex100",
+        seriesKeys: ["air-rifle"],
+      },
+      {
+        key: "smallbore-three-position-50m",
+        name: "Smallbore Three-Position 50 m Ex100",
+        seriesKeys: ["three-position"],
+      },
+      {
+        key: "service-rifle-supported-20yd",
+        name: "Historic Service Rifle Supported 20 yd Ex100",
+        seriesKeys: ["gallery-rifle"],
+      },
+    ],
+  },
+  ...["thames", "northern"].map((organisationKey) => ({
+    organisationKey,
+    policyName: "Current then preceding league history",
+    contexts: [
+      {
+        key: "smallbore-prone-25yd",
+        name: "Smallbore Prone 25 yd Ex100",
+        seriesKeys: ["prone-individual", "prone-pairs"],
+      },
+      {
+        key: "smallbore-prone-50m",
+        name: "Smallbore Prone 50 m Ex100",
+        seriesKeys: ["club-team"],
+      },
+      {
+        key: "smallbore-benchrest-25yd",
+        name: "Smallbore Benchrest 25 yd Ex100",
+        seriesKeys: ["benchrest"],
+      },
+      {
+        key: "air-rifle-standing-10m",
+        name: "Air Rifle Standing 10 m Ex100",
+        seriesKeys: ["air-rifle"],
+      },
+    ],
+  })),
+].map((program) => ({
+  ...program,
+  strategy: "current_then_preceding",
+  configuration: {
+    minimum_current_scores: 4,
+    minimum_preceding_scores: 4,
+    fallback: "manual",
+  },
+  contexts: program.contexts.map((context) => ({ ...context, basisMaximum: 100 })),
+}));
+
 const firstNames = [
   "Oliver", "Amelia", "George", "Isla", "Harry", "Ava", "Jack", "Mia",
   "Charlie", "Grace", "Thomas", "Freya", "James", "Sophie", "William", "Emily",
@@ -291,6 +365,10 @@ export function buildStagingDemoModel(showcase = {}) {
           return shooter.seriesKeys.includes(competition.templateKey);
         }
         if (!shooter.seriesKeys.includes(competition.templateKey)) return false;
+        // A deliberate first-time Three-Position entrant demonstrates that
+        // history in the shooter's Prone Context is not compatible here.
+        if (shooter.key === "eastern-31" && competition.templateKey === "three-position"
+          && season.index < 4) return false;
         if (competition.entryFormat !== "individual") return true;
         const joinAt = shooter.index % 13 === 0 ? 1 : 0;
         const stopAfter = shooter.index % 17 === 0 ? 4 : 5;
@@ -386,6 +464,7 @@ export function buildStagingDemoModel(showcase = {}) {
       })),
     })),
     shooters, seasons, series, competitions, participations, dropoutCases, scores,
+    averagePrograms,
     customEquipment: { organisationKey: "eastern", name: "Historic Service Rifle", normalizedName: "historic service rifle" },
     customPosition: { organisationKey: "eastern", name: "Supported Standing", normalizedName: "supported standing" },
   };
