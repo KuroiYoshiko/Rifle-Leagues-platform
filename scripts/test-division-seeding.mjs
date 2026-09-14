@@ -110,18 +110,29 @@ test("regeneration requires confirmation whenever numbered draft work exists", (
 });
 
 test("management UI keeps manual editing and saves generated work through the reviewed draft action", async () => {
-  const [manager, actions, seeding] = await Promise.all([
+  const [manager, actions, averageWorkspace, averageActions, seeding] = await Promise.all([
     readFile(new URL("../src/components/competition-division-manager.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/app/(app)/division-management-actions.ts", import.meta.url), "utf8"),
+    readFile(new URL("../src/components/competition-average-workspace.tsx", import.meta.url), "utf8"),
+    readFile(new URL("../src/app/(app)/organisations/[slug]/average-actions.ts", import.meta.url), "utf8"),
     readFile(new URL("../src/lib/competition-division-seeding.mjs", import.meta.url), "utf8"),
   ]);
 
   assert.match(manager, /Generate from Starting Averages/);
-  assert.match(manager, /window\.confirm/);
+  assert.match(manager, /ConfirmationDialog/);
+  assert.doesNotMatch(manager, /window\.confirm|\bconfirm\s*\(/);
+  assert.match(manager, /Generate new Division draft\?/);
+  assert.match(manager, /Generate new draft/);
   assert.match(manager, /saveCompetitionDivisionDraft\(\{/);
-  assert.match(manager, /Unseeded \/ manual placement/);
+  assert.match(manager, /title="Needs placement"/);
+  assert.match(manager, /Entrants not yet assigned to a Division\./);
+  assert.match(manager, /Drop entrants here to leave them unassigned/);
   assert.match(manager, /Division 1 contains the strongest shooters/);
-  assert.match(manager, /Shooters without an S\/Av stay unseeded/);
+  assert.doesNotMatch(manager, /stay unseeded|Unseeded \/ manual placement/i);
+  assert.match(manager, /starting_average_state === "frozen"\) return "Finalised"/);
+  assert.match(manager, /Starting Averages are finalised for this Competition/);
+  assert.match(averageWorkspace, /displayedStatus === "frozen" \? "Finalised"/);
+  assert.match(averageActions, /Starting Averages have been finalised/);
   assert.match(manager, /DragDropProvider/);
   assert.match(manager, /function moveEntrant/);
   assert.match(manager, /function createDivisions/);
@@ -132,4 +143,3 @@ test("management UI keeps manual editing and saves generated work through the re
   assert.match(actions, /save_and_publish_competition_divisions_with_average_review/);
   assert.doesNotMatch(seeding, /running_average|ranking_points|competition_results|calculate_competition/);
 });
-
