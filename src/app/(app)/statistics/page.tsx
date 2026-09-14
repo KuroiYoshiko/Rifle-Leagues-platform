@@ -8,7 +8,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = {
-  title: "Performance analytics",
+  title: "Statistics",
 };
 
 type StatisticsSearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -16,6 +16,8 @@ type StatisticsSearchParams = Promise<Record<string, string | string[] | undefin
 function single(value: string | string[] | undefined) {
   return typeof value === "string" ? value : undefined;
 }
+
+const statisticsViews = new Set(["overview", "performance", "seasons", "history"]);
 
 export default async function StatisticsPage({
   searchParams,
@@ -32,13 +34,22 @@ export default async function StatisticsPage({
     equipment: single(params.equipment),
     position: single(params.position),
     distance: single(params.distance),
+    page: single(params.page),
   });
-  const analytics = await getMyShooterAnalytics(filters.rpc);
+  const viewValue = single(params.view) ?? "overview";
+  const view = statisticsViews.has(viewValue)
+    ? viewValue as "overview" | "performance" | "seasons" | "history"
+    : "overview";
+  const analytics = await getMyShooterAnalytics({
+    ...filters.rpc,
+    p_include_if_seeded_today: true,
+  });
 
   return (
     <ShooterAnalyticsDashboard
       analytics={analytics}
       selection={filters.selection}
+      activeView={view}
     />
   );
 }
