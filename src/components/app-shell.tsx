@@ -32,15 +32,8 @@ const primaryNavigationItems: NavigationItem[] = [
 const shootingNavigationItems: NavigationItem[] = [
   {
     label: "Competitions",
-    href: "/dashboard#competitions",
+    href: "/competitions",
     mark: "C",
-    disabledReason: "Personal competition activity is not available yet",
-  },
-  {
-    label: "Results",
-    href: "/dashboard#results",
-    mark: "R",
-    disabledReason: "Competition results are not available yet",
   },
   {
     label: "Statistics",
@@ -56,6 +49,7 @@ const utilityNavigationItems: NavigationItem[] = [
 const pageDetails: Record<string, { eyebrow: string; title: string }> = {
   "/dashboard": { eyebrow: "Shooter profile", title: "My dashboard" },
   "/profile": { eyebrow: "Account", title: "Your profile" },
+  "/competitions": { eyebrow: "My shooting", title: "My Competitions" },
   "/statistics": { eyebrow: "My shooting", title: "Performance analytics" },
   "/clubs": { eyebrow: "Membership", title: "Find a club" },
   "/clubs/register": { eyebrow: "Club administration", title: "Register a club" },
@@ -399,6 +393,17 @@ function Navigation({
         onNavigate={onNavigate}
       />
 
+      <div className="mt-7">
+        <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.17em] text-white/35">
+          My shooting
+        </p>
+        <NavigationLinks
+          items={shootingNavigationItems}
+          pathname={pathname}
+          onNavigate={onNavigate}
+        />
+      </div>
+
       <ContextNavigationSection
         label="My organisations"
         contexts={organisationContexts}
@@ -423,17 +428,6 @@ function Navigation({
         emptyBrowseLabel="Find a club"
         onNavigate={onNavigate}
       />
-
-      <div className="mt-7">
-        <p className="mb-2 px-3 text-[10px] font-semibold uppercase tracking-[0.17em] text-white/35">
-          My shooting
-        </p>
-        <NavigationLinks
-          items={shootingNavigationItems}
-          pathname={pathname}
-          onNavigate={onNavigate}
-        />
-      </div>
 
       <div className="mt-7">
         <NavigationLinks
