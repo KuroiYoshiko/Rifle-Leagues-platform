@@ -356,7 +356,7 @@ test("anonymous callers cannot execute the operational RPC", async () => {
   );
 });
 
-test("dashboard Club cards and the full widget render the operational hierarchy", async () => {
+test("dashboard Club cards stay compact while the full widget renders the operational hierarchy", async () => {
   const ui = await loadModule("src/components/ui.tsx");
   const presentation = await loadModule(
     "src/lib/club-operational-summary-presentation.ts",
@@ -450,7 +450,6 @@ test("dashboard Club cards and the full widget render the operational hierarchy"
           },
         },
       ],
-      operationalSummaries: [action, healthy],
     }),
   );
   const memberHtml = renderToStaticMarkup(
@@ -475,10 +474,13 @@ test("dashboard Club cards and the full widget render the operational hierarchy"
     createElement(widgets.ClubOperationalSummaryCard, { summary: action }),
   );
 
-  assert.ok(dashboardHtml.includes("Action needed"));
-  assert.ok(dashboardHtml.includes("Manage scores"));
-  assert.ok(dashboardHtml.includes("All required scores currently complete"));
-  assert.ok(!dashboardHtml.includes("Club attention"));
+  assert.ok(dashboardHtml.includes("Basildon Rifle and Pistol Club"));
+  assert.ok(dashboardHtml.includes("Owner"));
+  assert.ok(dashboardHtml.includes("View club"));
+  assert.ok(!dashboardHtml.includes("Action needed"));
+  assert.ok(!dashboardHtml.includes("Manage scores"));
+  assert.ok(!dashboardHtml.includes("incomplete"));
+  assert.ok(!dashboardHtml.includes("min-h-52"));
   assert.ok(memberHtml.includes("Member Only Club"));
   assert.ok(!memberHtml.includes("incomplete"));
   assert.ok(!memberHtml.includes("Manage scores"));
@@ -508,8 +510,8 @@ test("overview routes use the cleaned hierarchy with the shared read model", asy
     readFile(new URL("../src/components/organisation-about.tsx", import.meta.url), "utf8"),
   ]);
   assert.match(dashboardSource, /getClubOperationalSummaries\(\)/);
-  assert.match(dashboardSource, /operationalSummaries=\{managedClubSummaries\}/);
-  assert.match(dashboardSource, /managedClubOrder/);
+  assert.match(dashboardSource, /managementSummaries=\{managementSummaries\}/);
+  assert.doesNotMatch(dashboardSource, /hasManagedClub|isClubManager/);
   assert.doesNotMatch(dashboardSource, /ClubManagementSummary|Club attention/);
   assert.doesNotMatch(dashboardSource, /No competition functionality yet|Competition activity connected/);
   assert.match(clubSource, /manager\s*\?\s*\(await getClubOperationalSummaries\(club\.id\)\)/);
