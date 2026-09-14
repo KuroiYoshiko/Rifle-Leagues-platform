@@ -31,6 +31,7 @@ export async function installCanonicalDatabase(db, {
     "competition-scores-deferred-trigger-security", "competition-scores-participant-formats",
     "competition-results", "competition-aggregate-results", "competition-gun-score-results",
     "competition-best-n-average-results", "public-results",
+    "my-shooting-competitions",
     "competition-round-robin", "competition-round-robin-results",
     ...(competitionSeries ? [
       "competition-series", "competition-series-management",

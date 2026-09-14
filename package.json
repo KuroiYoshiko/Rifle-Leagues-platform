@@ -23,6 +23,7 @@
     "test:best-n": "node --test scripts/test-best-n-average-results.mjs scripts/test-results-experience.mjs",
     "test:results": "npm run test:aggregate && npm run test:gun-score && npm run test:best-n && npm run test:round-robin && npm run test:public-results && npm run test:saved-results",
     "test:analytics": "node --test scripts/test-shooter-analytics.mjs scripts/test-shooter-analytics-ui.mjs scripts/test-shooter-chart-axis.mjs",
+    "test:my-shooting": "node --test scripts/test-my-shooting.mjs",
     "test:dev-reset": "node --test scripts/test-dev-reset-all-data.mjs",
     "test:staging-demo": "node --test scripts/test-staging-demo-seed.mjs",
     "test:staging-seed": "npm run test:staging-demo",

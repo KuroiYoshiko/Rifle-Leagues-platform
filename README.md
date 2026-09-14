@@ -342,6 +342,19 @@ backfill. The application exposes the result at `/statistics`.
 See [the analytics model audit and deployment notes](database/SHOOTER-ANALYTICS.md)
 and run `npm run test:analytics` for the data/security and UI contract suite.
 
+### My Shooting Competition hub
+
+After the public Competition, Division, and Results projections are installed,
+run [`database/my-shooting-competitions.sql`](database/my-shooting-competitions.sql).
+It adds one authenticated current-shooter participation RPC for `/competitions`.
+The RPC reads only submitted entrant slots and published Division/schedule
+metadata; official placing and averages continue to come from the existing
+released Results RPCs. The change is additive, rerunnable, and needs no reset,
+reseed, backfill, or new table.
+
+Run `npm run test:my-shooting` for the participation, security, lifecycle,
+Results-reuse, navigation, responsive UI, and empty-state regression suite.
+
 This adds strict organisation-scoped Series identity, atomic first-draft and
 continuation RPCs, manager draft authoring, source selection metadata and owner-only
 Series lifecycle. It also repairs unchanged-component upserts when editing a scored
