@@ -47,7 +47,7 @@ const utilityNavigationItems: NavigationItem[] = [
 ];
 
 const pageDetails: Record<string, { eyebrow: string; title: string }> = {
-  "/dashboard": { eyebrow: "Shooter profile", title: "My dashboard" },
+  "/dashboard": { eyebrow: "Personal dashboard", title: "Overview" },
   "/profile": { eyebrow: "Account", title: "Your profile" },
   "/competitions": { eyebrow: "My shooting", title: "My Competitions" },
   "/statistics": { eyebrow: "My shooting", title: "Performance analytics" },
