@@ -74,7 +74,7 @@ function PerformanceTooltip({
       </p>
       {point.shared ? (
         <div className="mt-2 text-xs leading-5 text-muted-foreground">
-          <p>One physical score used by {point.contexts.length} Competitions:</p>
+          <p>One shoot used by {point.contexts.length} Competitions:</p>
           <ul className="mt-1">
             {point.contexts.map((context) => (
               <li key={`${context.competition}:${context.round}`}>
@@ -132,8 +132,8 @@ export function ShooterPerformanceChart({ points }: { points: ShooterAnalyticsPo
   }, []);
 
   return (
-    <figure aria-labelledby="performance-chart-title" className="min-w-0">
-      <div className="mb-4 flex items-center justify-between gap-3">
+    <figure data-statistics-chart aria-labelledby="performance-chart-title" className="min-w-0">
+      <div data-screen-only className="mb-4 flex items-center justify-between gap-3">
         <p className="text-xs font-semibold text-foreground">Chart type</p>
         <div className="flex rounded-xl border border-border bg-surface-muted p-1" aria-label="Chart type">
           {(["line", "bars"] as const).map((type) => (
@@ -239,10 +239,9 @@ export function ShooterPerformanceChart({ points }: { points: ShooterAnalyticsPo
         </ResponsiveContainer>
       </div>
       <figcaption className="mt-3 text-xs leading-5 text-muted-foreground">
-        Dates are Competition Round ends, because the canonical model does not store an
-        actual firing date. Results become available after the inclusive Round end.
+        Dates show each Competition Round End. Scores appear here after that date has passed.
       </figcaption>
-      <details className="mt-3 text-xs text-muted-foreground">
+      <details data-screen-only className="mt-3 text-xs text-muted-foreground">
         <summary className="cursor-pointer font-semibold text-brand-strong">
           View chart as text
         </summary>

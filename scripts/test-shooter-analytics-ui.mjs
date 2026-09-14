@@ -28,7 +28,7 @@ test("analytics UI covers empty, one-point, responsive, filter, tooltip and text
   assert.match(dashboard, /summary\.physical_shoot_count === 0/);
   assert.match(dashboard, /Season[\s\S]*Equipment[\s\S]*Position \/ style[\s\S]*Distance/);
   assert.match(dashboard, /defaultValue=\{value\}/);
-  assert.match(dashboard, /Component view:/);
+  assert.match(dashboard, /Filtered view:/);
   assert.match(dashboard, /md:hidden[\s\S]*hidden md:block/);
   assert.doesNotMatch(dashboard, /overflow-x-auto/);
   assert.match(chart, /<ResponsiveContainer[\s\S]*width="100%"[\s\S]*height="100%"/);

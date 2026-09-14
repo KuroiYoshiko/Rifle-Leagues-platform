@@ -1,5 +1,9 @@
 import { cache } from "react";
 import { getCompetitionResultAverages } from "@/lib/competition-result-averages";
+import {
+  classifyMyShootingCompetition,
+  getMyShootingCompetitions,
+} from "@/lib/my-shooting-competitions";
 import { getIfSeededTodayDivision } from "@/lib/shooter-statistics-seeding.mjs";
 import { createClient } from "@/lib/supabase/server";
 
@@ -338,7 +342,22 @@ export const getMyShooterAnalytics = cache(
 
     const raw = data as RawShooterAnalytics;
     const inputs = raw.if_seeded_today_inputs ?? [];
-    const ifSeededToday = await Promise.all(inputs.map(async (input) => {
+    const activeCompetitionIds = new Set<number>();
+    if (inputs.length > 0) {
+      const myShooting = await getMyShootingCompetitions();
+      for (const participation of myShooting.competitions) {
+        if (
+          classifyMyShootingCompetition(participation, myShooting.as_of_date)
+          === "active"
+        ) {
+          activeCompetitionIds.add(participation.competition.id);
+        }
+      }
+    }
+    const activeInputs = inputs.filter((input) =>
+      activeCompetitionIds.has(Number(input.competition_id))
+    );
+    const ifSeededToday = await Promise.all(activeInputs.map(async (input) => {
       let unavailableReason = input.unavailable_reason;
       let runningAverage: number | null = null;
 

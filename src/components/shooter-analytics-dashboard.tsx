@@ -106,7 +106,7 @@ function SummaryCard({
   detail: string;
 }) {
   return (
-    <Card className="min-w-0 p-5">
+    <Card className="statistics-print-card min-w-0 p-5">
       <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">
         {label}
       </p>
@@ -156,14 +156,15 @@ function Filters({
   const hasFilters = Object.values(selection).some(Boolean);
 
   return (
-    <Card className="p-5 sm:p-6">
-      <form action="/statistics" method="get">
+    <div data-screen-only>
+      <Card className="p-5 sm:p-6">
+        <form action="/statistics" method="get">
         {activeView !== "overview" ? <input type="hidden" name="view" value={activeView} /> : null}
         <div className="flex flex-wrap items-end justify-between gap-3">
           <div>
             <h2 className="font-semibold text-foreground">Analysis scope</h2>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
-              These filters apply consistently to summaries, charts, discipline groups, Seasons and score history. Position and distance analyse matching components only.
+              Choose which released scores to include. The same filters apply throughout Statistics.
             </p>
           </div>
           {hasFilters ? (
@@ -206,8 +207,9 @@ function Filters({
         >
           Apply filters
         </button>
-      </form>
-    </Card>
+        </form>
+      </Card>
+    </div>
   );
 }
 
@@ -219,7 +221,7 @@ function AnalysisNavigation({
   selection: ShooterAnalyticsFilterSelection;
 }) {
   return (
-    <nav aria-label="Statistics analysis" className="mt-5 grid grid-cols-2 gap-1 rounded-2xl border border-border bg-surface p-1 sm:flex sm:w-fit">
+    <nav data-screen-only aria-label="Statistics analysis" className="mt-5 grid grid-cols-2 gap-1 rounded-2xl border border-border bg-surface p-1 sm:flex sm:w-fit">
       {views.map((view) => {
         const active = view.id === activeView;
         return (
@@ -252,7 +254,7 @@ function EmptyState({ filtered }: { filtered: boolean }) {
       </h2>
       <p className="mx-auto mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
         {filtered
-          ? "Try a broader Season or physical shooting filter. Only complete, released Results are included."
+          ? "Try broader filters. Only complete, released scores are included."
           : "Your performance history will appear after a complete Competition Round result has passed its Round End."}
       </p>
     </Card>
@@ -270,16 +272,16 @@ function Summary({ analytics }: { analytics: ShooterAnalytics }) {
     <>
       <section aria-label="Performance summary" className="mt-6 grid min-w-0 gap-4 sm:grid-cols-2 xl:grid-cols-6">
         <SummaryCard label="Latest performance" value={percentage(summary.recent_score_percentage)} detail="Latest released Round End" />
-        <SummaryCard label="Overall mean" value={percentage(summary.mean_score_percentage)} detail="Mean of physical scores" />
-        <SummaryCard label="Best performance" value={percentage(summary.best_score_percentage)} detail="Highest normalized result" />
-        <SummaryCard label="Released physical shoots" value={summary.physical_shoot_count} detail="Canonical score sources" />
-        <SummaryCard label="Competition participation" value={summary.competition_count} detail="Distinct released usages" />
+        <SummaryCard label="Overall mean" value={percentage(summary.mean_score_percentage)} detail="Average across released scores" />
+        <SummaryCard label="Best performance" value={percentage(summary.best_score_percentage)} detail="Best released performance" />
+        <SummaryCard label="Released shoots" value={summary.physical_shoot_count} detail="Unique released shoots" />
+        <SummaryCard label="Competitions" value={summary.competition_count} detail="Competitions with released scores" />
         <SummaryCard label="Overall trend" value={trend.label} detail={`Estimated change: ${trendChange}`} />
       </section>
-      <Card className="mt-4 border-brand/20 bg-brand-subtle p-4 text-xs leading-5 text-brand-deep">
+      <Card className="statistics-print-trend mt-4 border-brand/20 bg-brand-subtle p-4 text-xs leading-5 text-brand-deep">
         <p className="font-semibold">Estimated change across selected history: {trendChange}</p>
         <p className="mt-1">
-          {trend.label} is a linear regression across the selected released physical-score history. It is not the difference between the latest two scores.
+          Trend is estimated across all released scores in the selected range, not just the latest two.
         </p>
       </Card>
     </>
@@ -289,9 +291,9 @@ function Summary({ analytics }: { analytics: ShooterAnalytics }) {
 function RecentForm({ scores }: { scores: ShooterAnalyticsPoint[] }) {
   if (scores.length === 0) return null;
   return (
-    <Card className="min-w-0 p-5 sm:p-6">
+    <Card className="statistics-print-card min-w-0 p-5 sm:p-6">
       <h2 className="font-semibold text-foreground">Recent scores</h2>
-      <p className="mt-1 text-xs text-muted-foreground">Your latest released physical score events</p>
+      <p className="mt-1 text-xs text-muted-foreground">Your latest released scores</p>
       <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {scores.map((point) => (
           <div key={point.event_key} className="rounded-xl border border-border bg-surface-muted p-4">
@@ -308,13 +310,13 @@ function RecentForm({ scores }: { scores: ShooterAnalyticsPoint[] }) {
 
 function IfSeededTodayCard({ analysis }: { analysis: IfSeededTodayAnalysis }) {
   return (
-    <Card className="min-w-0 p-5 sm:p-6">
+    <Card className="statistics-print-card min-w-0 p-5 sm:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="text-xs font-medium text-brand-strong">{analysis.organisation_name} · {analysis.season_name}</p>
           <h3 className="mt-1 text-lg font-semibold text-foreground">{analysis.competition_name}</h3>
         </div>
-        <Badge tone="neutral">Non-authoritative</Badge>
+        <Badge tone="neutral">For comparison only</Badge>
       </div>
       {analysis.unavailable_reason ? (
         <div className="mt-5 rounded-xl bg-surface-muted p-4">
@@ -324,11 +326,11 @@ function IfSeededTodayCard({ analysis }: { analysis: IfSeededTodayAnalysis }) {
       ) : (
         <dl className="mt-5 grid grid-cols-2 gap-4 text-sm">
           <div>
-            <dt className="text-xs text-muted-foreground">Current Division</dt>
+            <dt className="text-xs text-muted-foreground">Published Division</dt>
             <dd className="mt-1 font-semibold text-foreground">{analysis.current_division_name ?? "—"}</dd>
           </div>
           <div>
-            <dt className="text-xs text-muted-foreground">If seeded today</dt>
+            <dt className="text-xs text-muted-foreground">Using current R/Av</dt>
             <dd className="mt-1 font-semibold text-brand-deep">{analysis.hypothetical_division_name ?? "—"}</dd>
           </div>
           <div>
@@ -342,9 +344,9 @@ function IfSeededTodayCard({ analysis }: { analysis: IfSeededTodayAnalysis }) {
         </dl>
       )}
       <p className="mt-5 text-xs leading-5 text-muted-foreground">
-        Based on your current Competition average and the same automatic seeding rules. This does not change your published Division. If managers manually adjusted the published field, this remains where automatic seeding would place you today—not a guarantee of management placement.
+        This is a comparison only. Your published Division does not change. Management decisions may differ from automatic seeding.
       </p>
-      <Link href={analysis.competition_path} className="mt-4 inline-flex text-xs font-semibold text-brand-strong hover:underline">
+      <Link data-screen-only href={analysis.competition_path} className="mt-4 inline-flex text-xs font-semibold text-brand-strong hover:underline">
         View Competition
       </Link>
     </Card>
@@ -355,9 +357,9 @@ function IfSeededToday({ analyses }: { analyses: IfSeededTodayAnalysis[] }) {
   if (analyses.length === 0) return null;
   return (
     <section className="mt-6" aria-labelledby="if-seeded-title">
-      <h2 id="if-seeded-title" className="text-xl font-semibold text-foreground">If seeded today</h2>
+      <h2 id="if-seeded-title" className="text-xl font-semibold text-foreground">Division comparison</h2>
       <p className="mt-1 max-w-3xl text-sm leading-6 text-muted-foreground">
-        An informational what-if for your Individual Competitions with published Divisions.
+        See where your current R/Av would place you if automatic Division seeding were run again today.
       </p>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         {analyses.map((analysis) => <IfSeededTodayCard key={analysis.competition_id} analysis={analysis} />)}
@@ -373,7 +375,7 @@ function PerformanceAnalysis({ analytics }: { analytics: ShooterAnalytics }) {
         <div className="mb-5 flex flex-wrap items-start justify-between gap-3">
           <div>
             <h2 id="performance-chart-title" className="font-semibold text-foreground">Overall performance over time</h2>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">Performance percentage by released physical score event</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">Performance percentage by released score</p>
           </div>
           <Badge tone="brand">{analytics.chart_points.length} points</Badge>
         </div>
@@ -386,13 +388,13 @@ function PerformanceAnalysis({ analytics }: { analytics: ShooterAnalytics }) {
       <section className="mt-8" aria-labelledby="discipline-title">
         <h2 id="discipline-title" className="text-xl font-semibold text-foreground">Performance by discipline</h2>
         <p className="mt-1 max-w-4xl text-sm leading-6 text-muted-foreground">
-          Groups use structured equipment identity and the ordered physical Course of Fire: stable position/style identity, exact distance, sets, score method, maximum and shot count. Competition names are never used. Unknown legacy configurations remain separate.
+          See how you perform across different equipment, positions and distances. Different Courses of Fire are kept separate.
         </p>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
           {analytics.disciplines.map((discipline) => {
             const trend = trendPresentation(discipline.trend_direction);
             return (
-              <Card key={discipline.discipline_key} className="min-w-0 p-5">
+              <Card key={discipline.discipline_key} className="statistics-print-card min-w-0 p-5">
                 <div className="flex flex-wrap items-start justify-between gap-3">
                   <div className="min-w-0">
                     <h3 className="font-semibold text-foreground">{discipline.equipment_label} · {discipline.position_label} · {discipline.distance_label}</h3>
@@ -406,7 +408,7 @@ function PerformanceAnalysis({ analytics }: { analytics: ShooterAnalytics }) {
                   <div><dt className="text-xs text-muted-foreground">Average</dt><dd className="mt-1 font-semibold text-foreground">{percentage(discipline.average_score_percentage)}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Best</dt><dd className="mt-1 font-semibold text-foreground">{percentage(discipline.best_score_percentage)}</dd></div>
                   <div><dt className="text-xs text-muted-foreground">Latest</dt><dd className="mt-1 font-semibold text-foreground">{percentage(discipline.latest_score_percentage)}</dd></div>
-                  <div><dt className="text-xs text-muted-foreground">Physical shoots</dt><dd className="mt-1 font-semibold text-foreground">{discipline.physical_shoot_count}</dd></div>
+                  <div><dt className="text-xs text-muted-foreground">Released shoots</dt><dd className="mt-1 font-semibold text-foreground">{discipline.physical_shoot_count}</dd></div>
                 </dl>
               </Card>
             );
@@ -423,22 +425,22 @@ function SeasonAnalysis({ analytics }: { analytics: ShooterAnalytics }) {
       <Card className="p-5 sm:p-6">
         <h2 id="season-comparison-title" className="text-xl font-semibold text-foreground">Season comparison</h2>
         <p className="mt-2 max-w-4xl text-sm leading-6 text-muted-foreground">
-          Overall performance within each canonical Season. A change compares its mean with the immediately preceding displayed Season. Discipline mix can differ, so narrow the structured scope above for a like-for-like comparison.
+          Compare your average performance across Seasons. Changes are measured against the previous Season shown. Use the filters above for like-for-like comparisons.
         </p>
       </Card>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">
         {analytics.seasons.map((season) => (
-          <Card key={`${season.organisation_id}:${season.season_id}`} className="min-w-0 p-5">
+          <Card key={`${season.organisation_id}:${season.season_id}`} className="statistics-print-card min-w-0 p-5">
             <p className="text-xs font-medium text-brand-strong">{season.organisation_name}</p>
             <h3 className="mt-1 text-lg font-semibold text-foreground">{season.season_name}</h3>
             <dl className="mt-5 grid grid-cols-2 gap-4 text-sm sm:grid-cols-4">
               <div><dt className="text-xs text-muted-foreground">Average</dt><dd className="mt-1 font-semibold text-foreground">{percentage(season.average_score_percentage)}</dd></div>
               <div><dt className="text-xs text-muted-foreground">Best</dt><dd className="mt-1 font-semibold text-foreground">{percentage(season.best_score_percentage)}</dd></div>
               <div><dt className="text-xs text-muted-foreground">Latest</dt><dd className="mt-1 font-semibold text-foreground">{percentage(season.latest_score_percentage)}</dd></div>
-              <div><dt className="text-xs text-muted-foreground">Physical shoots</dt><dd className="mt-1 font-semibold text-foreground">{season.physical_shoot_count}</dd></div>
+              <div><dt className="text-xs text-muted-foreground">Released shoots</dt><dd className="mt-1 font-semibold text-foreground">{season.physical_shoot_count}</dd></div>
             </dl>
             <p className="mt-4 border-t border-border pt-4 text-xs text-muted-foreground">
-              Change vs preceding displayed Season: <span className="font-semibold text-foreground">{season.change_from_previous === null ? "Not available" : `${signedFormatter.format(season.change_from_previous)} percentage points`}</span>
+              Change from previous Season shown: <span className="font-semibold text-foreground">{season.change_from_previous === null ? "Not available" : `${signedFormatter.format(season.change_from_previous)} percentage points`}</span>
             </p>
           </Card>
         ))}
@@ -455,7 +457,7 @@ function HistoryContext({ point }: { point: ShooterAnalyticsPoint }) {
       {point.shared ? (
         <div className="mt-2 text-xs leading-5 text-muted-foreground">
           <Badge tone="brand">Shared across {point.contexts.length} Competitions</Badge>
-          <p className="mt-2">{point.contexts.map((context) => `${context.competition} · ${context.round}`).join("; ")}</p>
+          <p data-screen-only className="mt-2">{point.contexts.map((context) => `${context.competition} · ${context.round}`).join("; ")}</p>
         </div>
       ) : null}
     </>
@@ -471,15 +473,15 @@ function ScoreHistory({
 }) {
   const history = analytics.history;
   return (
-    <Card className="mt-6 min-w-0 overflow-hidden">
+    <Card className="statistics-print-history mt-6 min-w-0 overflow-hidden">
       <div className="border-b border-border px-5 py-5 sm:px-6">
-        <h2 className="font-semibold text-foreground">Recent Score History</h2>
+        <h2 className="font-semibold text-foreground">Score history</h2>
         <p className="mt-1 text-xs text-muted-foreground">
-          10 physical released score events per page · {history.total_items} matching total
+          10 unique released shoots per page · {history.total_items} total
         </p>
       </div>
 
-      <div className="divide-y divide-border md:hidden">
+      <div data-statistics-history-cards className="divide-y divide-border md:hidden">
         {history.items.map((point) => (
           <article key={point.event_key} className="p-5">
             <div className="flex items-start justify-between gap-3">
@@ -495,7 +497,7 @@ function ScoreHistory({
         ))}
       </div>
 
-      <div className="hidden md:block">
+      <div data-statistics-history-table className="hidden md:block">
         <table className="w-full border-collapse text-left text-sm">
           <thead className="bg-surface-muted text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
             <tr>
@@ -523,14 +525,20 @@ function ScoreHistory({
       </div>
 
       {history.total_pages > 1 ? (
-        <nav aria-label="Score history pagination" className="flex flex-col gap-3 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+        <nav data-screen-only aria-label="Score history pagination" className="flex flex-col gap-3 border-t border-border px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">Page {history.page} of {history.total_pages}</p>
-          <div className="grid grid-cols-2 gap-2 sm:flex">
+          <div className="grid grid-cols-4 gap-2 sm:flex">
+            {history.page > 1 ? (
+              <Link href={statisticsHref(selection, "history", 1)} className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border px-4 text-sm font-semibold text-foreground hover:bg-surface-muted">First</Link>
+            ) : <span />}
             {history.page > 1 ? (
               <Link href={statisticsHref(selection, "history", history.page - 1)} className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border px-4 text-sm font-semibold text-foreground hover:bg-surface-muted">Previous</Link>
             ) : <span />}
             {history.page < history.total_pages ? (
               <Link href={statisticsHref(selection, "history", history.page + 1)} className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border px-4 text-sm font-semibold text-foreground hover:bg-surface-muted">Next</Link>
+            ) : null}
+            {history.page < history.total_pages ? (
+              <Link href={statisticsHref(selection, "history", history.total_pages)} className="inline-flex min-h-10 items-center justify-center rounded-xl border border-border px-4 text-sm font-semibold text-foreground hover:bg-surface-muted">Last</Link>
             ) : null}
           </div>
         </nav>
@@ -550,18 +558,44 @@ export function ShooterAnalyticsDashboard({
 }) {
   const summary = analytics.summary;
   const filtered = Object.values(selection).some(Boolean);
+  const selectedFilters = [
+    selection.season
+      ? `Season: ${analytics.filter_options.seasons.find((option) => String(option.id) === selection.season)?.label}`
+      : null,
+    selection.equipment
+      ? `Equipment: ${analytics.filter_options.equipment.find((option) => equipmentOptionValue(option) === selection.equipment)?.label}`
+      : null,
+    selection.position
+      ? `Position / style: ${analytics.filter_options.positions.find((option) => positionOptionValue(option) === selection.position)?.label}`
+      : null,
+    selection.distance
+      ? `Distance: ${analytics.filter_options.distances.find((option) => distanceOptionValue(option) === selection.distance)?.label}`
+      : null,
+  ].filter((value): value is string => Boolean(value));
+  const activeViewLabel = views.find((view) => view.id === activeView)?.label ?? "Overview";
 
   return (
-    <div className="min-w-0">
+    <div data-statistics-print-document className="min-w-0">
       <div className="mb-7 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="text-xs font-medium text-brand-strong">My shooting</p>
           <h1 className="mt-3 text-3xl font-semibold tracking-[-0.045em] text-foreground sm:text-4xl">Statistics</h1>
           <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-            Explore complete released physical scores using one canonical shooter analytics model.
+            Track your released scores, performance trends and progress over time.
           </p>
         </div>
-        <Badge tone="positive">Released Results only</Badge>
+        <Badge tone="positive">Released scores only</Badge>
+      </div>
+
+      <div data-print-only className="hidden border-y border-border py-3 text-sm text-foreground">
+        <p className="font-semibold">
+          {activeView === "history"
+            ? `Score history · Page ${analytics.history.page} of ${Math.max(analytics.history.total_pages, 1)}`
+            : activeViewLabel}
+        </p>
+        <p className="mt-1 text-xs text-muted-foreground">
+          Filters: {selectedFilters.length > 0 ? selectedFilters.join(" · ") : "All released results"}
+        </p>
       </div>
 
       <Filters analytics={analytics} selection={selection} activeView={activeView} />
@@ -569,7 +603,7 @@ export function ShooterAnalyticsDashboard({
 
       {analytics.component_scope === "filtered_components" && summary.physical_shoot_count > 0 ? (
         <div className="mt-5 rounded-xl border border-brand/20 bg-brand-subtle px-4 py-3 text-xs leading-5 text-brand-deep">
-          Component view: achieved score and maximum include only components matching the selected position and distance. Each physical score still appears once.
+          Filtered view: the score and maximum shown use only the selected position and distance. A shared shoot is still counted once.
         </div>
       ) : null}
 

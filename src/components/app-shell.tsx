@@ -515,7 +515,7 @@ export function AppShell({
   return (
     <UnsavedChangesProvider>
     <div className="min-h-screen bg-background lg:grid lg:grid-cols-[264px_1fr]">
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-[264px] flex-col bg-navigation text-white lg:flex">
+      <aside data-application-chrome className="fixed inset-y-0 left-0 z-30 hidden w-[264px] flex-col bg-navigation text-white lg:flex">
         <SidebarContent
           pathname={pathname}
           user={user}
@@ -525,7 +525,7 @@ export function AppShell({
       </aside>
 
       {menuOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div data-application-chrome className="fixed inset-0 z-50 lg:hidden">
           <button
             type="button"
             className="absolute inset-0 bg-hero-background/60 backdrop-blur-sm"
@@ -553,7 +553,7 @@ export function AppShell({
       ) : null}
 
       <div className="min-w-0 lg:col-start-2">
-        <header className="sticky top-0 z-20 border-b border-border bg-background/92 backdrop-blur-xl">
+        <header data-application-chrome className="sticky top-0 z-20 border-b border-border bg-background/92 backdrop-blur-xl">
           <div className="flex h-[72px] items-center gap-4 px-4 sm:px-7 lg:h-20 lg:px-10 xl:px-12">
             <button
               type="button"
@@ -597,7 +597,7 @@ export function AppShell({
             </div>
           </div>
         </header>
-        <main className="px-4 py-7 sm:px-7 sm:py-9 lg:px-10 lg:py-10 xl:px-12">
+        <main data-application-content className="px-4 py-7 sm:px-7 sm:py-9 lg:px-10 lg:py-10 xl:px-12">
           <div className="mx-auto max-w-[1420px]">{children}</div>
         </main>
       </div>
