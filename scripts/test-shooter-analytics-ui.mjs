@@ -5,7 +5,7 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 
-test("Statistics is a routed shooter destination backed by one server RPC", async () => {
+test("Statistics is a routed shooter destination backed by the canonical analytics loader", async () => {
   const [shell, page, data] = await Promise.all([
     read("src/components/app-shell.tsx"),
     read("src/app/(app)/statistics/page.tsx"),
@@ -13,7 +13,7 @@ test("Statistics is a routed shooter destination backed by one server RPC", asyn
   ]);
   assert.match(shell, /label: "Statistics"[\s\S]*href: "\/statistics"/);
   assert.doesNotMatch(shell, /Competition statistics are not available yet/);
-  assert.match(page, /getMyShooterAnalytics\(filters\.rpc\)/);
+  assert.match(page, /getMyShooterAnalytics\(\{[\s\S]*\.\.\.filters\.rpc[\s\S]*p_include_if_seeded_today: true/);
   assert.match(data, /supabase\.rpc\("get_my_shooter_analytics", filters\)/);
   assert.doesNotMatch(page, /shooting_score_values|competition_score_usages/);
 });
@@ -29,7 +29,8 @@ test("analytics UI covers empty, one-point, responsive, filter, tooltip and text
   assert.match(dashboard, /Season[\s\S]*Equipment[\s\S]*Position \/ style[\s\S]*Distance/);
   assert.match(dashboard, /defaultValue=\{value\}/);
   assert.match(dashboard, /Component view:/);
-  assert.match(dashboard, /max-w-full overflow-x-auto/);
+  assert.match(dashboard, /md:hidden[\s\S]*hidden md:block/);
+  assert.doesNotMatch(dashboard, /overflow-x-auto/);
   assert.match(chart, /<ResponsiveContainer[\s\S]*width="100%"[\s\S]*height="100%"/);
   assert.match(chart, /ticks=\{xAxisTicks\}/);
   assert.match(chart, /buildPerformanceChartData\(points\)/);

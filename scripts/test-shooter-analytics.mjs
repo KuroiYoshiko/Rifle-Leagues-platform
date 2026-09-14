@@ -59,7 +59,8 @@ beforeEach(async () => {
   await db.query(`insert into organisation_staff(organisation_id,user_id,role,status)
     values(1,$1,'owner','active')`, [actors.owner]);
   await db.query(`insert into club_memberships(id,club_id,user_id,role,status) overriding system value values
-    (1,1,$1,'member','active'),(2,2,$2,'member','active')`, [actors.shooter, actors.other]);
+    (1,1,$1,'member','active'),(2,2,$2,'member','active'),(3,1,$3,'member','active')`,
+    [actors.shooter, actors.other, actors.owner]);
   // This legacy dashboard relation is intentionally irrelevant to analytics authorization.
   await db.query("insert into user_organisations(user_id,organisation_id) values($1,2)", [actors.shooter]);
   await actor("shooter");
@@ -136,7 +137,7 @@ async function createCompetition({
     club_competition_entry_id,competition_entrant_id,club_membership_id,slot_number
   ) values($1,$2,$3,1) returning id`, [entry, entrant, membership])).rows[0].id;
   await flush();
-  return { competition, round, participant, components, sets };
+  return { competition, round, entry, entrant, participant, components, sets };
 }
 
 async function addScore(fixture, values, { source = null } = {}) {
@@ -174,10 +175,12 @@ async function analytics(filters = {}) {
     distanceMode: null,
     distanceValue: null,
     distanceUnit: null,
+    historyPage: 1,
+    includeIfSeededToday: false,
     ...filters,
   };
   return (await db.query(`select public.get_my_shooter_analytics(
-    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10
+    $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12
   ) data`, Object.values(values))).rows[0].data;
 }
 
@@ -227,6 +230,28 @@ test("points-dropped entry semantics remain canonical achieved performance", asy
   assert.equal(result.chart_points[0].achieved_score, 97);
   assert.equal(result.chart_points[0].score_percentage, 97);
   assert.equal(result.chart_points[0].components[0].score_method, "points_dropped");
+});
+
+test("points-dropped Ex100 normalization makes 0 dropped 100% and 5 dropped 95%", async () => {
+  const component = {
+    label: "Dropped",
+    maximum: 100,
+    method: "points_dropped",
+    positionMode: "fixed",
+    positionCode: "prone",
+    distanceMode: "fixed",
+    distanceValue: 25,
+    distanceUnit: "yards",
+    shots: 10,
+  };
+  const perfect = await createCompetition({ name: "Zero dropped", deadlineOffset: -20, components: [component] });
+  const fiveDropped = await createCompetition({ name: "Five dropped", deadlineOffset: -10, components: [component] });
+  await addScore(perfect, [{ set: 1, component: 1, achieved: 100 }]);
+  await addScore(fiveDropped, [{ set: 1, component: 1, achieved: 95 }]);
+
+  const result = await analytics();
+  assert.deepEqual(result.chart_points.map((point) => point.score_percentage), [100, 95]);
+  assert.deepEqual(result.chart_points.map((point) => point.achieved_score), [100, 95]);
 });
 
 test("summary metrics and trend use chronological normalized physical scores", async () => {
@@ -334,6 +359,138 @@ test("variable, not-applicable and legacy-null physical states remain explicit",
   assert.equal(legacyResult.summary.physical_shoot_count, 1);
   assert.equal(legacyResult.chart_points[0].equipment_label, "Unspecified equipment");
   assert.equal(legacyResult.chart_points[0].components[0].position_mode, "unspecified");
+});
+
+test("discipline groups use structured physical identity rather than Competition display names", async () => {
+  const compatibleA = await createCompetition({ name: "Postal Alpha", deadlineOffset: -30 });
+  const compatibleB = await createCompetition({ name: "Postal Beta", deadlineOffset: -20 });
+  const incompatible = await createCompetition({
+    name: "Postal Alpha",
+    season: 2,
+    deadlineOffset: -300,
+    equipment: "smallbore_rifle",
+    components: [{
+      label: "Score", maximum: 100, method: "points_scored",
+      positionMode: "fixed", positionCode: "benchrest",
+      distanceMode: "fixed", distanceValue: 25, distanceUnit: "yards", shots: 10,
+    }],
+  });
+  await addScore(compatibleA, [{ set: 1, component: 1, achieved: 80 }]);
+  await addScore(compatibleB, [{ set: 1, component: 1, achieved: 90 }]);
+  await addScore(incompatible, [{ set: 1, component: 1, achieved: 95 }]);
+
+  const result = await analytics();
+  assert.equal(result.disciplines.length, 2);
+  const air = result.disciplines.find((item) => item.equipment_label === "Air Rifle");
+  assert.equal(air.physical_shoot_count, 2);
+  assert.equal(air.average_score_percentage, 85);
+  assert.equal(result.disciplines.find((item) => item.equipment_label === "Smallbore Rifle").physical_shoot_count, 1);
+  assert.notEqual(result.disciplines[0].discipline_key, result.disciplines[1].discipline_key);
+});
+
+test("Season comparison uses canonical identity and respects the selected Season filter", async () => {
+  const old = await createCompetition({ name: "Old Season", season: 2, deadlineOffset: -300 });
+  const current = await createCompetition({ name: "Current Season", season: 1, deadlineOffset: -10 });
+  await addScore(old, [{ set: 1, component: 1, achieved: 80 }]);
+  await addScore(current, [{ set: 1, component: 1, achieved: 90 }]);
+
+  const overall = await analytics();
+  assert.deepEqual(new Set(overall.seasons.map((season) => season.season_id)), new Set([1, 2]));
+  const currentComparison = overall.seasons.find((season) => season.season_id === 1);
+  assert.equal(currentComparison.change_from_previous, 10);
+
+  const filtered = await analytics({ season: 2 });
+  assert.deepEqual(filtered.seasons.map((season) => season.season_id), [2]);
+  assert.equal(filtered.seasons[0].change_from_previous, null);
+  assert.equal(filtered.history.total_items, filtered.chart_points.length);
+});
+
+test("filtered canonical history paginates 10 physical sources without duplicates or omissions", async () => {
+  for (let index = 0; index < 23; index += 1) {
+    const equipment = index < 21 ? "air_rifle" : "smallbore_rifle";
+    const fixture = await createCompetition({
+      name: `History ${index + 1}`,
+      deadlineOffset: -(index + 1),
+      equipment,
+    });
+    await addScore(fixture, [{ set: 1, component: 1, achieved: 70 + index }]);
+  }
+
+  const filter = { equipmentKind: "builtin", equipmentCode: "air_rifle" };
+  const pages = await Promise.all([
+    analytics({ ...filter, historyPage: 1 }),
+    analytics({ ...filter, historyPage: 2 }),
+    analytics({ ...filter, historyPage: 3 }),
+  ]);
+  assert.deepEqual(pages.map((page) => page.history.items.length), [10, 10, 1]);
+  assert.equal(pages[0].history.page_size, 10);
+  assert.equal(pages[0].history.total_items, 21);
+  assert.equal(pages[0].chart_points.length, 21);
+  assert.ok(pages.flatMap((page) => page.history.items).every((point) => point.equipment_label === "Air Rifle"));
+  const keys = pages.flatMap((page) => page.history.items.map((point) => point.event_key));
+  assert.equal(new Set(keys).size, 21);
+});
+
+test("published Individual what-if inputs preserve the frozen roster and perform no Division mutation", async () => {
+  const fixture = await createCompetition({ name: "Seeded today", deadlineOffset: -10 });
+  const secondEntrant = (await admin(`insert into competition_entrants(
+    club_competition_entry_id,position
+  ) values($1,2) returning id`, [fixture.entry])).rows[0].id;
+  const secondParticipant = (await admin(`insert into competition_entrant_participants(
+    club_competition_entry_id,competition_entrant_id,club_membership_id,slot_number
+  ) values($1,$2,3,1) returning id`, [fixture.entry, secondEntrant])).rows[0].id;
+  await addScore(fixture, [{ set: 1, component: 1, achieved: 99 }]);
+
+  const context = (await admin(`insert into average_contexts(
+    organisation_id,name,basis_maximum
+  ) values(1,'Seed context',100) returning id`)).rows[0].id;
+  const policy = (await admin(`insert into average_policies(
+    organisation_id,name
+  ) values(1,'Seed policy') returning id`)).rows[0].id;
+  const version = (await admin(`insert into average_policy_versions(
+    average_policy_id,version_number,strategy,configuration
+  ) values($1,1,'manual','{}') returning id`, [policy])).rows[0].id;
+  await admin(`insert into competition_average_settings(
+    competition_id,average_context_id,average_policy_version_id
+  ) values($1,$2,$3)`, [fixture.competition, context, version]);
+  await admin(`insert into competition_participant_starting_averages(
+    competition_id,competition_entrant_participant_id,shooter_profile_id,
+    starting_average,average_context_id,average_policy_version_id,origin,status,frozen_at
+  ) values
+    ($1,$2,$3,80,$4,$5,'manual','frozen',now()),
+    ($1,$6,$7,95,$4,$5,'manual','frozen',now())`, [
+    fixture.competition, fixture.participant, actors.shooter, context, version,
+    secondParticipant, actors.owner,
+  ]);
+  await admin(`insert into competition_division_configs(
+    competition_id,target_size,status,published_at,
+    reviewed_starting_average_fingerprint,reviewed_starting_averages_at
+  ) values($1,2,'published',now(),'0123456789abcdef0123456789abcdef',now())`,
+  [fixture.competition]);
+  const division = (await admin(`insert into competition_divisions(
+    competition_id,name,position
+  ) values($1,'Division 1',1) returning id`, [fixture.competition])).rows[0].id;
+  await admin(`insert into competition_division_assignments(
+    competition_entrant_id,competition_id,competition_division_id
+  ) values($1,$3,$4),($2,$3,$4)`, [fixture.entrant, secondEntrant, fixture.competition, division]);
+  await flush();
+
+  const before = (await admin(`select
+    (select count(*)::integer from competition_division_assignments where competition_id=$1) assignments,
+    (select count(*)::integer from competition_participant_starting_averages where competition_id=$1) snapshots`,
+  [fixture.competition])).rows[0];
+  const result = await analytics({ includeIfSeededToday: true });
+  const candidate = result.if_seeded_today_inputs[0];
+  assert.equal(candidate.own_entrant_id, fixture.entrant);
+  assert.equal(candidate.target_size, 2);
+  assert.equal(candidate.current_division_name, "Division 1");
+  assert.equal(candidate.unavailable_reason, null);
+  assert.deepEqual(candidate.entrants.map((entrant) => entrant.starting_average), [80, 95]);
+  const after = (await admin(`select
+    (select count(*)::integer from competition_division_assignments where competition_id=$1) assignments,
+    (select count(*)::integer from competition_participant_starting_averages where competition_id=$1) snapshots`,
+  [fixture.competition])).rows[0];
+  assert.deepEqual(after, before);
 });
 
 test("the RPC is current-shooter-only, excludes inactive contexts, and denies anonymous callers", async () => {

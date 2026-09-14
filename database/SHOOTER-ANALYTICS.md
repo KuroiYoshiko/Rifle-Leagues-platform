@@ -1,4 +1,4 @@
-# Shooter performance analytics V1
+# Shooter Statistics workspace
 
 ## Existing authoritative model audit
 
@@ -19,7 +19,8 @@ standing, Series, Season, or Average storage.
 | Distance | Component `distance_mode`, `distance_value`, and `distance_unit` | Exact value and original unit for Fixed, plus Variable, Not applicable, and legacy Unspecified. No implicit unit conversion. |
 | Competition Series | `competitions.competition_series_id`; `competition_series` | Display metadata only. It is never physical identity or a score compatibility rule. |
 | Seasons | `competitions.league_season_id`; `league_seasons` | Exact filter and context. Only Open, Active, or Completed Seasons in Active Organisations qualify. |
-| Average Contexts | `average_contexts`; `competition_average_settings`; existing Starting/Running Average functions | Audited but intentionally not read. Score percentage is not a Starting or Running Average and does not change their domains. |
+| Starting and Running Averages | Frozen `competition_participant_starting_averages`; `public.get_competition_result_averages` | The Statistics percentage model remains separate. The optional “If seeded today” analysis reads the published Individual roster's frozen S/Av values and reuses the existing Competition R/Av projection without storing either value. |
+| Division seeding | `competition_division_configs.target_size`; published assignments; `generateIndividualDivisionDraft` | The server substitutes only the caller's current R/Av into an in-memory copy of the frozen roster and invokes the exact existing deterministic allocator. It never writes or moves an entrant. |
 | Concurrent Shooting | `shooting_score_sources`; `competition_score_usages`; optional `concurrent_shooting_round_id` provenance | The source is counted once physically; its separately released Competition usages remain separate context and participation. |
 
 ## Query architecture
@@ -40,8 +41,20 @@ The read pipeline is:
 4. apply exact structured filters;
 5. choose one deterministic display usage per source and aggregate canonical
    values once;
-6. return summary metrics, at most 500 chronological chart points, the latest
-   20 rows, and released-data-only filter choices.
+6. derive discipline groups from structured physical identity, never display
+   names, and derive Season comparisons from canonical Season IDs;
+7. return summary metrics, at most 500 chronological chart points, the latest
+   five Overview values, exactly ten filtered history events per requested page,
+   and released-data-only filter choices.
+
+The discipline key contains the equipment code/custom ID and the ordered
+component Course of Fire: position mode/code/custom ID, distance mode/value/unit,
+sets, maximum, scoring method and shot count. Unknown legacy Courses of Fire are
+kept separate per Competition because compatibility cannot be inferred. Season
+aggregates group by `league_seasons.id` and Organisation ID. The change column
+compares the mean with the immediately preceding displayed Season; it is labelled
+as overall performance because the discipline mix can differ unless filters
+narrow the scope.
 
 No materialized view or analytics table is introduced. Existing indexes cover
 the access path: `shooting_score_sources_shooter_profile_idx`, the source-leading
@@ -62,7 +75,31 @@ component cannot falsely satisfy Standing at 50 m.
 
 Legacy Competitions with valid score components and maxima remain in the general
 trend. Their missing equipment, position, and distance are returned as
-Unspecified; no sporting identity is fabricated.
+Unspecified; no sporting identity is fabricated and separate legacy
+Competitions are not merged into one discipline.
+
+## Trend semantics
+
+`trend_change` remains the regression slope multiplied by `point_count - 1`.
+It estimates the change across the complete selected chronological history in
+percentage points. The semantic state is Improving above +0.5, Declining below
+-0.5, Steady within that band, and unavailable below two points. It is not the
+difference between the latest two scores.
+
+## “If seeded today”
+
+The primary RPC optionally returns server-only inputs for the caller's published
+Individual Division participations. A complete reviewed/frozen roster and the
+published target size are required. The application then loads the existing
+canonical Competition R/Av projection, substitutes it for only the caller's
+frozen S/Av, preserves every other S/Av including `NULL` no-history values, and
+calls `generateIndividualDivisionDraft` from the Division management feature.
+
+The result is explicitly non-authoritative. It is not persisted, is not an
+official promotion/demotion, and does not predict a future or management-adjusted
+Division. Pair and Team formats are excluded. Missing R/Av makes the what-if
+unavailable. No six-card threshold is implemented because that sporting rule is
+unresolved.
 
 ## Date semantics
 
@@ -81,5 +118,7 @@ metadata, filter choices, HTML, and the RPC payload until its own release.
 2. Run `database/shooter-analytics.sql`.
 3. Deploy the application containing the `/statistics` route.
 
-The SQL is additive and rerunnable. It creates no new tables and performs no
-data backfill.
+The SQL is rerunnable. It replaces the earlier ten-argument analytics function
+with a twelve-argument version whose new history-page and what-if flags have
+defaults. It creates no new tables and performs no data backfill. A staging reset
+or reseed is not required.
