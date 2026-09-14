@@ -12,6 +12,11 @@ import {
 } from "@/app/(app)/division-management-actions";
 import { Badge, Card } from "@/components/ui";
 import {
+  divisionDraftNeedsRegenerationConfirmation,
+  generateIndividualDivisionDraft,
+  getDivisionSeedingAvailability,
+} from "@/lib/competition-division-seeding.mjs";
+import {
   getDivisionEntrantName,
   getDivisionParticipantName,
   type CompetitionDivisionManagement,
@@ -278,6 +283,13 @@ export function CompetitionDivisionManager({
   const [orderByAverage, setOrderByAverage] = useState(false);
   const [isPending, startTransition] = useTransition();
   const editable = workflowStatus === "draft";
+  const seedingAvailability = getDivisionSeedingAvailability({
+    entryFormat: data.entry_format,
+    workflowStatus,
+    averageConfigured: data.average.configured,
+    currentFingerprint: data.average.current_fingerprint,
+    entrants: data.entrants,
+  });
   const unresolvedAverageCount = data.average.configured
     ? data.entrants.filter((entrant) =>
         entrant.starting_average_state === "manual_required" ||
@@ -344,6 +356,62 @@ export function CompetitionDivisionManager({
     );
     setAssignments({});
     markChanged();
+  }
+
+  function generateFromStartingAverages() {
+    if (!seedingAvailability.available) return;
+    if (
+      divisionDraftNeedsRegenerationConfirmation(divisions) &&
+      !window.confirm(
+        "Generate a new draft from Starting Averages? This will replace the current draft Division work.",
+      )
+    ) {
+      return;
+    }
+
+    const generated = generateIndividualDivisionDraft(data.entrants, targetSize);
+    const generatedDivisions = generated.divisions.map((division, index) => ({
+      key: `generated-${index + 1}`,
+      name: division.name,
+    }));
+    const generatedAssignments = generated.divisions.reduce<AssignmentState>(
+      (result, division, index) => {
+        for (const entrantId of division.entrant_ids) {
+          result[entrantId] = generatedDivisions[index].key;
+        }
+        return result;
+      },
+      {},
+    );
+
+    setActionState({});
+    startTransition(async () => {
+      const result = await saveCompetitionDivisionDraft({
+        organisationId,
+        leagueSeasonId,
+        competitionId,
+        targetSize,
+        startingAverageFingerprint: data.average.current_fingerprint,
+        divisions: generated.divisions,
+      });
+      if (result.status !== "success") {
+        setActionState(result);
+        return;
+      }
+
+      setDivisions(generatedDivisions);
+      setAssignments(generatedAssignments);
+      setConfigured(true);
+      setDirty(false);
+      setOrderByAverage(true);
+      setActionState({
+        status: "success",
+        message:
+          generated.unseededEntrantIds.length > 0
+            ? `Division draft generated. ${generated.unseededEntrantIds.length} shooter${generated.unseededEntrantIds.length === 1 ? " needs" : "s need"} manual placement.`
+            : "Division draft generated from reviewed Starting Averages.",
+      });
+    });
   }
 
   function addDivision() {
@@ -569,6 +637,38 @@ export function CompetitionDivisionManager({
               </p>
             </div>
           </div>
+
+          <div className="mt-5 border-t border-border pt-5">
+            <h3 className="text-sm font-semibold text-foreground">
+              Automatic seeding
+            </h3>
+            {seedingAvailability.available ? (
+              <div className="mt-2 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                <div>
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    Generate a saved draft using each shooter&apos;s reviewed Starting Average.
+                  </p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5 text-muted-foreground">
+                    <li>Division 1 contains the strongest shooters.</li>
+                    <li>The draft can be reviewed and edited before publication.</li>
+                    <li>Shooters without an S/Av stay unseeded and need manual placement.</li>
+                  </ul>
+                </div>
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={generateFromStartingAverages}
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep disabled:cursor-wait disabled:opacity-60"
+                >
+                  {isPending ? "Generating…" : "Generate from Starting Averages"}
+                </button>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {seedingAvailability.reason}
+              </p>
+            )}
+          </div>
         </Card>
       )}
 
@@ -604,7 +704,7 @@ export function CompetitionDivisionManager({
             <div className="min-w-0 lg:sticky lg:top-6">
               <DivisionBucket
                 bucketKey={UNASSIGNED}
-                title="Unassigned"
+                title="Unseeded / manual placement"
                 entrants={entrantsByBucket[UNASSIGNED] ?? []}
                 divisions={divisions}
                 assignments={assignments}
