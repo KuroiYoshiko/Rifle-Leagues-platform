@@ -10,7 +10,13 @@ import {
   saveCompetitionDivisionDraft,
   type DivisionActionState,
 } from "@/app/(app)/division-management-actions";
+import { ConfirmationDialog } from "@/components/confirmation-dialog";
 import { Badge, Card } from "@/components/ui";
+import {
+  divisionDraftNeedsRegenerationConfirmation,
+  generateIndividualDivisionDraft,
+  getDivisionSeedingAvailability,
+} from "@/lib/competition-division-seeding.mjs";
 import {
   getDivisionEntrantName,
   getDivisionParticipantName,
@@ -41,7 +47,7 @@ function formatStartingAverage(value: number | null | undefined) {
 }
 
 function averageStateLabel(entrant: DivisionEntrant) {
-  if (entrant.starting_average_state === "frozen") return "Frozen";
+  if (entrant.starting_average_state === "frozen") return "Finalised";
   if (entrant.starting_average_state === "manual_required") {
     return "Manual Starting Average required";
   }
@@ -173,6 +179,8 @@ function DivisionBucket({
   targetSize,
   onMove,
   controls,
+  description,
+  emptyMessage,
 }: {
   bucketKey: string;
   title: string;
@@ -183,6 +191,8 @@ function DivisionBucket({
   targetSize: number;
   onMove: (entrantId: number, destination: string) => void;
   controls?: ReactNode;
+  description?: string;
+  emptyMessage?: string;
 }) {
   const { ref, isDropTarget } = useDroppable({
     id: `bucket:${bucketKey}`,
@@ -207,6 +217,11 @@ function DivisionBucket({
             {entrants.length} entrant{entrants.length === 1 ? "" : "s"}
             {isUnassigned ? "" : ` · target ${targetSize}`}
           </p>
+          {description ? (
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {description}
+            </p>
+          ) : null}
         </div>
         {controls}
       </div>
@@ -230,7 +245,7 @@ function DivisionBucket({
         ))}
         {entrants.length === 0 ? (
           <div className="rounded-xl border border-dashed border-border px-3 py-7 text-center text-xs text-muted-foreground">
-            {editable ? "Drop entrant units here" : "No entrants"}
+            {editable ? (emptyMessage ?? "Drop entrant units here") : "No entrants"}
           </div>
         ) : null}
       </div>
@@ -276,8 +291,17 @@ export function CompetitionDivisionManager({
   const [actionState, setActionState] = useState<DivisionActionState>({});
   const [dirty, setDirty] = useState(false);
   const [orderByAverage, setOrderByAverage] = useState(false);
+  const [replacementConfirmationOpen, setReplacementConfirmationOpen] =
+    useState(false);
   const [isPending, startTransition] = useTransition();
   const editable = workflowStatus === "draft";
+  const seedingAvailability = getDivisionSeedingAvailability({
+    entryFormat: data.entry_format,
+    workflowStatus,
+    averageConfigured: data.average.configured,
+    currentFingerprint: data.average.current_fingerprint,
+    entrants: data.entrants,
+  });
   const unresolvedAverageCount = data.average.configured
     ? data.entrants.filter((entrant) =>
         entrant.starting_average_state === "manual_required" ||
@@ -344,6 +368,62 @@ export function CompetitionDivisionManager({
     );
     setAssignments({});
     markChanged();
+  }
+
+  function generateFromStartingAverages() {
+    if (!seedingAvailability.available) return;
+    if (divisionDraftNeedsRegenerationConfirmation(divisions)) {
+      setReplacementConfirmationOpen(true);
+      return;
+    }
+
+    saveGeneratedDivisionDraft();
+  }
+
+  function saveGeneratedDivisionDraft() {
+    const generated = generateIndividualDivisionDraft(data.entrants, targetSize);
+    const generatedDivisions = generated.divisions.map((division, index) => ({
+      key: `generated-${index + 1}`,
+      name: division.name,
+    }));
+    const generatedAssignments = generated.divisions.reduce<AssignmentState>(
+      (result, division, index) => {
+        for (const entrantId of division.entrant_ids) {
+          result[entrantId] = generatedDivisions[index].key;
+        }
+        return result;
+      },
+      {},
+    );
+
+    setActionState({});
+    startTransition(async () => {
+      const result = await saveCompetitionDivisionDraft({
+        organisationId,
+        leagueSeasonId,
+        competitionId,
+        targetSize,
+        startingAverageFingerprint: data.average.current_fingerprint,
+        divisions: generated.divisions,
+      });
+      if (result.status !== "success") {
+        setActionState(result);
+        return;
+      }
+
+      setDivisions(generatedDivisions);
+      setAssignments(generatedAssignments);
+      setConfigured(true);
+      setDirty(false);
+      setOrderByAverage(true);
+      setActionState({
+        status: "success",
+        message:
+          generated.unseededEntrantIds.length > 0
+            ? `Division draft generated. ${generated.unseededEntrantIds.length} shooter${generated.unseededEntrantIds.length === 1 ? " needs" : "s need"} manual placement.`
+            : "Division draft generated from reviewed Starting Averages.",
+      });
+    });
   }
 
   function addDivision() {
@@ -480,7 +560,7 @@ export function CompetitionDivisionManager({
               </p>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 {data.average.review_status === "finalised"
-                  ? "Starting Averages are frozen for this Competition. Returning divisions to draft does not thaw them."
+                  ? "Starting Averages are finalised for this Competition. Returning divisions to draft does not change them."
                   : data.average.review_status === "stale"
                     ? "Starting Averages changed after this layout was reviewed. Assignments were not moved; review and save the draft again."
                     : unresolvedAverageCount > 0
@@ -569,6 +649,38 @@ export function CompetitionDivisionManager({
               </p>
             </div>
           </div>
+
+          <div className="mt-5 border-t border-border pt-5">
+            <h3 className="text-sm font-semibold text-foreground">
+              Automatic seeding
+            </h3>
+            {seedingAvailability.available ? (
+              <div className="mt-2 grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
+                <div>
+                  <p className="text-sm leading-6 text-muted-foreground">
+                    Generate a saved draft using each shooter&apos;s reviewed Starting Average.
+                  </p>
+                  <ul className="mt-2 list-disc space-y-1 pl-5 text-xs leading-5 text-muted-foreground">
+                    <li>Division 1 contains the strongest shooters.</li>
+                    <li>The draft can be reviewed and edited before publication.</li>
+                    <li>Shooters without an S/Av remain in Needs placement until assigned.</li>
+                  </ul>
+                </div>
+                <button
+                  type="button"
+                  disabled={isPending}
+                  onClick={generateFromStartingAverages}
+                  className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep disabled:cursor-wait disabled:opacity-60"
+                >
+                  {isPending ? "Generating…" : "Generate from Starting Averages"}
+                </button>
+              </div>
+            ) : (
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                {seedingAvailability.reason}
+              </p>
+            )}
+          </div>
         </Card>
       )}
 
@@ -604,7 +716,9 @@ export function CompetitionDivisionManager({
             <div className="min-w-0 lg:sticky lg:top-6">
               <DivisionBucket
                 bucketKey={UNASSIGNED}
-                title="Unassigned"
+                title="Needs placement"
+                description="Entrants not yet assigned to a Division."
+                emptyMessage="Drop entrants here to leave them unassigned"
                 entrants={entrantsByBucket[UNASSIGNED] ?? []}
                 divisions={divisions}
                 assignments={assignments}
@@ -705,6 +819,40 @@ export function CompetitionDivisionManager({
           Resolve every participant Starting Average before publishing divisions.
         </p>
       ) : null}
+
+      <ConfirmationDialog
+        open={replacementConfirmationOpen}
+        title="Generate new Division draft?"
+        description={
+          <p>
+            This will replace the current draft Division assignments with a new
+            allocation based on Starting Averages. You can still review and edit
+            the draft before publishing.
+          </p>
+        }
+        onCancel={() => setReplacementConfirmationOpen(false)}
+        cancelDisabled={isPending}
+      >
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={() => setReplacementConfirmationOpen(false)}
+          className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold transition hover:bg-surface-muted disabled:opacity-60"
+        >
+          Cancel
+        </button>
+        <button
+          type="button"
+          disabled={isPending}
+          onClick={() => {
+            setReplacementConfirmationOpen(false);
+            saveGeneratedDivisionDraft();
+          }}
+          className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep disabled:cursor-wait disabled:opacity-60"
+        >
+          {isPending ? "Generating…" : "Generate new draft"}
+        </button>
+      </ConfirmationDialog>
     </>
   );
 }

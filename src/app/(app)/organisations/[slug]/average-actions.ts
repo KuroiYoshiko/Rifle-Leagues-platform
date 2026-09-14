@@ -80,7 +80,7 @@ function averageError(error: RpcError, fallback: string) {
     return "Archived Average Contexts and Policies cannot be selected for new settings.";
   }
   if (message.includes("frozen")) {
-    return "These settings cannot be changed because a Starting Average is frozen.";
+    return "These settings cannot be changed because Starting Averages have been finalised.";
   }
   if (message.includes("finalised")) {
     return "Starting Averages were already finalised for this Competition.";
