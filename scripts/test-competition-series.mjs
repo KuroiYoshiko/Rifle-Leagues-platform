@@ -85,6 +85,16 @@ const typedConfig = `v.name,v.description,v.entry_format,v.team_size,v.shots_per
   array(select value::date from jsonb_array_elements_text(coalesce($2::jsonb->'round_shoot_by_dates','[]'::jsonb)))`;
 const existingUpdateSql = `select public.update_competition(1,1,$1,${typedConfig},$3)
   from jsonb_populate_record(null::public.competitions,$2::jsonb) v`;
+const competitionReadProjection = `id,league_season_id,competition_series_id,name,slug,description,status,
+  entry_format,team_size,scoring_method,maximum_score_per_round,shots_per_round,uses_x_score,
+  number_of_rounds,entry_fee,entry_window_mode,custom_entry_opens_at,custom_entry_closes_at,
+  start_date_mode,custom_starts_at,sets_per_round,ranking_method,best_rounds_count,
+  local_scoring_enabled,shooting_details_version,equipment_type_code,
+  organisation_equipment_type_id,created_at,updated_at`;
+const competitionScoreComponentReadProjection = `id,competition_id,position,short_label,maximum_score,
+  score_method,shooting_position_mode,shooting_position_code,organisation_shooting_position_id,
+  distance_mode,distance_value,distance_unit,shots,created_at,updated_at`;
+const competitionRoundReadProjection = `id,competition_id,round_number,deadline,shoot_by_date,created_at,updated_at`;
 async function createOneOff(values) {
   return (await db.query(`select public.create_competition(1,1,${typedConfig}) data
     from jsonb_populate_record(null::public.competitions,$2::jsonb) v where $1::integer=1`, [1, values])).rows[0].data;
@@ -129,6 +139,59 @@ test("owner and manager create atomic Series/drafts; staff read drafts, ordinary
   await actor("anon");
   await rejected("select * from public.competition_series", [], /permission denied/);
   await rejected("select public.get_competition_series_sources(1,2,$1)", [ownerEdition.competition_series_id], /permission denied/);
+});
+
+test("authenticated Competition loaders retain SELECT access to their canonical columns", async () => {
+  const competition = await create();
+  const list = (await db.query(`select ${competitionReadProjection} from public.competitions
+    where league_season_id=$1 order by name,id`, [1])).rows;
+  const detail = (await db.query(`select ${competitionReadProjection} from public.competitions
+    where league_season_id=$1 and slug=$2`, [1, list[0].slug])).rows;
+  const components = (await db.query(`select ${competitionScoreComponentReadProjection}
+    from public.competition_score_components where competition_id=$1 order by position`, [competition.id])).rows;
+  const rounds = (await db.query(`select ${competitionRoundReadProjection}
+    from public.competition_rounds where competition_id=$1 order by round_number`, [competition.id])).rows;
+
+  assert.equal(list.some((row) => String(row.id) === String(competition.id)), true);
+  assert.equal(detail.length, 1);
+  assert.equal(components.length, 1);
+  assert.equal(rounds.length, 2);
+});
+
+test("rerunning the older configuration refactor preserves every current authenticated read projection", async () => {
+  const isolated = new PGlite();
+  try {
+    await installCanonicalDatabase(isolated);
+    await isolated.exec(await sqlFile("competition-configuration-refactor"));
+    await isolated.query("insert into auth.users(id) values($1)", [actors.owner]);
+    await isolated.exec(`
+      insert into organisations(id,name,slug,status) overriding system value
+        values(1,'Read Organisation','read-organisation','active');
+      insert into organisation_staff(organisation_id,user_id,role,status)
+        values(1,'${actors.owner}','owner','active');
+      insert into league_seasons(id,organisation_id,name,slug,status,entry_opens_at,entry_closes_at,starts_at,ends_at)
+        overriding system value values(1,1,'Read Season','read-season','draft',current_date-10,current_date+10,current_date+20,current_date+100);
+      insert into competitions(id,league_season_id,name,slug,status,entry_format,team_size,scoring_method,number_of_rounds)
+        overriding system value values(1,1,'Read Competition','read-competition','draft','individual',1,'points_scored',1);
+      insert into competition_score_components(competition_id,position,maximum_score,score_method)
+        values(1,1,100,'points_scored');
+      insert into competition_rounds(competition_id,round_number,deadline)
+        values(1,1,current_date+30);
+    `);
+    await isolated.query("select set_config('request.jwt.claim.sub',$1,false)", [actors.owner]);
+    await isolated.exec("set role authenticated");
+
+    assert.equal((await isolated.query(`select ${competitionReadProjection} from competitions
+      where league_season_id=1 order by name,id`)).rows.length, 1);
+    assert.equal((await isolated.query(`select ${competitionReadProjection} from competitions
+      where league_season_id=1 and slug='read-competition'`)).rows.length, 1);
+    assert.equal((await isolated.query(`select ${competitionScoreComponentReadProjection}
+      from competition_score_components where competition_id=1 order by position`)).rows.length, 1);
+    assert.equal((await isolated.query(`select ${competitionRoundReadProjection}
+      from competition_rounds where competition_id=1 order by round_number`)).rows.length, 1);
+  } finally {
+    await isolated.close();
+  }
 });
 
 test("failure after Competition creation leaves no orphan; Organisation mismatch and direct writes denied", async () => {

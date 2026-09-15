@@ -25,7 +25,7 @@ export async function installCanonicalDatabase(db, {
     "user-profiles", "organisations", "organisation-staff", "organisation-registration",
     "organisation-about-contact", "organisation-information-cards",
     "clubs-and-memberships", "club-foundation", "league-seasons", "competition-rounds",
-    "competition-entries", "competition-divisions", "competition-configuration-refactor",
+    "competition-entries", "club-teams", "competition-divisions", "competition-configuration-refactor",
     "competition-configuration-save-fix", "competition-configuration-owner-save-fix",
     "competition-lifecycle-management", "competition-scores",
     "competition-scores-deferred-trigger-security", "competition-scores-participant-formats",

@@ -11,9 +11,16 @@ export type CompetitionEntryActionState = {
   errors?: string[];
 };
 
+export type EntryCompositionUnit =
+  | Array<number | null>
+  | {
+      clubTeamId: number | null;
+      participants: Array<number | null>;
+    };
+
 type EntryCompositionInput = {
   entryId: number;
-  entrants: Array<Array<number | null>>;
+  entrants: EntryCompositionUnit[];
 };
 
 const safeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -37,14 +44,34 @@ function validComposition(input: EntryCompositionInput) {
     Array.isArray(input?.entrants) &&
     input.entrants.length <= 1000 &&
     input.entrants.every(
-      (entrant) =>
-        Array.isArray(entrant) &&
-        entrant.length <= 20 &&
-        entrant.every(
+      (entrant) => {
+        const participants = Array.isArray(entrant)
+          ? entrant
+          : entrant?.participants;
+        return (
+          Array.isArray(participants) &&
+          participants.length <= 20 &&
+          participants.every(
           (membershipId) =>
             membershipId === null || positiveInteger(membershipId) !== null,
-        ),
+          ) &&
+          (Array.isArray(entrant) ||
+            entrant.clubTeamId === null ||
+            positiveInteger(entrant.clubTeamId) !== null)
+        );
+      },
     )
+  );
+}
+
+function databaseEntrants(entrants: EntryCompositionUnit[]) {
+  return entrants.map((entrant) =>
+    Array.isArray(entrant)
+      ? entrant
+      : {
+          club_team_id: entrant.clubTeamId,
+          participants: entrant.participants,
+        },
   );
 }
 
@@ -92,7 +119,9 @@ function entryError(
   if (code === "23505") {
     return {
       status: "error",
-      message: "A shooter can only be selected once in this club entry.",
+      message: databaseMessage?.includes("Club Team")
+        ? databaseMessage
+        : "A shooter can only be selected once in this club entry.",
     };
   }
 
@@ -182,7 +211,7 @@ export async function saveClubCompetitionEntry(
 
   const { error } = await supabase.rpc("save_club_competition_entry", {
     p_club_competition_entry_id: input.entryId,
-    p_entrants: input.entrants,
+    p_entrants: databaseEntrants(input.entrants),
   });
 
   if (error) {
@@ -220,7 +249,7 @@ export async function submitClubCompetitionEntry(
     "save_and_submit_club_competition_entry",
     {
       p_club_competition_entry_id: input.entryId,
-      p_entrants: input.entrants,
+      p_entrants: databaseEntrants(input.entrants),
     },
   );
 

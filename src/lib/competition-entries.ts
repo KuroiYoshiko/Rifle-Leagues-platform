@@ -72,6 +72,9 @@ export type EntryParticipant = {
 export type EntryUnit = {
   id: number;
   position: number;
+  club_team_id: number | null;
+  club_team_name_snapshot: string | null;
+  entrant_label: string;
   participants: EntryParticipant[];
 };
 

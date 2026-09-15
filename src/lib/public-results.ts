@@ -95,6 +95,10 @@ type PublicResultsCatalogProjection = Omit<
       entrants: Array<{
         id: number;
         club_name: string;
+        entry_format: "individual" | "pairs" | "team";
+        club_team_id: number | null;
+        club_team_name_snapshot: string | null;
+        entrant_label: string;
         participants: Array<{
           first_name: string | null;
           last_name: string | null;

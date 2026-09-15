@@ -47,6 +47,8 @@ export type MyShootingCompetition = {
   competition_entrant_id: number;
   entrant_position: number;
   entrant_label: string;
+  club_team_id: number | null;
+  club_team_name_snapshot: string | null;
   club_competition_entry_id: number;
   entry_status: "submitted";
   submitted_at: string;

@@ -58,6 +58,8 @@ export type CompetitionEntrantRoundResult = {
   entrant_format: CompetitionEntryFormat;
   entrant_label: string;
   entrant_position: number;
+  club_team_id: number | null;
+  club_team_name_snapshot: string | null;
   club_id: number;
   club_name: string;
   division: CompetitionResultDivision | null;

@@ -9,6 +9,7 @@ import {
   getClubCompetitionEntryStatusLabel,
   searchClubCompetitionEntryMembers,
 } from "@/lib/competition-entries";
+import { getClubTeams } from "@/lib/club-teams";
 import { getCompetitionBySlug, getCompetitionEntryFormatLabel } from "@/lib/competitions";
 import {
   formatLeagueSeasonDate,
@@ -56,7 +57,12 @@ export default async function CompetitionEntryPage({
     notFound();
   }
 
-  const initialMembers = await searchClubCompetitionEntryMembers(entryId);
+  const [initialMembers, clubTeams] = await Promise.all([
+    searchClubCompetitionEntryMembers(entryId),
+    competition.entry_format === "team"
+      ? getClubTeams(data.club.id, false)
+      : Promise.resolve(null),
+  ]);
   const formatLabel = getCompetitionEntryFormatLabel(competition.entry_format);
   const entryWindow =
     data.competition.effective_entry_opens_at &&
@@ -101,7 +107,11 @@ export default async function CompetitionEntryPage({
       </Card>
 
       <div className="mt-8">
-        <CompetitionEntryEditor data={data} initialMembers={initialMembers} />
+        <CompetitionEntryEditor
+          data={data}
+          initialMembers={initialMembers}
+          initialClubTeams={clubTeams?.teams ?? []}
+        />
       </div>
     </OrganisationPageFrame>
   );

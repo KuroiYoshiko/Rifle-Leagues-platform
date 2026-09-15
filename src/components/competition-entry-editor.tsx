@@ -8,6 +8,7 @@ import {
   useTransition,
   type FormEvent,
 } from "react";
+import { createClubTeam } from "@/app/(app)/clubs/[slug]/teams/actions";
 import {
   saveClubCompetitionEntry,
   searchCompetitionEntryMembers,
@@ -15,8 +16,10 @@ import {
   submitClubCompetitionEntry,
   withdrawClubCompetitionEntry,
   type CompetitionEntryActionState,
+  type EntryCompositionUnit,
 } from "@/app/(app)/competition-entry-actions";
 import { Badge, Card } from "@/components/ui";
+import type { ClubTeam } from "@/lib/club-teams";
 import type {
   ClubCompetitionEntryManagement,
   EntryMemberSearchResult,
@@ -26,6 +29,11 @@ type MemberOption = EntryMemberSearchResult & {
   membership_status?: "pending" | "active" | "rejected" | "left";
 };
 type SlotTarget = { entrantIndex: number; slotIndex: number };
+type EditableEntrant = {
+  clubTeamId: number | null;
+  clubTeamNameSnapshot: string | null;
+  participants: Array<number | null>;
+};
 
 function memberName(member: Pick<MemberOption, "first_name" | "last_name">) {
   return (
@@ -69,12 +77,15 @@ function stateMessage(state: CompetitionEntryActionState | null) {
 export function CompetitionEntryEditor({
   data,
   initialMembers,
+  initialClubTeams = [],
 }: {
   data: ClubCompetitionEntryManagement;
   initialMembers: EntryMemberSearchResult[];
+  initialClubTeams?: ClubTeam[];
 }) {
   const router = useRouter();
   const withdrawDialogRef = useRef<HTMLDialogElement>(null);
+  const createTeamDialogRef = useRef<HTMLDialogElement>(null);
   const [pending, startTransition] = useTransition();
   const [query, setQuery] = useState("");
   const [members, setMembers] = useState<MemberOption[]>(() => {
@@ -94,20 +105,27 @@ export function CompetitionEntryEditor({
     }
     return Array.from(byId.values());
   });
+  const [clubTeams, setClubTeams] = useState(initialClubTeams);
   const [searchError, setSearchError] = useState<string>();
   const [actionState, setActionState] = useState<CompetitionEntryActionState | null>(null);
   const [status, setStatus] = useState(data.entry.status);
   const [activeSlot, setActiveSlot] = useState<SlotTarget | null>(null);
+  const [createTeamForEntrant, setCreateTeamForEntrant] = useState<number | null>(null);
+  const [newTeamName, setNewTeamName] = useState("");
   const size = data.competition.team_size;
   const format = data.competition.entry_format;
   const readOnly = data.entry_window_state !== "open" || status === "withdrawn";
-  const [entrants, setEntrants] = useState<Array<Array<number | null>>>(() =>
+  const [entrants, setEntrants] = useState<EditableEntrant[]>(() =>
     data.entrants.map((entrant) => {
-      const slots = Array<number | null>(size).fill(null);
+      const participants = Array<number | null>(size).fill(null);
       for (const participant of entrant.participants) {
-        slots[participant.slot_number - 1] = participant.membership_id;
+        participants[participant.slot_number - 1] = participant.membership_id;
       }
-      return slots;
+      return {
+        clubTeamId: entrant.club_team_id,
+        clubTeamNameSnapshot: entrant.club_team_name_snapshot,
+        participants,
+      };
     }),
   );
 
@@ -115,10 +133,28 @@ export function CompetitionEntryEditor({
     () => new Map(members.map((member) => [member.membership_id, member])),
     [members],
   );
-  const selectedIds = new Set(entrants.flat().filter((value): value is number => value !== null));
+  const selectedIds = new Set(
+    entrants
+      .flatMap((entrant) => entrant.participants)
+      .filter((value): value is number => value !== null),
+  );
+  const selectedTeamIds = new Set(
+    entrants
+      .map((entrant) => entrant.clubTeamId)
+      .filter((value): value is number => value !== null),
+  );
+
+  function entrantDisplayLabel(entrant: EditableEntrant, index: number) {
+    if (format !== "team") return `${formatLabel(format)} ${index + 1}`;
+    return entrant.clubTeamNameSnapshot || `Team ${index + 1}`;
+  }
 
   function addEntrant() {
-    setEntrants((current) => [...current, Array<number | null>(size).fill(null)]);
+    setEntrants((current) => [...current, {
+      clubTeamId: null,
+      clubTeamNameSnapshot: null,
+      participants: Array<number | null>(size).fill(null),
+    }]);
     setActiveSlot({ entrantIndex: entrants.length, slotIndex: 0 });
     setActionState(null);
   }
@@ -130,15 +166,22 @@ export function CompetitionEntryEditor({
     }
 
     if (format === "individual") {
-      setEntrants((current) => [...current, [membershipId]]);
+      setEntrants((current) => [...current, {
+        clubTeamId: null,
+        clubTeamNameSnapshot: null,
+        participants: [membershipId],
+      }]);
     } else if (activeSlot) {
-      setEntrants((current) =>
-        current.map((entrant, entrantIndex) =>
-          entrantIndex === activeSlot.entrantIndex
-            ? entrant.map((value, slotIndex) => slotIndex === activeSlot.slotIndex ? membershipId : value)
-            : entrant,
-        ),
-      );
+      setEntrants((current) => current.map((entrant, entrantIndex) =>
+        entrantIndex === activeSlot.entrantIndex
+          ? {
+              ...entrant,
+              participants: entrant.participants.map((value, slotIndex) =>
+                slotIndex === activeSlot.slotIndex ? membershipId : value,
+              ),
+            }
+          : entrant,
+      ));
       setActiveSlot(null);
     } else {
       setActionState({ status: "error", message: `Choose a ${formatLabel(format).toLowerCase()} shooter slot first.` });
@@ -148,13 +191,32 @@ export function CompetitionEntryEditor({
   }
 
   function clearSlot(entrantIndex: number, slotIndex: number) {
-    setEntrants((current) =>
-      current.map((entrant, currentIndex) =>
-        currentIndex === entrantIndex
-          ? entrant.map((value, currentSlot) => currentSlot === slotIndex ? null : value)
-          : entrant,
-      ),
-    );
+    setEntrants((current) => current.map((entrant, currentIndex) =>
+      currentIndex === entrantIndex
+        ? {
+            ...entrant,
+            participants: entrant.participants.map((value, currentSlot) =>
+              currentSlot === slotIndex ? null : value,
+            ),
+          }
+        : entrant,
+    ));
+    setActionState(null);
+  }
+
+  function selectClubTeam(entrantIndex: number, teamId: number | null) {
+    const team = teamId === null
+      ? null
+      : clubTeams.find((candidate) => candidate.id === teamId) ?? null;
+    setEntrants((current) => current.map((entrant, currentIndex) =>
+      currentIndex === entrantIndex
+        ? {
+            ...entrant,
+            clubTeamId: team?.id ?? null,
+            clubTeamNameSnapshot: team?.name ?? null,
+          }
+        : entrant,
+    ));
     setActionState(null);
   }
 
@@ -162,6 +224,15 @@ export function CompetitionEntryEditor({
     setEntrants((current) => current.filter((_, currentIndex) => currentIndex !== index));
     setActiveSlot(null);
     setActionState(null);
+  }
+
+  function entrantPayload(): EntryCompositionUnit[] {
+    return format === "team"
+      ? entrants.map((entrant) => ({
+          clubTeamId: entrant.clubTeamId,
+          participants: entrant.participants,
+        }))
+      : entrants.map((entrant) => entrant.participants);
   }
 
   function runMutation(
@@ -193,6 +264,43 @@ export function CompetitionEntryEditor({
         for (const member of result.members) byId.set(member.membership_id, member);
         return Array.from(byId.values());
       });
+    });
+  }
+
+  function openCreateTeam(entrantIndex: number) {
+    setCreateTeamForEntrant(entrantIndex);
+    setNewTeamName("");
+    setActionState(null);
+    createTeamDialogRef.current?.showModal();
+  }
+
+  function createTeam(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (createTeamForEntrant === null) return;
+    startTransition(async () => {
+      const result = await createClubTeam({
+        clubId: data.club.id,
+        clubSlug: data.club.slug,
+        name: newTeamName,
+      });
+      setActionState(result);
+      if (result.status !== "success" || !result.team) return;
+      const team: ClubTeam = {
+        ...result.team,
+        competition_usage_count: result.team.competition_usage_count ?? 0,
+        submitted_usage_count: result.team.submitted_usage_count ?? 0,
+        created_at: result.team.created_at ?? new Date().toISOString(),
+      };
+      setClubTeams((current) => [...current, team].sort(
+        (left, right) => left.display_order - right.display_order,
+      ));
+      setEntrants((current) => current.map((entrant, index) =>
+        index === createTeamForEntrant
+          ? { ...entrant, clubTeamId: team.id, clubTeamNameSnapshot: team.name }
+          : entrant,
+      ));
+      createTeamDialogRef.current?.close();
+      setCreateTeamForEntrant(null);
     });
   }
 
@@ -234,7 +342,7 @@ export function CompetitionEntryEditor({
           <Card key={entrantIndex} className="p-5 sm:p-6">
             <div className="flex items-center justify-between gap-4">
               <h2 className="font-semibold text-foreground">
-                {formatLabel(format)} {entrantIndex + 1}
+                {entrantDisplayLabel(entrant, entrantIndex)}
               </h2>
               {!readOnly ? (
                 <button type="button" onClick={() => removeEntrant(entrantIndex)} className="text-xs font-semibold text-danger hover:underline">
@@ -242,8 +350,55 @@ export function CompetitionEntryEditor({
                 </button>
               ) : null}
             </div>
+
+            {format === "team" ? (
+              <div className="mt-4 rounded-xl border border-border bg-surface-muted p-4">
+                <label className="text-xs font-semibold uppercase tracking-[0.08em] text-muted-foreground">
+                  Use existing Club Team
+                  <select
+                    value={entrant.clubTeamId ?? ""}
+                    disabled={readOnly || pending}
+                    onChange={(event) => selectClubTeam(
+                      entrantIndex,
+                      event.target.value ? Number(event.target.value) : null,
+                    )}
+                    className="mt-2 min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm font-medium normal-case tracking-normal text-foreground outline-none focus:border-brand focus:ring-4 focus:ring-brand/10 disabled:opacity-70"
+                  >
+                    <option value="">Continue without a persistent Team</option>
+                    {entrant.clubTeamId && !clubTeams.some((team) => team.id === entrant.clubTeamId) ? (
+                      <option value={entrant.clubTeamId} disabled>
+                        {entrant.clubTeamNameSnapshot ?? "Unavailable Team"} (archived or unavailable)
+                      </option>
+                    ) : null}
+                    {clubTeams.map((team) => (
+                      <option
+                        key={team.id}
+                        value={team.id}
+                        disabled={selectedTeamIds.has(team.id) && entrant.clubTeamId !== team.id}
+                      >
+                        {team.name}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {!readOnly ? (
+                  <button
+                    type="button"
+                    disabled={pending}
+                    onClick={() => openCreateTeam(entrantIndex)}
+                    className="mt-3 text-xs font-semibold text-brand-deep hover:underline disabled:opacity-60"
+                  >
+                    + Create new Club Team
+                  </button>
+                ) : null}
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  This identity groups Competition editions. Shooters below remain specific to this entry.
+                </p>
+              </div>
+            ) : null}
+
             <div className="mt-4 grid gap-3">
-              {entrant.map((membershipId, slotIndex) => {
+              {entrant.participants.map((membershipId, slotIndex) => {
                 const member = membershipId ? membersById.get(membershipId) : null;
                 const isActiveTarget = activeSlot?.entrantIndex === entrantIndex && activeSlot.slotIndex === slotIndex;
                 return (
@@ -292,7 +447,7 @@ export function CompetitionEntryEditor({
             </p>
             {format !== "individual" && activeSlot ? (
               <p className="mt-3 rounded-lg bg-brand-subtle px-3 py-2 text-xs font-semibold text-brand-deep">
-                Choosing Shooter {activeSlot.slotIndex + 1} for {formatLabel(format)} {activeSlot.entrantIndex + 1}
+                Choosing Shooter {activeSlot.slotIndex + 1} for {entrantDisplayLabel(entrants[activeSlot.entrantIndex], activeSlot.entrantIndex)}
               </p>
             ) : null}
             <form onSubmit={searchMembers} className="mt-4 flex gap-2">
@@ -330,10 +485,10 @@ export function CompetitionEntryEditor({
 
           {!readOnly ? (
             <div className="mt-5 grid gap-3">
-              <button type="button" disabled={pending} onClick={() => runMutation(() => saveClubCompetitionEntry({ entryId: data.entry.id, entrants }), "draft")} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep hover:bg-brand-subtle disabled:opacity-60">
+              <button type="button" disabled={pending} onClick={() => runMutation(() => saveClubCompetitionEntry({ entryId: data.entry.id, entrants: entrantPayload() }), "draft")} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-5 text-sm font-semibold text-brand-deep hover:bg-brand-subtle disabled:opacity-60">
                 {pending ? "Working…" : "Save draft"}
               </button>
-              <button type="button" disabled={pending} onClick={() => runMutation(() => submitClubCompetitionEntry({ entryId: data.entry.id, entrants }), "submitted")} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-brand-deep disabled:opacity-60">
+              <button type="button" disabled={pending} onClick={() => runMutation(() => submitClubCompetitionEntry({ entryId: data.entry.id, entrants: entrantPayload() }), "submitted")} className="inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground hover:bg-brand-deep disabled:opacity-60">
                 {pending ? "Working…" : status === "submitted" ? "Submit changes" : "Submit entry"}
               </button>
               <button type="button" disabled={pending} onClick={() => withdrawDialogRef.current?.showModal()} className="inline-flex min-h-11 items-center justify-center rounded-xl px-5 text-sm font-semibold text-danger hover:bg-danger-subtle disabled:opacity-60">
@@ -345,6 +500,27 @@ export function CompetitionEntryEditor({
           )}
         </Card>
       </aside>
+
+      <dialog ref={createTeamDialogRef} aria-labelledby="create-entry-team-title" onCancel={(event) => {
+        event.preventDefault();
+        if (!pending) createTeamDialogRef.current?.close();
+      }} className="m-auto w-[min(92vw,32rem)] rounded-2xl border border-border bg-surface p-0 text-foreground shadow-2xl backdrop:bg-hero-background/70 backdrop:backdrop-blur-sm">
+        <form onSubmit={createTeam} className="p-6 sm:p-7">
+          <h2 id="create-entry-team-title" className="text-lg font-semibold">Create Club Team</h2>
+          <p className="mt-2 text-sm leading-6 text-muted-foreground">
+            The Team will be selected for this entrant. Its shooters remain unchanged.
+          </p>
+          <label className="mt-5 block text-sm font-semibold text-foreground">
+            Team name
+            <input autoFocus value={newTeamName} onChange={(event) => setNewTeamName(event.target.value)} maxLength={120} placeholder="Leave blank for the next Team number" className="mt-2 min-h-11 w-full rounded-xl border border-border bg-surface px-3 text-sm outline-none focus:border-brand focus:ring-4 focus:ring-brand/10" />
+          </label>
+          <div className="mt-4">{stateMessage(actionState)}</div>
+          <div className="mt-6 flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+            <button type="button" disabled={pending} onClick={() => createTeamDialogRef.current?.close()} className="min-h-11 rounded-xl border border-border px-5 text-sm font-semibold disabled:opacity-60">Cancel</button>
+            <button disabled={pending} className="min-h-11 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-60">{pending ? "Creating…" : "Create and select"}</button>
+          </div>
+        </form>
+      </dialog>
 
       <dialog ref={withdrawDialogRef} aria-labelledby="withdraw-entry-title" className="m-auto w-[min(92vw,32rem)] rounded-2xl border border-border bg-surface p-0 text-foreground shadow-2xl backdrop:bg-hero-background/70 backdrop:backdrop-blur-sm">
         <div className="p-6 sm:p-7">

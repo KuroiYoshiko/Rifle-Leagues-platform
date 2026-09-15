@@ -260,7 +260,8 @@ always drafts, and publishing remains a deliberate validated transition.
 For an existing populated installation, then run the complete focused additive
 [`database/competition-configuration-refactor.sql`](database/competition-configuration-refactor.sql)
 file after `database/season-description.sql`, `database/competition-rounds.sql`,
-`database/competition-entries.sql`, and `database/competition-divisions.sql`.
+`database/competition-entries.sql`, `database/club-teams.sql`, and
+`database/competition-divisions.sql`.
 It adds Competition date inheritance, optional Shoot-by dates, ranking and
 scoring-access configuration, and the relational Course of Fire table. It
 backfills existing one-score Competitions without replacing any Competition,
@@ -630,6 +631,32 @@ RLS and Data API grants; club-owner/official mutation and roster RPCs; safe
 member-facing competition reads; and the deduplicated MY ORGANISATIONS read
 model. Entry mutations use database time and require a published competition,
 an open parent season, and the configured inclusive entry window.
+
+## Persistent Club Teams
+
+Run the complete additive
+[`database/club-teams.sql`](database/club-teams.sql) file after
+`database/competition-entries.sql` and before the Division, Competition
+configuration, Results, public Results, and My Shooting projections. It creates
+Club-owned Team identities and nullable Team-only entrant links without
+backfilling existing entrants. Existing unlinked Team entrants continue to use
+their `Team N` labels, so no reset or reseed is required.
+
+For an already-installed database, deploy the changed SQL files in this order:
+
+1. `database/club-teams.sql`
+2. `database/competition-divisions.sql`
+3. `database/competition-configuration-refactor.sql`
+4. `database/competition-results.sql`
+5. `database/public-results.sql`
+6. `database/my-shooting-competitions.sql`
+
+Club owners and officials manage Teams through narrow authenticated RPCs.
+Members may read their active Club's Team list, while organisation roles alone
+grant no Club Team authority. Team identity is descriptive metadata only:
+Competition entrants, participant slots, physical score sources, Results,
+Starting Averages, Divisions, Series, and Concurrent Shooting retain their
+existing ownership and calculation boundaries.
 
 ## Club roles and membership approval
 

@@ -1,6 +1,7 @@
 -- Authenticated shooter Competition hub read model.
--- Run after database/public-results.sql and the current Competition Division
--- and configuration files. Safe to rerun on populated databases.
+-- Run after database/club-teams.sql, database/public-results.sql, and the
+-- current Competition Division and configuration files. Safe to rerun on
+-- populated databases.
 --
 -- This projection contains participation and schedule metadata only. Official
 -- placing, ranking values, S/Av and R/Av remain owned by the existing released
@@ -29,6 +30,8 @@ begin
       participant.slot_number,
       entrant.id as competition_entrant_id,
       entrant.position as entrant_position,
+      entrant.club_team_id,
+      entrant.club_team_name_snapshot,
       entry.id as club_competition_entry_id,
       entry.status as entry_status,
       entry.submitted_at,
@@ -100,11 +103,13 @@ begin
         'slot_number', own.slot_number,
         'competition_entrant_id', own.competition_entrant_id,
         'entrant_position', own.entrant_position,
-        'entrant_label', case own.entry_format
-          when 'pairs' then 'Pair ' || own.entrant_position::text
-          when 'team' then 'Team ' || own.entrant_position::text
-          else 'Individual ' || own.entrant_position::text
-        end,
+        'entrant_label', private.competition_entrant_label(
+          own.entry_format,
+          own.entrant_position,
+          own.club_team_name_snapshot
+        ),
+        'club_team_id', own.club_team_id,
+        'club_team_name_snapshot', own.club_team_name_snapshot,
         'club_competition_entry_id', own.club_competition_entry_id,
         'entry_status', own.entry_status,
         'submitted_at', own.submitted_at,

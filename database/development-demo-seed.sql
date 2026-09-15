@@ -13,7 +13,8 @@
 --   9. database/league-seasons.sql
 --  10. database/competition-rounds.sql
 --  11. database/competition-entries.sql
---  12. database/competition-divisions.sql
+--  12. database/club-teams.sql
+--  13. database/competition-divisions.sql
 --
 -- Then run this entire file in the Supabase SQL Editor. It creates 40
 -- confirmed email/password Auth users and the complete demo domain world and

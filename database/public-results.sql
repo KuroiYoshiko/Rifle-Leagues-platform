@@ -5,6 +5,31 @@
 -- changed.
 begin;
 
+create schema if not exists private;
+
+-- Public catalogue deployment remains compatible while the additive Club Team
+-- columns are being rolled out. Missing snapshots retain the legacy Team N
+-- label until club-teams.sql is installed.
+create or replace function private.competition_entrant_label(
+  p_entry_format text,
+  p_position integer,
+  p_club_team_name_snapshot text default null
+)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select case p_entry_format
+    when 'individual' then 'Individual ' || p_position::text
+    when 'pairs' then 'Pair ' || p_position::text
+    else coalesce(nullif(p_club_team_name_snapshot, ''), 'Team ' || p_position::text)
+  end
+$$;
+
+revoke execute on function private.competition_entrant_label(text, integer, text)
+  from public, anon, authenticated;
+
 create or replace function public.get_public_results_catalog(
   p_organisation_slug text default null,
   p_season_slug text default null,
@@ -268,6 +293,14 @@ begin
               select jsonb_agg(jsonb_build_object(
                 'id', entrant.id,
                 'club_name', club.name,
+                'entry_format', v_competition.entry_format,
+                'club_team_id', (to_jsonb(entrant) ->> 'club_team_id')::bigint,
+                'club_team_name_snapshot', to_jsonb(entrant) ->> 'club_team_name_snapshot',
+                'entrant_label', private.competition_entrant_label(
+                  v_competition.entry_format,
+                  entrant.position,
+                  to_jsonb(entrant) ->> 'club_team_name_snapshot'
+                ),
                 'participants', coalesce((
                   select jsonb_agg(jsonb_build_object(
                     'first_name', profile.first_name,

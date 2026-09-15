@@ -16,6 +16,7 @@ import {
 export type ClubSection =
   | "overview"
   | "competitions"
+  | "teams"
   | "members"
   | "information"
   | "settings";
@@ -27,6 +28,7 @@ const sectionItems: Array<{
 }> = [
   { id: "overview", label: "Overview", suffix: "" },
   { id: "competitions", label: "Competitions", suffix: "/competitions" },
+  { id: "teams", label: "Teams", suffix: "/teams" },
   { id: "members", label: "Members", suffix: "/members" },
   { id: "information", label: "Information", suffix: "/information" },
   { id: "settings", label: "Club settings", suffix: "/settings" },
@@ -127,6 +129,8 @@ export function ClubPageFrame({
               (item) =>
                 (item.id === "information"
                   ? membershipIsOwner || informationCardCount > 0
+                  : item.id === "teams"
+                    ? membershipIsActive
                   : membershipIsManager ||
                     (item.id !== "members" && item.id !== "settings")),
             )
