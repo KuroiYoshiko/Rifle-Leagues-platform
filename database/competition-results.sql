@@ -7,6 +7,29 @@
 
 begin;
 
+-- Keep this projection independently rerunnable during additive deployment.
+-- Before club-teams.sql exists the snapshot input is simply NULL and legacy
+-- labels are unchanged.
+create or replace function private.competition_entrant_label(
+  p_entry_format text,
+  p_position integer,
+  p_club_team_name_snapshot text default null
+)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select case p_entry_format
+    when 'individual' then 'Individual ' || p_position::text
+    when 'pairs' then coalesce(nullif(p_club_team_name_snapshot, ''), 'Pair ' || p_position::text)
+    else coalesce(nullif(p_club_team_name_snapshot, ''), 'Team ' || p_position::text)
+  end
+$$;
+
+revoke execute on function private.competition_entrant_label(text, integer, text)
+  from public, anon, authenticated;
+
 -- Resolves one exact result-reading scope. Organisation scope may inspect all
 -- submitted entrants; club scope is deliberately restricted to an active
 -- owner/official of that submitted club entry, even when the caller also has
@@ -164,6 +187,8 @@ begin
       entry.id as club_competition_entry_id,
       entrant.id as entrant_id,
       entrant.position as entrant_position,
+      (to_jsonb(entrant) ->> 'club_team_id')::bigint as club_team_id,
+      to_jsonb(entrant) ->> 'club_team_name_snapshot' as club_team_name_snapshot,
       club.id as club_id,
       club.name as club_name
     from public.club_competition_entries as entry
@@ -299,6 +324,8 @@ begin
       entrant_round.club_competition_entry_id,
       entrant_round.entrant_id,
       entrant_round.entrant_position,
+      entrant_round.club_team_id,
+      entrant_round.club_team_name_snapshot,
       entrant_round.club_id,
       entrant_round.club_name,
       competition.entry_format,
@@ -358,6 +385,8 @@ begin
       entrant_round.club_competition_entry_id,
       entrant_round.entrant_id,
       entrant_round.entrant_position,
+      entrant_round.club_team_id,
+      entrant_round.club_team_name_snapshot,
       entrant_round.club_id,
       entrant_round.club_name,
       competition.entry_format,
@@ -448,12 +477,14 @@ begin
               jsonb_build_object(
                 'entrant_id', entrant.entrant_id,
                 'entrant_format', entrant.entry_format,
-                'entrant_label', case entrant.entry_format
-                  when 'pairs' then 'Pair ' || entrant.entrant_position::text
-                  when 'team' then 'Team ' || entrant.entrant_position::text
-                  else 'Individual ' || entrant.entrant_position::text
-                end,
+                'entrant_label', private.competition_entrant_label(
+                  entrant.entry_format,
+                  entrant.entrant_position,
+                  entrant.club_team_name_snapshot
+                ),
                 'entrant_position', entrant.entrant_position,
+                'club_team_id', entrant.club_team_id,
+                'club_team_name_snapshot', entrant.club_team_name_snapshot,
                 'club_id', entrant.club_id,
                 'club_name', entrant.club_name,
                 'division', entrant.division,

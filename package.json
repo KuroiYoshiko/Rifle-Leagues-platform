@@ -12,7 +12,7 @@
     "test:round-robin": "node --test scripts/test-round-robin-results.mjs scripts/test-round-robin-labels.mjs",
     "test:public-results": "node --test scripts/test-public-results.mjs",
     "test:saved-results": "node --test scripts/test-saved-public-results.mjs",
-    "test:club-operations": "node --test scripts/test-club-operational-summaries.mjs",
+    "test:club-operations": "node --test scripts/test-club-operational-summaries.mjs scripts/test-club-teams.mjs",
     "test:series": "node --test scripts/test-competition-series.mjs",
     "test:concurrent": "node --test scripts/test-concurrent-shooting.mjs scripts/test-concurrent-shooting-ui.mjs scripts/test-concurrent-score-entry-ui.mjs",
     "test:concurrent-score-entry": "node --test scripts/test-concurrent-score-entry-ui.mjs",

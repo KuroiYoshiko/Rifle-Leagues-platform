@@ -166,6 +166,25 @@ const competitionScoreComponentColumns =
   "id, competition_id, position, short_label, maximum_score, score_method, shooting_position_mode, shooting_position_code, organisation_shooting_position_id, distance_mode, distance_value, distance_unit, shots, created_at, updated_at";
 const routeSafeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
+function logCompetitionLoadError(
+  operation: string,
+  error: {
+    code?: string;
+    message?: string;
+    details?: string;
+    hint?: string;
+  },
+) {
+  if (process.env.NODE_ENV !== "production") {
+    console.error(`[competitions] ${operation} failed`, {
+      code: error.code,
+      message: error.message,
+      details: error.details,
+      hint: error.hint,
+    });
+  }
+}
+
 const entryFormatLabels: Record<CompetitionEntryFormat, string> = {
   individual: "Individual",
   pairs: "Pairs",
@@ -201,6 +220,7 @@ export const getCompetitions = cache(async (leagueSeasonId: number) => {
     .order("id", { ascending: true });
 
   if (error) {
+    logCompetitionLoadError("list", error);
     throw new Error("Competitions could not be loaded.");
   }
 
@@ -225,6 +245,7 @@ export const getCompetitionBySlug = cache(
       .maybeSingle();
 
     if (error) {
+      logCompetitionLoadError("detail by slug", error);
       throw new Error("The competition could not be loaded.");
     }
 
@@ -243,6 +264,7 @@ export const getCompetitionById = cache(async (competitionId: number) => {
     .maybeSingle();
 
   if (error) {
+    logCompetitionLoadError("detail by id", error);
     throw new Error("The competition could not be loaded.");
   }
 
@@ -274,6 +296,7 @@ export const getCompetitionScoreComponents = cache(
       .order("position", { ascending: true });
 
     if (error) {
+      logCompetitionLoadError("Course of Fire", error);
       throw new Error("The Competition Course of Fire could not be loaded.");
     }
 

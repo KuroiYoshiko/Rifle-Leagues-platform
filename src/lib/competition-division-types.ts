@@ -22,7 +22,11 @@ export type DivisionEntrant = {
   id: number;
   club_id: number;
   club_name: string;
+  entry_format: "individual" | "pairs" | "team";
   entry_position: number;
+  club_team_id: number | null;
+  club_team_name_snapshot: string | null;
+  entrant_label: string;
   participants: DivisionParticipant[];
   starting_average: number | null;
   starting_average_state: DivisionStartingAverageState;
@@ -74,6 +78,10 @@ export type CompetitionDivisionManagement = {
 export type PublishedDivisionEntrant = {
   id: number;
   club_name: string;
+  entry_format: "individual" | "pairs" | "team";
+  club_team_id: number | null;
+  club_team_name_snapshot: string | null;
+  entrant_label: string;
   is_current_user: boolean;
   participants: DivisionParticipant[];
 };
@@ -101,7 +109,9 @@ export function getDivisionParticipantName(
 }
 
 export function getDivisionEntrantName(
-  entrant: Pick<DivisionEntrant, "participants">,
+  entrant: Pick<DivisionEntrant, "entry_format" | "entrant_label" | "participants">,
 ) {
-  return entrant.participants.map(getDivisionParticipantName).join(" · ");
+  return entrant.entry_format === "team"
+    ? entrant.entrant_label
+    : entrant.participants.map(getDivisionParticipantName).join(" · ");
 }

@@ -1,4 +1,4 @@
--- Run after database/competition-entries.sql.
+-- Run after database/competition-entries.sql and database/club-teams.sql.
 -- Adds manual competition division planning and publication only. No seeding,
 -- averages, scoring, standings, payments, promotion, or relegation are included.
 
@@ -366,7 +366,15 @@ begin
           'id', entrant.id,
           'club_id', club.id,
           'club_name', club.name,
+          'entry_format', competition.entry_format,
           'entry_position', entrant.position,
+          'club_team_id', entrant.club_team_id,
+          'club_team_name_snapshot', entrant.club_team_name_snapshot,
+          'entrant_label', private.competition_entrant_label(
+            competition.entry_format,
+            entrant.position,
+            entrant.club_team_name_snapshot
+          ),
           'participants', coalesce((
             select jsonb_agg(
               jsonb_build_object(
@@ -866,6 +874,22 @@ begin
               jsonb_build_object(
                 'id', entrant.id,
                 'club_name', club.name,
+                'entry_format', (
+                  select competition.entry_format
+                  from public.competitions as competition
+                  where competition.id = p_competition_id
+                ),
+                'club_team_id', entrant.club_team_id,
+                'club_team_name_snapshot', entrant.club_team_name_snapshot,
+                'entrant_label', private.competition_entrant_label(
+                  (
+                    select competition.entry_format
+                    from public.competitions as competition
+                    where competition.id = p_competition_id
+                  ),
+                  entrant.position,
+                  entrant.club_team_name_snapshot
+                ),
                 'is_current_user', exists (
                   select 1
                   from public.competition_entrant_participants as own_participant

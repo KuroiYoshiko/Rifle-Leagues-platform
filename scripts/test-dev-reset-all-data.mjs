@@ -142,6 +142,10 @@ test("placeholder aborts and an edited copy resets only a disposable database", 
     await runtimeDb.exec(`
       insert into public.organisations(name,slug,status)
       values ('Disposable Organisation','disposable-organisation','active');
+      insert into public.clubs(name,slug,status)
+      values ('Disposable Club','disposable-club','active');
+      insert into public.club_teams(club_id,name,display_order)
+      select id,'Disposable Team',1 from public.clubs where slug='disposable-club';
     `);
 
     const editedSql = resetSql.replace(
@@ -158,6 +162,7 @@ test("placeholder aborts and an edited copy resets only a disposable database", 
       select
         (select count(*) from public.profiles) as profiles,
         (select count(*) from public.organisations) as organisations,
+        (select count(*) from public.club_teams) as club_teams,
         (select count(*) from public.shooting_equipment_types) as equipment_types,
         (select count(*) from public.shooting_positions) as positions
     `);
@@ -167,6 +172,7 @@ test("placeholder aborts and an edited copy resets only a disposable database", 
     assert.deepEqual(domainCounts.rows, [{
       profiles: 0,
       organisations: 0,
+      club_teams: 0,
       equipment_types: 8,
       positions: 4,
     }]);

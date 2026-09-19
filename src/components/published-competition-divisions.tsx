@@ -39,9 +39,11 @@ export function PublishedCompetitionDivisionsView({
               <li key={entrant.id} className="py-2.5">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold text-foreground">
-                    {entrant.participants
-                      .map(getDivisionParticipantName)
-                      .join(" · ")}
+                    {entrant.entry_format === "team"
+                      ? entrant.entrant_label
+                      : entrant.participants
+                          .map(getDivisionParticipantName)
+                          .join(" · ")}
                   </span>
                   {entrant.is_current_user ? (
                     <Badge tone="brand">You</Badge>
@@ -50,6 +52,11 @@ export function PublishedCompetitionDivisionsView({
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {entrant.club_name}
                 </p>
+                {entrant.entry_format === "team" ? (
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {entrant.participants.map(getDivisionParticipantName).join(" · ")}
+                  </p>
+                ) : null}
               </li>
             ))}
           </ul>

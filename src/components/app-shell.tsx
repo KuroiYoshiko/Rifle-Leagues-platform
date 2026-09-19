@@ -369,6 +369,7 @@ function Navigation({
       items: [
         { label: "Overview", href: basePath },
         { label: "Competitions", href: `${basePath}/competitions` },
+        { label: "Teams", href: `${basePath}/teams` },
         ...(club.role === "official" || club.role === "owner"
           ? [{ label: "Members", href: `${basePath}/members` }]
           : []),

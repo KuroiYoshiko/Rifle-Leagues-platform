@@ -1,5 +1,6 @@
 -- Run after database/season-description.sql, database/competition-rounds.sql,
--- database/competition-entries.sql, and database/competition-divisions.sql.
+-- database/competition-entries.sql, database/club-teams.sql, and
+-- database/competition-divisions.sql.
 --
 -- Focused, additive upgrade for populated RifleLeagues installations. This
 -- script does not recreate competitions, rounds, entries, entrants, divisions,
@@ -979,6 +980,40 @@ grant select (
   updated_at
 ) on table public.competition_score_components to authenticated;
 
+-- Structured Course-of-Fire columns are added by the later shooting-details
+-- schema. A rerun on an upgraded database must not revoke their read grants,
+-- while a clean install must still work before those columns exist.
+do $$
+declare
+  v_column_name text;
+begin
+  foreach v_column_name in array array[
+    'shooting_position_mode',
+    'shooting_position_code',
+    'organisation_shooting_position_id',
+    'distance_mode',
+    'distance_value',
+    'distance_unit',
+    'shots'
+  ]
+  loop
+    if exists (
+      select 1
+      from pg_catalog.pg_attribute
+      where attrelid = 'public.competition_score_components'::regclass
+        and attname = v_column_name
+        and attnum > 0
+        and not attisdropped
+    ) then
+      execute format(
+        'grant select (%I) on table public.competition_score_components to authenticated',
+        v_column_name
+      );
+    end if;
+  end loop;
+end;
+$$;
+
 drop policy if exists "Authenticated users can read visible competition score components"
   on public.competition_score_components;
 create policy "Authenticated users can read visible competition score components"
@@ -1022,6 +1057,37 @@ grant select (
   created_at,
   updated_at
 ) on table public.competitions to authenticated;
+
+-- This additive refactor can be rerun after later Competition features have
+-- added their read-model columns. Preserve those column grants when present,
+-- while remaining installable before their owning schema files on a clean DB.
+do $$
+declare
+  v_column_name text;
+begin
+  foreach v_column_name in array array[
+    'competition_series_id',
+    'shooting_details_version',
+    'equipment_type_code',
+    'organisation_equipment_type_id'
+  ]
+  loop
+    if exists (
+      select 1
+      from pg_catalog.pg_attribute
+      where attrelid = 'public.competitions'::regclass
+        and attname = v_column_name
+        and attnum > 0
+        and not attisdropped
+    ) then
+      execute format(
+        'grant select (%I) on table public.competitions to authenticated',
+        v_column_name
+      );
+    end if;
+  end loop;
+end;
+$$;
 
 revoke select on table public.competition_rounds from authenticated;
 grant select (
@@ -1766,6 +1832,13 @@ begin
         jsonb_build_object(
           'id', entrant.id,
           'position', entrant.position,
+          'club_team_id', entrant.club_team_id,
+          'club_team_name_snapshot', entrant.club_team_name_snapshot,
+          'entrant_label', private.competition_entrant_label(
+            competition.entry_format,
+            entrant.position,
+            entrant.club_team_name_snapshot
+          ),
           'participants', coalesce((
             select jsonb_agg(
               jsonb_build_object(
@@ -2010,7 +2083,15 @@ begin
           'id', entrant.id,
           'club_id', club.id,
           'club_name', club.name,
+          'entry_format', competition.entry_format,
           'entry_position', entrant.position,
+          'club_team_id', entrant.club_team_id,
+          'club_team_name_snapshot', entrant.club_team_name_snapshot,
+          'entrant_label', private.competition_entrant_label(
+            competition.entry_format,
+            entrant.position,
+            entrant.club_team_name_snapshot
+          ),
           'participants', coalesce((
             select jsonb_agg(
               jsonb_build_object(
