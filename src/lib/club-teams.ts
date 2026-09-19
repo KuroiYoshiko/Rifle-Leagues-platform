@@ -29,6 +29,15 @@ export const getClubTeams = cache(async (
     p_include_archived: includeArchived,
   });
 
+  if (error && process.env.NODE_ENV !== "production") {
+    console.error("[club-teams] get_club_teams failed", JSON.stringify({
+      code: error.code ?? null,
+      message: error.message ?? null,
+      details: error.details ?? null,
+      hint: error.hint ?? null,
+    }));
+  }
+
   if (error || !data || typeof data !== "object" || Array.isArray(data)) {
     return null;
   }

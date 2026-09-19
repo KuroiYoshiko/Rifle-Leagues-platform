@@ -134,12 +134,17 @@ afterEach(async () => db.exec("rollback; reset role"));
 test("active owners and officials manage Club Teams; members and organisation staff alone cannot", async () => {
   const defaultTeam = await createTeam();
   assert.equal(defaultTeam.name, "Team 1");
+  const ownerList = await call("get_club_teams", [1, true]);
+  assert.equal(ownerList.can_manage, true);
+  assert.deepEqual(ownerList.teams.map((team) => team.name), ["Team 1"]);
 
   await actor("official");
   const namedTeam = await createTeam("  Basildon   A  ");
   assert.equal(namedTeam.name, "Basildon A");
   const renamed = await call("rename_club_team", [namedTeam.id, "Basildon Elite"]);
   assert.equal(renamed.name, "Basildon Elite");
+  const officialList = await call("get_club_teams", [1, true]);
+  assert.equal(officialList.can_manage, true);
 
   await expectError(() => createTeam(" basildon   elite "), /already exists/i);
   await call("archive_club_team", [defaultTeam.id]);
@@ -155,9 +160,44 @@ test("active owners and officials manage Club Teams; members and organisation st
   await expectError(() => call("rename_club_team", [defaultTeam.id, "Member Rename"]), /owner or official/i);
 
   await actor("organisationOwner");
+  await expectError(() => call("get_club_teams", [1, true]), /active membership/i);
   await expectError(() => createTeam("Organisation Team"), /owner or official/i);
   const leaked = await db.query("select id from public.club_teams order by id");
   assert.equal(leaked.rows.length, 0);
+
+  await actor("anon");
+  await expectError(() => call("get_club_teams", [1, true]), /permission denied/i);
+});
+
+test("Club Team read RPC retains its exact hardened callable contract", async () => {
+  const metadata = (await admin(`select
+      p.oid::regprocedure::text as signature,
+      p.prosecdef,
+      p.provolatile,
+      p.proconfig,
+      pg_get_functiondef(p.oid) as definition,
+      has_function_privilege('authenticated', p.oid, 'execute') as authenticated_execute,
+      has_function_privilege('anon', p.oid, 'execute') as anon_execute
+    from pg_proc as p
+    where p.oid = 'public.get_club_teams(bigint,boolean)'::regprocedure`)).rows[0];
+
+  assert.equal(metadata.signature, "get_club_teams(bigint,boolean)");
+  assert.equal(metadata.prosecdef, true);
+  assert.equal(metadata.provolatile, "v");
+  assert.match(String(metadata.proconfig), /search_path=/);
+  assert.equal(metadata.authenticated_execute, true);
+  assert.equal(metadata.anon_execute, false);
+  assert.match(metadata.definition, /private\.require_club_team_member\(p_club_id, false\)/);
+  assert.match(metadata.definition, /public\.club_teams/);
+  assert.match(metadata.definition, /public\.competition_entrants/);
+  assert.match(metadata.definition, /public\.club_competition_entries/);
+
+  const authority = (await admin(`select pg_get_functiondef(
+    'private.require_club_team_member(bigint,boolean)'::regprocedure
+  ) as definition`)).rows[0].definition;
+  assert.match(authority, /auth\.uid\(\)/);
+  assert.match(authority, /membership\.role in \('owner', 'official'\)/);
+  assert.match(authority, /membership\.status = 'active'/);
 });
 
 test("database constraints reject cross-Club, non-Team, duplicate and archived links while preserving unlinked entrants", async () => {

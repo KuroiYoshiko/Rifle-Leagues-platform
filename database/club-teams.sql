@@ -296,7 +296,7 @@ create or replace function public.get_club_teams(
 )
 returns jsonb
 language plpgsql
-stable
+volatile
 security definer
 set search_path = ''
 as $$
