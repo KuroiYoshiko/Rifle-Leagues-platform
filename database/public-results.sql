@@ -22,7 +22,7 @@ set search_path = ''
 as $$
   select case p_entry_format
     when 'individual' then 'Individual ' || p_position::text
-    when 'pairs' then 'Pair ' || p_position::text
+    when 'pairs' then coalesce(nullif(p_club_team_name_snapshot, ''), 'Pair ' || p_position::text)
     else coalesce(nullif(p_club_team_name_snapshot, ''), 'Team ' || p_position::text)
   end
 $$;

@@ -632,15 +632,18 @@ member-facing competition reads; and the deduplicated MY ORGANISATIONS read
 model. Entry mutations use database time and require a published competition,
 an open parent season, and the configured inclusive entry window.
 
-## Persistent Club Teams
+## Persistent Club Pairs and Teams
 
 Run the complete additive
 [`database/club-teams.sql`](database/club-teams.sql) file after
 `database/competition-entries.sql` and before the Division, Competition
 configuration, Results, public Results, and My Shooting projections. It creates
-Club-owned Team identities and nullable Team-only entrant links without
-backfilling existing entrants. Existing unlinked Team entrants continue to use
-their `Team N` labels, so no reset or reseed is required.
+Club-owned Pair/Team identities, fixed-size normalized current rosters, and
+nullable edition-local entrant links without backfilling existing entrants.
+Existing V1 identities are retained in an explicit `Needs setup` state until a
+Club manager chooses the type, fixed size, and complete active roster. Existing
+unlinked Pair/Team entrants continue to use their `Pair N`/`Team N` labels, so
+no reset or reseed is required.
 
 For an already-installed database, deploy the changed SQL files in this order:
 
@@ -651,10 +654,17 @@ For an already-installed database, deploy the changed SQL files in this order:
 5. `database/public-results.sql`
 6. `database/my-shooting-competitions.sql`
 
-Club owners and officials manage Teams through narrow authenticated RPCs.
-Members may read their active Club's Team list, while organisation roles alone
-grant no Club Team authority. Team identity is descriptive metadata only:
-Competition entrants, participant slots, physical score sources, Results,
+When upgrading an installation that already has the complete Persistent Club
+Teams V1 chain, this Pair/current-roster correction only requires rerunning
+`database/club-teams.sql`, then `database/competition-results.sql`, then
+`database/public-results.sql`.
+
+Club owners and officials manage names and current rosters through narrow
+authenticated RPCs. Members may read their active Club's Pair/Team list, while
+organisation roles alone grant no authority. Selecting a compatible unit copies
+its current roster into edition-local entrant participants; later roster edits do
+not rewrite saved Competition participation. Persistent identity remains
+descriptive/current-roster metadata only: physical score sources, Results,
 Starting Averages, Divisions, Series, and Concurrent Shooting retain their
 existing ownership and calculation boundaries.
 

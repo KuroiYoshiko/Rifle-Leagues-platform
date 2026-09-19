@@ -59,7 +59,7 @@ export default async function CompetitionEntryPage({
 
   const [initialMembers, clubTeams] = await Promise.all([
     searchClubCompetitionEntryMembers(entryId),
-    competition.entry_format === "team"
+    competition.entry_format === "pairs" || competition.entry_format === "team"
       ? getClubTeams(data.club.id, false)
       : Promise.resolve(null),
   ]);

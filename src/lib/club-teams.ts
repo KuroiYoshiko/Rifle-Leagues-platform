@@ -1,10 +1,24 @@
 import { cache } from "react";
 import { createClient } from "@/lib/supabase/server";
 
+export type ClubTeamUnitType = "pair" | "team";
+
+export type ClubTeamRosterMember = {
+  position: number;
+  membership_id: number;
+  first_name: string | null;
+  last_name: string | null;
+  membership_status: "pending" | "active" | "rejected" | "left";
+};
+
 export type ClubTeam = {
   id: number;
   club_id: number;
   name: string;
+  unit_type: ClubTeamUnitType | null;
+  fixed_size: number | null;
+  is_complete: boolean;
+  roster: ClubTeamRosterMember[];
   display_order: number;
   archived_at: string | null;
   competition_usage_count: number;

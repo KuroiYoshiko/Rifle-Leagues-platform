@@ -1,13 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import type { ClubTeam } from "@/lib/club-teams";
+import type { ClubTeam, ClubTeamUnitType } from "@/lib/club-teams";
 import { createClient } from "@/lib/supabase/server";
 
-export type ClubTeamMutation = Pick<
-  ClubTeam,
-  "id" | "club_id" | "name" | "display_order" | "archived_at" | "updated_at"
-> & Partial<Pick<ClubTeam, "competition_usage_count" | "submitted_usage_count" | "created_at">>;
+export type ClubTeamMutation = ClubTeam;
 
 export type ClubTeamActionState = {
   status?: "success" | "error";
@@ -34,6 +31,19 @@ function normalisedName(value: unknown, optional = false) {
   const name = String(value ?? "").trim().replace(/\s+/g, " ");
   if (optional && !name) return null;
   return name.length >= 1 && name.length <= 120 ? name : undefined;
+}
+
+function validRoster(value: unknown, unitType: ClubTeamUnitType) {
+  if (!Array.isArray(value)) return null;
+  const roster = value.map(positiveInteger);
+  if (roster.some((membershipId) => membershipId === null)) return null;
+  const membershipIds = roster as number[];
+  if (new Set(membershipIds).size !== membershipIds.length) return null;
+  if (unitType === "pair" && membershipIds.length !== 2) return null;
+  if (unitType === "team" && (membershipIds.length < 3 || membershipIds.length > 20)) {
+    return null;
+  }
+  return membershipIds;
 }
 
 async function authenticatedClient() {
@@ -72,12 +82,21 @@ export async function createClubTeam(input: {
   clubId: number;
   clubSlug: string;
   name?: string | null;
+  unitType: ClubTeamUnitType;
+  rosterMembershipIds: number[];
 }): Promise<ClubTeamActionState> {
   const clubId = positiveInteger(input?.clubId);
   const clubSlug = safeSlug(input?.clubSlug);
   const name = normalisedName(input?.name, true);
-  if (!clubId || !clubSlug || name === undefined) {
-    return { status: "error", message: "Enter a Team name of up to 120 characters." };
+  const unitType = input?.unitType;
+  const roster = unitType === "pair" || unitType === "team"
+    ? validRoster(input?.rosterMembershipIds, unitType)
+    : null;
+  if (!clubId || !clubSlug || name === undefined || !roster) {
+    return {
+      status: "error",
+      message: "Choose Pair or Team and complete its current roster before creating it.",
+    };
   }
 
   const { supabase, authenticated } = await authenticatedClient();
@@ -86,13 +105,55 @@ export async function createClubTeam(input: {
   const { data, error } = await supabase.rpc("create_club_team", {
     p_club_id: clubId,
     p_name: name,
+    p_unit_type: unitType,
+    p_roster_membership_ids: roster,
   });
-  if (error) return actionError(error.code, error.message, "The Club Team could not be created.");
+  if (error) return actionError(error.code, error.message, "The Club Pair or Team could not be created.");
 
   revalidateClubTeamRoutes(clubSlug);
   return {
     status: "success",
     message: `${(data as ClubTeamMutation).name} created.`,
+    team: data as ClubTeamMutation,
+  };
+}
+
+export async function updateClubTeam(input: {
+  clubTeamId: number;
+  clubSlug: string;
+  name: string;
+  unitType: ClubTeamUnitType;
+  rosterMembershipIds: number[];
+}): Promise<ClubTeamActionState> {
+  const clubTeamId = positiveInteger(input?.clubTeamId);
+  const clubSlug = safeSlug(input?.clubSlug);
+  const name = normalisedName(input?.name);
+  const unitType = input?.unitType;
+  const roster = unitType === "pair" || unitType === "team"
+    ? validRoster(input?.rosterMembershipIds, unitType)
+    : null;
+  if (!clubTeamId || !clubSlug || name === undefined || !roster) {
+    return {
+      status: "error",
+      message: "Enter a name and complete the current Pair or Team roster.",
+    };
+  }
+
+  const { supabase, authenticated } = await authenticatedClient();
+  if (!authenticated) return { status: "error", message: "Sign in again before continuing." };
+
+  const { data, error } = await supabase.rpc("update_club_team", {
+    p_club_team_id: clubTeamId,
+    p_name: name,
+    p_unit_type: unitType,
+    p_roster_membership_ids: roster,
+  });
+  if (error) return actionError(error.code, error.message, "The Club Pair or Team could not be updated.");
+
+  revalidateClubTeamRoutes(clubSlug);
+  return {
+    status: "success",
+    message: "Current roster updated. Saved Competition participants were not changed.",
     team: data as ClubTeamMutation,
   };
 }
@@ -106,7 +167,7 @@ export async function renameClubTeam(input: {
   const clubSlug = safeSlug(input?.clubSlug);
   const name = normalisedName(input?.name);
   if (!clubTeamId || !clubSlug || name === undefined) {
-    return { status: "error", message: "Enter a Team name of up to 120 characters." };
+    return { status: "error", message: "Enter a Pair or Team name of up to 120 characters." };
   }
 
   const { supabase, authenticated } = await authenticatedClient();

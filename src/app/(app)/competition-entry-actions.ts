@@ -15,7 +15,7 @@ export type EntryCompositionUnit =
   | Array<number | null>
   | {
       clubTeamId: number | null;
-      participants: Array<number | null>;
+      participants?: Array<number | null>;
     };
 
 type EntryCompositionInput = {
@@ -48,16 +48,18 @@ function validComposition(input: EntryCompositionInput) {
         const participants = Array.isArray(entrant)
           ? entrant
           : entrant?.participants;
+        const linkedUnit = !Array.isArray(entrant) &&
+          positiveInteger(entrant?.clubTeamId) !== null;
         return (
-          Array.isArray(participants) &&
-          participants.length <= 20 &&
-          participants.every(
-          (membershipId) =>
-            membershipId === null || positiveInteger(membershipId) !== null,
-          ) &&
-          (Array.isArray(entrant) ||
-            entrant.clubTeamId === null ||
-            positiveInteger(entrant.clubTeamId) !== null)
+          (linkedUnit || (
+            Array.isArray(participants) &&
+            participants.length <= 20 &&
+            participants.every(
+              (membershipId) =>
+                membershipId === null || positiveInteger(membershipId) !== null,
+            )
+          )) &&
+          (Array.isArray(entrant) || entrant.clubTeamId === null || linkedUnit)
         );
       },
     )
@@ -70,7 +72,7 @@ function databaseEntrants(entrants: EntryCompositionUnit[]) {
       ? entrant
       : {
           club_team_id: entrant.clubTeamId,
-          participants: entrant.participants,
+          ...(entrant.participants ? { participants: entrant.participants } : {}),
         },
   );
 }

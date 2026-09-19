@@ -3,8 +3,13 @@ import { notFound } from "next/navigation";
 import { ClubPageFrame } from "@/components/club-page-frame";
 import { ClubTeamsManager } from "@/components/club-teams-manager";
 import { Card } from "@/components/ui";
-import { getClubPageContextBySlug, isClubManager } from "@/lib/clubs";
+import {
+  getClubPageContextBySlug,
+  isClubManager,
+  type ManagedClubMember,
+} from "@/lib/clubs";
 import { getClubTeams } from "@/lib/club-teams";
+import { createClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Club Teams" };
 
@@ -18,7 +23,16 @@ export default async function ClubTeamsPage({
   if (!context || context.membership?.status !== "active") notFound();
 
   const { club, membership, informationCardCount } = context;
-  const data = await getClubTeams(club.id, true);
+  const canManage = isClubManager(membership);
+  const supabase = canManage ? await createClient() : null;
+  const [data, memberResult] = await Promise.all([
+    getClubTeams(club.id, true),
+    supabase
+      ? supabase.rpc("get_club_members", { p_club_id: club.id })
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  const members = ((memberResult.data ?? []) as ManagedClubMember[])
+    .filter((member) => member.membership_status === "active");
 
   return (
     <ClubPageFrame
@@ -28,11 +42,12 @@ export default async function ClubTeamsPage({
       isAuthenticated
       currentSection="teams"
     >
-      {data ? (
+      {data && !memberResult.error ? (
         <ClubTeamsManager
           club={club}
           initialTeams={data.teams}
-          canManage={isClubManager(membership) && data.can_manage}
+          members={members}
+          canManage={canManage && data.can_manage}
         />
       ) : (
         <Card className="border-danger/20 p-6 sm:p-8">
