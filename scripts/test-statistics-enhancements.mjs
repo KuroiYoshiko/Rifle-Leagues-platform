@@ -156,15 +156,30 @@ test("Statistics has a native browser-print surface without weakening dedicated 
     read("src/components/shooter-performance-chart.tsx"),
     read("src/app/(app)/organisations/[slug]/leagues/[seasonSlug]/competitions/[competitionSlug]/page.tsx"),
   ]);
+  const printCss = css.slice(css.indexOf("@media print"));
 
   assert.doesNotMatch(css, /\n\s*body \* \{\s*display: none !important;/);
-  assert.match(css, /body:has\(\[data-print-document\]\) \* \{\s*display: none !important;/);
-  assert.match(resultsPage, /data-print-document/);
-  assert.match(css, /\[data-print-document\],[\s\S]*display: revert !important/);
+  assert.doesNotMatch(css, /data-print-document/);
+  assert.match(resultsPage, /data-results-print-document/);
+  assert.match(dashboard, /data-statistics-print-document/);
+
+  assert.match(css, /body:has\(\[data-results-print-document\]\) :where\(\*\) \{\s*display: none !important;/);
+  assert.match(css, /body:has\(\[data-results-print-document\]\) :where\(\*:has\(\[data-results-print-document\]\)\) \{\s*display: contents !important;/);
+  assert.match(css, /body:has\(\[data-results-print-document\]\) :where\([\s\S]*\[data-results-print-document\] \*[\s\S]*\) \{\s*display: revert !important;/);
+  assert.doesNotMatch(css, /body:has\(\[data-statistics-print-document\]\) \* \{\s*display: none !important;/);
+
   assert.match(shell, /data-application-chrome/);
   assert.match(shell, /data-application-content/);
   assert.match(css, /body:has\(\[data-statistics-print-document\]\) \[data-application-chrome\]/);
-  assert.match(dashboard, /data-statistics-print-document/);
+  assert.match(css, /:is\(\[data-results-print-document\], \[data-statistics-print-document\]\) \[data-screen-only\]/);
+
+  assert.match(css, /\[data-results-print-document\] \.results-score-table/);
+  assert.doesNotMatch(printCss, /\n\s{2}\.results-score-table[^\n]*\{/);
+  assert.match(css, /\[data-statistics-print-document\] \[data-statistics-history-cards\]/);
+  assert.match(css, /\[data-statistics-print-document\] \[data-statistics-chart\]/);
+  assert.doesNotMatch(printCss, /\[data-results-print-document\] (?:\.statistics-print|\[data-statistics-history|\[data-statistics-chart)/);
+  assert.doesNotMatch(printCss, /\[data-statistics-print-document\] (?:\.results-|\[data-results-division)/);
+
   assert.match(dashboard, /Score history · Page \$\{analytics\.history\.page\} of/);
   assert.match(dashboard, /Filters: \{selectedFilters\.length/);
   assert.match(dashboard, /<div data-screen-only>[\s\S]*<Card className="p-5 sm:p-6">[\s\S]*Analysis scope/);
@@ -172,10 +187,10 @@ test("Statistics has a native browser-print surface without weakening dedicated 
   assert.match(dashboard, /data-screen-only aria-label="Score history pagination"/);
   assert.match(dashboard, /data-statistics-history-cards/);
   assert.match(dashboard, /data-statistics-history-table/);
-  assert.match(css, /\[data-statistics-history-cards\] \{\s*display: none !important/);
-  assert.match(css, /\[data-statistics-history-table\] \{\s*display: block !important/);
+  assert.match(css, /\[data-statistics-print-document\] \[data-statistics-history-cards\] \{\s*display: none !important/);
+  assert.match(css, /\[data-statistics-print-document\] \[data-statistics-history-table\] \{\s*display: block !important/);
   assert.doesNotMatch(css, /\[data-statistics-print-document\] section,/);
   assert.match(chart, /data-statistics-chart/);
   assert.match(chart, /data-screen-only className="mb-4/);
-  assert.match(css, /\[data-statistics-chart\][\s\S]*\.recharts-responsive-container[\s\S]*overflow: visible !important/);
+  assert.match(css, /\[data-statistics-print-document\] \[data-statistics-chart\][\s\S]*\.recharts-responsive-container[\s\S]*overflow: visible !important/);
 });

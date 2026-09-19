@@ -283,6 +283,6 @@ test("Competition page loads and prints Best N through the shared compact matrix
   assert.match(html, /Best 2 avg/);
   assert.match(html, /2\/2 required/);
   assert.match(html, /Print results/);
-  assert.match(html, /data-print-document="true"/);
+  assert.match(html, /data-results-print-document="true"/);
   assert.doesNotMatch(html, /Standings for this ranking method are not available yet/);
 });
