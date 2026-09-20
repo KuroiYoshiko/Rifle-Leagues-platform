@@ -8,6 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "test:database-contracts": "node --test --test-concurrency=1 scripts/test-critical-read-contracts.mjs scripts/test-critical-sql-reruns.mjs",
+    "test:critical-regressions": "node --test --test-concurrency=1 scripts/test-critical-read-contracts.mjs scripts/test-critical-sql-reruns.mjs scripts/test-critical-cross-feature.mjs scripts/test-critical-print.mjs scripts/test-club-teams.mjs scripts/test-results-experience.mjs scripts/test-statistics-enhancements.mjs scripts/test-division-seeding.mjs",
+    "test:full-regression": "node scripts/run-full-regression.mjs",
     "test:aggregate": "node --test scripts/test-aggregate-results.mjs",
     "test:gun-score": "node --test scripts/test-gun-score-results.mjs",
     "test:round-robin": "node --test scripts/test-round-robin-results.mjs scripts/test-round-robin-labels.mjs",
@@ -60,6 +62,7 @@
     "@types/react-dom": "^19",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
+    "playwright": "1.63.0",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

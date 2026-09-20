@@ -27,6 +27,11 @@ or individual fresh-install-only files against an upgraded database. See the
 No service-role key is used by the application and no additional environment
 variables are required.
 
+## Regression testing
+
+The cross-feature safety gates and practical change-scope matrix are documented
+in [`REGRESSION-TESTING.md`](REGRESSION-TESTING.md).
+
 ## Destructive development/staging data reset
 
 [`database/dev/dev-reset-all-data.sql`](database/dev/dev-reset-all-data.sql) is manual,
