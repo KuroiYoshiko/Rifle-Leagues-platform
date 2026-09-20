@@ -160,6 +160,123 @@ function ParticipantResultCell({ cell, usesX }: {
   return <div className="results-cell-stack leading-snug"><span className="results-cell-primary block text-[12px] font-medium text-foreground">{number(cell.gun_score)}</span>{usesX ? <span className="results-cell-secondary block text-[10px] text-muted-foreground">{number(cell.x_total)}X</span> : null}</div>;
 }
 
+function MobileRoundStrip({ entrant, rounds, usesX, rankingMethod }: {
+  entrant: ResultsEntrant;
+  rounds: Array<{ id: number; round_number: number; deadline: string; released: boolean }>;
+  usesX: boolean;
+  rankingMethod: ResultsRankingMethod;
+}) {
+  const entrantName = entrant.entrant_format === "individual" && entrant.participants[0]
+    ? participantName(entrant.participants[0])
+    : entrant.entrant_label;
+  return (
+    <div data-mobile-round-scroller role="region" aria-label={`Round scores for ${entrantName}. Swipe or scroll horizontally to view all Rounds.`} tabIndex={0} className="results-mobile-round-scroller relative min-w-0 max-w-full overflow-x-auto overscroll-x-contain border-y border-border bg-surface-muted/30 [contain:inline-size] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand">
+      <div className="flex w-max min-w-full snap-x snap-proximity">
+        {rounds.map((round) => {
+          const cell = entrant.rounds.find((candidate) => candidate.round_id === round.id);
+          return (
+            <div key={round.id} data-mobile-round={round.id} className="flex min-h-20 w-[5.25rem] shrink-0 snap-start flex-col justify-between border-r border-border/70 px-2 py-2.5 text-center tabular-nums last:border-r-0">
+              <div className="text-[10px] leading-snug text-muted-foreground">
+                <span className="block text-[11px] font-semibold text-foreground">R{round.round_number}</span>
+                <time dateTime={round.deadline} title={accessibleRoundDateFormatter.format(new Date(`${round.deadline}T00:00:00Z`))} aria-label={`Round End ${accessibleRoundDateFormatter.format(new Date(`${round.deadline}T00:00:00Z`))}`} className="mt-0.5 block whitespace-nowrap">{compactRoundDate(round.deadline)}</time>
+                {!round.released ? <span className="block">Unreleased</span> : null}
+              </div>
+              <div className="mt-2">{cell ? <RoundCell cell={cell} usesX={usesX} rankingMethod={rankingMethod} /> : <span className="text-muted-foreground">—</span>}</div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MobileParticipantRoundStrip({ participant, rounds, usesX }: {
+  participant: AggregateParticipant;
+  rounds: Array<{ id: number; round_number: number }>;
+  usesX: boolean;
+}) {
+  return (
+    <div data-mobile-participant-round-scroller role="region" aria-label={`Round scores for ${participantName(participant)}. Swipe or scroll horizontally to view all Rounds.`} tabIndex={0} className="results-mobile-round-scroller relative mt-3 min-w-0 max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-border [contain:inline-size] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand">
+      <div className="flex w-max min-w-full snap-x snap-proximity">
+        {rounds.map((round) => (
+          <div key={round.id} data-mobile-participant-round={round.id} className="flex min-h-16 w-[5.25rem] shrink-0 snap-start flex-col justify-between border-r border-border/70 px-2 py-2 text-center tabular-nums last:border-r-0">
+            <span className="text-[10px] font-semibold text-muted-foreground">R{round.round_number}</span>
+            <div className="mt-1"><ParticipantResultCell cell={participant.rounds?.find((cell) => cell.round_id === round.id)} usesX={usesX} /></div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export function MobileParticipantDisclosure({ entrant, rounds, usesX }: {
+  entrant: ResultsEntrant;
+  rounds: Array<{ id: number; round_number: number }>;
+  usesX: boolean;
+}) {
+  const showStarting = entrant.participants.some((participant) => hasStartingAverage(participant) && participant.starting_average != null);
+  const showRunning = entrant.participants.some((participant) => participant.running_average != null);
+  return (
+    <details data-mobile-participants className="border-t border-border">
+      <summary className="min-h-11 cursor-pointer content-center px-4 py-2 text-sm font-semibold text-brand-strong outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand">
+        Participants <span className="sr-only">for {entrant.entrant_label}, {entrant.club_name}</span>
+      </summary>
+      <div className="space-y-3 border-t border-border bg-surface-muted/40 p-3">
+        {entrant.participants.map((participant) => (
+          <section key={participant.slot_number} data-mobile-participant className="min-w-0 rounded-lg bg-surface p-3 shadow-sm" aria-label={`Results for ${participantName(participant)}`}>
+            <div data-mobile-participant-identity className="min-w-0">
+              <div className="flex items-start justify-between gap-3">
+                <h3 className="min-w-0 break-words text-sm font-semibold text-foreground">{participantName(participant)}</h3>
+                <div className="shrink-0 text-right text-xs tabular-nums text-muted-foreground">
+                  <span className="block font-semibold text-brand-deep">Total {number(participant.gun_total)}</span>
+                  {usesX ? <span className="mt-0.5 block">{number(participant.x_total)}X</span> : null}
+                </div>
+              </div>
+              <InlineAverageSummary participant={participant} showStarting={showStarting} showRunning={showRunning} />
+            </div>
+            <MobileParticipantRoundStrip participant={participant} rounds={rounds} usesX={usesX} />
+          </section>
+        ))}
+      </div>
+    </details>
+  );
+}
+
+function MobileResultsCard({ entrant, rounds, usesX, rankingMethod, showStarting, showRunning, releasedRoundCount, bestRoundsCount }: {
+  entrant: ResultsEntrant;
+  rounds: Array<{ id: number; round_number: number; deadline: string; released: boolean }>;
+  usesX: boolean;
+  rankingMethod: ResultsRankingMethod;
+  showStarting: boolean;
+  showRunning: boolean;
+  releasedRoundCount: number;
+  bestRoundsCount?: number;
+}) {
+  const participant = entrant.entrant_format === "individual" ? entrant.participants[0] : undefined;
+  const bestNEntrant = rankingMethod === "best_n_average" ? entrant as BestNAverageEntrant : null;
+  const hasPosition = releasedRoundCount > 0 && (bestNEntrant?.ranking_eligible ?? true) && entrant.position != null;
+  return (
+    <article data-mobile-entrant-card={entrant.entrant_id} className="min-w-0 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+      <div data-mobile-entrant-identity className="p-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="inline-flex min-w-6 shrink-0 justify-end pt-0.5 text-sm font-bold text-muted-foreground" aria-label={!hasPosition ? (bestNEntrant && !bestNEntrant.ranking_eligible ? "Not qualified" : "Not ranked yet") : `${entrant.tied ? "Tied " : ""}position ${entrant.position}`}>{hasPosition ? `${entrant.position}${entrant.tied ? "=" : ""}` : "—"}</span>
+          <div className="min-w-0 flex-1">
+            <h3 className="break-words text-base font-semibold leading-snug text-foreground">{participant ? participantName(participant) : entrant.entrant_label}</h3>
+            <p className="mt-1 break-words text-xs leading-snug text-muted-foreground">{entrant.club_name}</p>
+            {participant ? <InlineAverageSummary participant={participant} showStarting={showStarting} showRunning={showRunning} /> : null}
+          </div>
+          <div data-mobile-final-summary className="shrink-0 border-l border-brand/20 pl-3 text-right">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">{finalHeading(rankingMethod, bestRoundsCount)}</span>
+            <FinalCell entrant={entrant} usesX={usesX} rankingMethod={rankingMethod} />
+          </div>
+        </div>
+      </div>
+      <MobileRoundStrip entrant={entrant} rounds={rounds} usesX={usesX} rankingMethod={rankingMethod} />
+      {entrant.entrant_format !== "individual" ? <MobileParticipantDisclosure entrant={entrant} rounds={rounds} usesX={usesX} /> : null}
+    </article>
+  );
+}
+
 export function ParticipantBreakdown({ entrant, rounds, usesX, rankingMethod, disclosureId, standingsAverageColumnCount = 2 }: {
   entrant: ResultsEntrant;
   rounds: Array<{ id: number; round_number: number }>;
@@ -244,7 +361,12 @@ function CompetitionResultsTable({ data, rankingMethod }: {
       <section key={group.id} aria-labelledby={`results-${rankingMethod}-${group.id}`} className="results-group min-w-0" data-ranking-method={rankingMethod}>
         <h2 id={`results-${rankingMethod}-${group.id}`} className="results-division-heading mb-2 text-base font-semibold text-foreground">{group.name}</h2>
         {group.entrants.length === 0 ? <Card className="p-5 text-sm text-muted-foreground">No submitted entrants yet.</Card> : (
-          <div role="region" aria-labelledby={`results-${rankingMethod}-${group.id}`} tabIndex={0} className="results-table-region relative max-w-full overflow-x-auto rounded-xl border border-border bg-surface outline-none focus-visible:ring-2 focus-visible:ring-brand">
+          <>
+          <div data-screen-only="true" data-mobile-results className="min-w-0 space-y-3 md:hidden">
+            {data.rounds.length > 1 ? <p className="text-xs font-medium text-muted-foreground">Swipe to view all Rounds <span aria-hidden="true">→</span></p> : null}
+            {group.entrants.map((entrant) => <MobileResultsCard key={entrant.entrant_id} entrant={entrant} rounds={data.rounds} usesX={data.uses_x_score} rankingMethod={rankingMethod} showStarting={averageColumns.showStarting} showRunning={averageColumns.showRunning} releasedRoundCount={data.released_round_count} bestRoundsCount={bestRoundsCount} />)}
+          </div>
+          <div data-desktop-results role="region" aria-labelledby={`results-${rankingMethod}-${group.id}`} tabIndex={0} className="results-table-region relative hidden max-w-full overflow-x-auto rounded-xl border border-border bg-surface outline-none focus-visible:ring-2 focus-visible:ring-brand md:block">
             <table style={tableStyle} data-average-columns={averageColumns.count} className="results-score-table w-full table-fixed border-separate border-spacing-0 text-xs tabular-nums">
               <caption className="sr-only">{group.name} {caption} Scroll horizontally for more Rounds on narrow screens. Equal positions remain tied.</caption>
               <colgroup>
@@ -290,6 +412,7 @@ function CompetitionResultsTable({ data, rankingMethod }: {
               })}</tbody>
             </table>
           </div>
+          </>
         )}
       </section>
       );
