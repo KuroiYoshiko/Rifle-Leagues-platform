@@ -29,7 +29,7 @@ export type LeagueSeason = {
   updated_at: string;
 };
 
-const leagueSeasonColumns =
+export const leagueSeasonColumns =
   "id, organisation_id, name, description, slug, status, entry_opens_at, entry_closes_at, starts_at, ends_at, created_at, updated_at";
 const routeSafeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 

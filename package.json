@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test:database-contracts": "node --test --test-concurrency=1 scripts/test-critical-read-contracts.mjs scripts/test-critical-sql-reruns.mjs",
     "test:aggregate": "node --test scripts/test-aggregate-results.mjs",
     "test:gun-score": "node --test scripts/test-gun-score-results.mjs",
     "test:round-robin": "node --test scripts/test-round-robin-results.mjs scripts/test-round-robin-labels.mjs",
