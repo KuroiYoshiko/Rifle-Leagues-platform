@@ -42,7 +42,7 @@ test("print document is intentional A4 portrait official standings with paginati
     read("src/components/competition-aggregate-results.tsx"),
     read("src/components/competition-round-robin-results.tsx"),
   ]);
-  assert.match(page, /data-print-document/);
+  assert.match(page, /data-results-print-document/);
   assert.match(page, /data-print-only/);
   assert.match(page, /Organisation|organisation\.name/);
   assert.match(page, /Course of Fire/);
@@ -57,7 +57,7 @@ test("print document is intentional A4 portrait official standings with paginati
   assert.match(css, /\.results-cell-primary,[\s\S]*\.results-cell-secondary[\s\S]*display: block !important/);
   assert.match(css, /padding: 1\.2mm 0\.45mm !important/);
   assert.match(css, /\[data-round-date-heading\],[\s\S]*\.results-round-release-label[\s\S]*display: none !important/);
-  assert.match(page + css, /data-print-document[\s\S]*results-score-table|results-score-table[\s\S]*data-print-document/);
+  assert.match(page + css, /data-results-print-document[\s\S]*results-score-table|results-score-table[\s\S]*data-results-print-document/);
   assert.match(table, /return "Total"/);
   assert.match(table, /aggregate\.gun_total[^\n]+aggregate\.total_points/);
   assert.match(table, /counts_towards_average \? "Counts" : "Excluded"/);

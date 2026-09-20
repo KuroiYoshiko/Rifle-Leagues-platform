@@ -388,7 +388,7 @@ export default async function CompetitionDetailPage({
       ) : null}
 
       {competition.status === "published" ? (
-        <section id="results" data-print-document className="mt-8 min-w-0 scroll-mt-24" aria-label="Competition results">
+        <section id="results" data-results-print-document className="mt-8 min-w-0 scroll-mt-24" aria-label="Competition results">
           <div data-print-only className="hidden">
             <p className="text-[9pt] font-semibold uppercase tracking-[0.12em] text-neutral-strong">{organisation.name}</p>
             <h1 className="mt-1 text-[18pt] font-bold leading-tight text-foreground">{competition.name}</h1>
