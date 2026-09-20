@@ -467,7 +467,7 @@ test("result merge keeps Pair averages participant-owned and preserves Individua
   assert.match(individualHtml, /S\/Av 88\.00/);
   assert.match(individualHtml, /R\/Av 97\.67/);
 
-  const sql = await readFile(new URL("../database/competition-averages-stage-3.sql", import.meta.url), "utf8");
+  const sql = await readFile(new URL("../database/13_averages.sql", import.meta.url), "utf8");
   assert.doesNotMatch(sql, /create or replace function public\.get_competition_(aggregate|gun_score|round_robin)_results/i);
   assert.doesNotMatch(sql, /\brank\s*\(/i);
 });

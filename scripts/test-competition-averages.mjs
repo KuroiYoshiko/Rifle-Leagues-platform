@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { after, afterEach, before, beforeEach, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
-import { installCanonicalDatabase, sqlFile } from "./helpers/canonical-database.mjs";
+import { installCanonicalDatabase } from "./helpers/canonical-database.mjs";
 
 // Full disposable canonical schema. No credentials, network, resets, or seeds.
 const db = new PGlite();
@@ -983,19 +983,19 @@ test("Stage 2A/2B UI uses Average RPCs, immutable versions, exact Ex choices and
   assert.doesNotMatch(`${management}\n${workspace}\n${form}`, /average_policy_version_id[^"\n]*<|source_competition_id[^"\n]*</i);
 });
 
-test("all additive Average SQL files rerun cleanly over the canonical deployed chain", async () => {
+test("the canonical install contains the complete final Average subsystem", async () => {
   const isolated = new PGlite();
   try {
     await installCanonicalDatabase(isolated);
-    await isolated.exec(await sqlFile("competition-averages"));
-    await isolated.exec(await sqlFile("competition-average-series-defaults"));
-    await isolated.exec(await sqlFile("competition-averages-stage-2a"));
-    await isolated.exec(await sqlFile("competition-averages-stage-2b"));
-    await isolated.exec(await sqlFile("competition-averages-optional-null"));
-    await isolated.exec(await sqlFile("competition-averages-stage-3"));
     assert.equal((await isolated.query(`select count(*)::int n from pg_catalog.pg_class
       where relname in ('average_contexts','average_policy_versions',
         'competition_participant_starting_averages','competition_series_average_defaults')`)).rows[0].n, 4);
+    assert.equal((await isolated.query(`select count(*)::int n from pg_proc
+      where oid in (
+        'public.calculate_competition_starting_averages(bigint,bigint,bigint)'::regprocedure,
+        'public.get_competition_result_averages(bigint,bigint,bigint)'::regprocedure,
+        'public.set_manual_competition_starting_average(bigint,bigint,bigint,bigint,numeric,text)'::regprocedure
+      )`)).rows[0].n, 3);
   } finally {
     await isolated.close();
   }

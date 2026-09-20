@@ -5,7 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { installCanonicalDatabase } from "./helpers/canonical-database.mjs";
 
 const fixture = await readFile(
-  new URL("../database/development-averages-fixture.sql", import.meta.url),
+  new URL("../database/dev/development-averages-fixture.sql", import.meta.url),
   "utf8",
 );
 

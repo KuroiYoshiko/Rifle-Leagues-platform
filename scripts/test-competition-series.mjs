@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import { after, afterEach, before, beforeEach, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { installCanonicalDatabase, sqlFile } from "./helpers/canonical-database.mjs";
+import { STANDALONE_RERUNNABLE_SQL_FILES } from "./helpers/database-install-manifest.mjs";
 
 // Disposable PostgreSQL only. No Supabase credentials, network, resets or seeds.
 const db = new PGlite();
@@ -158,11 +159,11 @@ test("authenticated Competition loaders retain SELECT access to their canonical 
   assert.equal(rounds.length, 2);
 });
 
-test("rerunning the older configuration refactor preserves every current authenticated read projection", async () => {
+test("rerunning the supported public read models preserves every current authenticated projection", async () => {
   const isolated = new PGlite();
   try {
     await installCanonicalDatabase(isolated);
-    await isolated.exec(await sqlFile("competition-configuration-refactor"));
+    await isolated.exec(await sqlFile("16_public_read_models"));
     await isolated.query("insert into auth.users(id) values($1)", [actors.owner]);
     await isolated.exec(`
       insert into organisations(id,name,slug,status) overriding system value
@@ -677,10 +678,10 @@ test("existing one-off RPC works for owner/manager, and manager cannot publish v
   await actor("owner"); await publish(result);
 });
 
-test("additive and rerunnable upgrade preserves pre-existing one-offs, identifiers and schedules", async () => {
+test("supported standalone schema refreshes preserve existing one-offs and schedules", async () => {
   const isolated = new PGlite();
   try {
-    await installCanonicalDatabase(isolated, { competitionSeries: false });
+    await installCanonicalDatabase(isolated);
     await isolated.exec(`insert into organisations(name,slug,status) values('Existing','existing','active');
       insert into league_seasons(organisation_id,name,slug,status) values(1,'Existing','existing','draft');
       insert into competitions(league_season_id,name,slug,status,entry_format,team_size,scoring_method,number_of_rounds)
@@ -690,24 +691,14 @@ test("additive and rerunnable upgrade preserves pre-existing one-offs, identifie
     const before = (await isolated.query("select to_jsonb(c) data from competitions c")).rows;
     const rounds = (await isolated.query("select * from competition_rounds")).rows;
     const components = (await isolated.query("select * from competition_score_components")).rows;
-    for (let run = 0; run < 2; run++) {
-      await isolated.exec(await sqlFile("competition-series"));
-      await isolated.exec(await sqlFile("competition-series-management"));
-      await isolated.exec(await sqlFile("competition-published-configuration-lock"));
-      await isolated.exec(await sqlFile("competition-published-configuration-lock"));
-      await isolated.exec(await sqlFile("competition-series-stage-2-management"));
-      await isolated.exec(await sqlFile("competition-series-stage-2-management"));
-      await isolated.exec(await sqlFile("competition-series-v1-identity-without-discipline"));
-      await isolated.exec(await sqlFile("competition-series-v1-identity-without-discipline"));
-      await isolated.exec(await sqlFile("competition-series-one-edition-per-season"));
-      await isolated.exec(await sqlFile("competition-series-one-edition-per-season"));
-      assert.deepEqual((await isolated.query(`select to_jsonb(c)-array['competition_series_id','configuration_source_competition_id',
-        'configuration_source_version','discipline_code','discipline_detail'] data from competitions c`)).rows, before);
-      assert.deepEqual((await isolated.query("select * from competition_rounds")).rows, rounds);
-      assert.deepEqual((await isolated.query("select * from competition_score_components")).rows, components);
-      assert.equal((await isolated.query("select competition_series_id from competitions")).rows[0].competition_series_id, null);
-      assert.equal((await isolated.query("select count(*)::int n from competition_series")).rows[0].n, 0);
+    for (const name of STANDALONE_RERUNNABLE_SQL_FILES) {
+      await isolated.exec(await sqlFile(name));
     }
+    assert.deepEqual((await isolated.query("select to_jsonb(c) data from competitions c")).rows, before);
+    assert.deepEqual((await isolated.query("select * from competition_rounds")).rows, rounds);
+    assert.deepEqual((await isolated.query("select * from competition_score_components")).rows, components);
+    assert.equal((await isolated.query("select competition_series_id from competitions")).rows[0].competition_series_id, null);
+    assert.equal((await isolated.query("select count(*)::int n from competition_series")).rows[0].n, 0);
   } finally { await isolated.close(); }
 });
 
@@ -728,7 +719,7 @@ test("development Series fixture is isolated and rerunnable", async () => {
       "insert into organisation_staff(organisation_id,user_id,role,status) values(1,$1,'owner','active')",
       [actors.owner],
     );
-    const fixture = await sqlFile("development-competition-series-fixture");
+    const fixture = await sqlFile("dev/development-competition-series-fixture");
     await isolated.exec(fixture);
     await isolated.exec(fixture);
     assert.deepEqual((await isolated.query(

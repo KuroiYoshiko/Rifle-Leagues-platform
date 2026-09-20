@@ -158,11 +158,11 @@ export type CompetitionLifecycleState = {
   can_delete: boolean;
 };
 
-const competitionColumns =
+export const competitionColumns =
   "id, league_season_id, competition_series_id, name, slug, description, status, entry_format, team_size, scoring_method, maximum_score_per_round, shots_per_round, uses_x_score, number_of_rounds, entry_fee, entry_window_mode, custom_entry_opens_at, custom_entry_closes_at, start_date_mode, custom_starts_at, sets_per_round, ranking_method, best_rounds_count, local_scoring_enabled, shooting_details_version, equipment_type_code, organisation_equipment_type_id, created_at, updated_at";
-const competitionRoundColumns =
+export const competitionRoundColumns =
   "id, competition_id, round_number, deadline, shoot_by_date, created_at, updated_at";
-const competitionScoreComponentColumns =
+export const competitionScoreComponentColumns =
   "id, competition_id, position, short_label, maximum_score, score_method, shooting_position_mode, shooting_position_code, organisation_shooting_position_id, distance_mode, distance_value, distance_unit, shots, created_at, updated_at";
 const routeSafeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 

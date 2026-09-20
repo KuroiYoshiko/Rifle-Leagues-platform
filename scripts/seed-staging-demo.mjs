@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 // DEVELOPMENT / STAGING ONLY
-// DESTRUCTIVE PRECONDITION: run database/dev-reset-all-data.sql first.
+// DESTRUCTIVE PRECONDITION: run database/dev/dev-reset-all-data.sql first.
 // DO NOT RUN AGAINST PRODUCTION.
 
 import process from "node:process";
@@ -131,7 +131,7 @@ async function preflight() {
   }
   if (state.application_rows !== 0) {
     throw new Error(
-      `Safety preflight failed: found ${state.application_rows} application row(s) across the complete audited schema. Run database/dev-reset-all-data.sql first.`,
+      `Safety preflight failed: found ${state.application_rows} application row(s) across the complete audited schema. Run database/dev/dev-reset-all-data.sql first.`,
     );
   }
 }

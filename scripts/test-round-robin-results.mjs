@@ -8,8 +8,6 @@ const db = new PGlite();
 const actor = "10000000-0000-4000-8000-000000000001";
 before(async () => {
   await installCanonicalDatabase(db);
-  await db.exec(await sqlFile("competition-round-robin"));
-  await db.exec(await sqlFile("competition-round-robin-results"));
 });
 after(async () => db.close());
 beforeEach(async () => db.exec("begin"));
@@ -93,7 +91,7 @@ test("real development SQL: asserted standings, production publication path, saf
   try {
     await installCanonicalDatabase(isolated);
     await seedContext(isolated);
-    await isolated.exec(await sqlFile('development-gun-score-fixture'));
+    await isolated.exec(await sqlFile('dev/development-gun-score-fixture'));
     const gunSnapshot=async()=> (await isolated.query(`select public.get_competition_gun_score_results(1,1,id) data
       from competitions where slug in ('dev-gun-score-individual','dev-gun-score-pairs-dropped') order by slug`)).rows;
     const beforeGun=await gunSnapshot();
@@ -101,7 +99,7 @@ test("real development SQL: asserted standings, production publication path, saf
     await isolated.exec(`insert into competitions(league_season_id,name,slug,status,entry_format,team_size,scoring_method,number_of_rounds,ranking_method)
       values(1,'Existing Aggregate','existing-aggregate','draft','individual',1,'points_scored',1,'aggregate'),
       (1,'Existing Gun Score','existing-gun-score','draft','individual',1,'points_scored',1,'gun_score');`);
-    const sql=await sqlFile("development-round-robin-fixture");
+    const sql=await sqlFile("dev/development-round-robin-fixture");
     for(let i=0;i<2;i++) await isolated.exec(sql);
     assert.deepEqual(await gunSnapshot(),beforeGun);
     assert.equal((await isolated.query("select count(*)::int n from competitions where slug in ('existing-aggregate','existing-gun-score')")).rows[0].n,2);

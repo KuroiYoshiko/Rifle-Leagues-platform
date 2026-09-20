@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { PGlite } from "@electric-sql/pglite";
 import { installCanonicalDatabase } from "./helpers/canonical-database.mjs";
 
-const resetPath = new URL("../database/dev-reset-all-data.sql", import.meta.url);
+const resetPath = new URL("../database/dev/dev-reset-all-data.sql", import.meta.url);
 const canonicalInstallerPath = new URL("./helpers/canonical-database.mjs", import.meta.url);
 const zeroUuid = "00000000-0000-0000-0000-000000000000";
 const referenceTables = new Set(["shooting_equipment_types", "shooting_positions"]);

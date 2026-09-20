@@ -78,7 +78,7 @@ test("Division comparison places strong, middle and weak current form across thr
 
 test("Statistics Division inputs are Individual-only, frozen, read-only and contain no six-card invention", async () => {
   const [sql, loader, dashboard] = await Promise.all([
-    read("database/shooter-analytics.sql"),
+    read("database/17_shooter_analytics.sql"),
     read("src/lib/shooter-analytics.ts"),
     read("src/components/shooter-analytics-dashboard.tsx"),
   ]);
@@ -103,7 +103,7 @@ test("Statistics workspace exposes coherent views, explained trend, chart choice
     read("src/app/(app)/statistics/page.tsx"),
     read("src/components/shooter-analytics-dashboard.tsx"),
     read("src/components/shooter-performance-chart.tsx"),
-    read("database/shooter-analytics.sql"),
+    read("database/17_shooter_analytics.sql"),
   ]);
   assert.match(page, /"overview", "performance", "seasons", "history"/);
   assert.match(dashboard, /Overview[\s\S]*Performance[\s\S]*Seasons[\s\S]*Score history/);
@@ -122,7 +122,7 @@ test("Statistics workspace exposes coherent views, explained trend, chart choice
 });
 
 test("canonical discipline and Season comparisons never use display names as identities", async () => {
-  const sql = await read("database/shooter-analytics.sql");
+  const sql = await read("database/17_shooter_analytics.sql");
   assert.match(sql, /'equipment_code', representative\.equipment_type_code/);
   assert.match(sql, /'equipment_custom_id', representative\.organisation_equipment_type_id/);
   assert.match(sql, /'position_code', component\.shooting_position_code/);

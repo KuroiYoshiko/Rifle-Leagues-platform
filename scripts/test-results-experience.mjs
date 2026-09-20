@@ -98,6 +98,80 @@ test("mobile Results keep identity and participant disclosure outside shared-val
   assert.equal((html.match(/84\.12/g) ?? []).length, 60, "mobile and desktop entrant/participant views render the same supplied Round values");
 });
 
+test("mobile Round Robin renders the real card path without moving identity or Pair participants into the score scroller", async () => {
+  const ui = await loadModule("src/components/ui.tsx");
+  const aggregate = await loadModule("src/components/competition-aggregate-results.tsx", {
+    "@/components/ui": ui,
+  });
+  const roundRobin = await loadModule("src/components/competition-round-robin-results.tsx", {
+    "@/components/ui": ui,
+    "@/components/competition-aggregate-results": aggregate,
+  });
+  const rounds = [
+    { id: 1, round_number: 1, deadline: "2026-09-01", released: true },
+    { id: 2, round_number: 2, deadline: "2026-09-08", released: true },
+  ];
+  const entrant = (id, label, club, opponentId) => ({
+    entrant_id: id,
+    entrant_format: "pairs",
+    entrant_label: label,
+    club_name: club,
+    participants: [
+      { first_name: `${label} First`, last_name: "Shooter", slot_number: 1, starting_average: 0, running_average: 91.25, rounds: [] },
+      { first_name: `${label} Second`, last_name: "Shooter", slot_number: 2, starting_average: null, running_average: 88.5, rounds: [] },
+    ],
+    position: id,
+    tied: false,
+    total_match_points: id === 1 ? 4 : 0,
+    gun_total: id === 1 ? 381.5 : 360,
+    x_total: null,
+    unresolved_matches: 0,
+    rounds: rounds.map((round, index) => ({
+      round_id: round.id,
+      opponent_id: opponentId,
+      match_number: index + 1,
+      state: "scored",
+      outcome: id === 1 ? "win" : "loss",
+      match_points: id === 1 ? 2 : 0,
+      gun_score: id === 1 ? 190.75 : 180,
+      x_total: null,
+    })),
+  });
+  const html = renderToStaticMarkup(createElement(
+    roundRobin.CompetitionRoundRobinResultsTable,
+    { data: {
+      status: "ready",
+      display_scoring_mode: "points_scored",
+      uses_x_score: false,
+      released_round_count: 2,
+      rounds,
+      groups: [{
+        id: 1,
+        name: "Division 1",
+        entrants: [
+          entrant(1, "Critical Pair One", "Northbridge Rifle Club", 2),
+          entrant(2, "Critical Pair Two", "Riverside Rifle Club", 1),
+        ],
+      }],
+    } },
+  ));
+
+  const card = html.match(/<article data-mobile-entrant-card="1"[^>]*>(.*?)<\/article>/s)?.[1] ?? "";
+  const identity = card.match(/data-mobile-entrant-identity[^>]*>(.*?)<div data-mobile-round-scroller/s)?.[1] ?? "";
+  const scroller = card.match(/<div data-mobile-round-scroller[^>]*>(.*?)<details data-mobile-participants/s)?.[1] ?? "";
+  assert.match(identity, /Critical Pair One/);
+  assert.match(identity, /Match pts[\s\S]*4 pts/);
+  assert.doesNotMatch(scroller, /Critical Pair One|Participants|First Shooter/);
+  assert.match(card, /<details data-mobile-participants[^>]*>[\s\S]*<summary[^>]*>[\s\S]*Participants/);
+  assert.match(card, /data-mobile-participant-identity[\s\S]*Critical Pair One First Shooter/);
+  assert.match(card, /data-mobile-participant-round-scroller/);
+  assert.match(card, /Swipe or scroll horizontally to view all Rounds/);
+  assert.match(card, /data-mobile-round-scroller[^>]*overflow-x-auto/);
+  assert.match(html, /data-mobile-results[^>]*md:hidden/);
+  assert.match(html, /data-desktop-results[^>]*md:block[\s\S]*<table/);
+  assert.equal((html.match(/381\.5/g) ?? []).length, 2, "mobile and desktop use the supplied Round Robin final");
+});
+
 test("mobile Results are screen-only and do not replace the dedicated print table", async () => {
   const [table, roundRobin, css] = await Promise.all([
     read("src/components/competition-aggregate-results.tsx"),

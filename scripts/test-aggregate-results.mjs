@@ -48,7 +48,7 @@ before(async () => {
     alter table profiles enable row level security;
   `);
   for (let rerun = 0; rerun < 2; rerun++) {
-    for (const file of ["competition-results.sql", "competition-aggregate-results.sql"]) {
+    for (const file of ["10_results.sql"]) {
       await db.exec(await readFile(new URL(`../database/${file}`, import.meta.url), "utf8"));
     }
   }
