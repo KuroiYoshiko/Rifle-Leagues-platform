@@ -1,16 +1,21 @@
+"use client";
+
 import Link from "next/link";
+import { useEffect, useState, type MouseEvent } from "react";
 import { ShooterPerformanceChart } from "@/components/shooter-performance-chart";
 import { Badge, Card } from "@/components/ui";
 import {
   distanceOptionValue,
   equipmentOptionValue,
   positionOptionValue,
-  type IfSeededTodayAnalysis,
-  type ShooterAnalytics,
-  type ShooterAnalyticsComponent,
-  type ShooterAnalyticsFilterSelection,
-  type ShooterAnalyticsPoint,
-  type ShooterAnalyticsTrendDirection,
+} from "@/lib/shooter-analytics-options";
+import type {
+  IfSeededTodayAnalysis,
+  ShooterAnalytics,
+  ShooterAnalyticsComponent,
+  ShooterAnalyticsFilterSelection,
+  ShooterAnalyticsPoint,
+  ShooterAnalyticsTrendDirection,
 } from "@/lib/shooter-analytics";
 
 export type StatisticsView = "overview" | "performance" | "seasons" | "history";
@@ -216,18 +221,37 @@ function Filters({
 function AnalysisNavigation({
   activeView,
   selection,
+  onViewChange,
+  allowLocalNavigation,
 }: {
   activeView: StatisticsView;
   selection: ShooterAnalyticsFilterSelection;
+  onViewChange: (view: StatisticsView) => void;
+  allowLocalNavigation: boolean;
 }) {
   return (
     <nav data-screen-only aria-label="Statistics analysis" className="mt-5 grid grid-cols-2 gap-1 rounded-2xl border border-border bg-surface p-1 sm:flex sm:w-fit">
       {views.map((view) => {
         const active = view.id === activeView;
+        const href = statisticsHref(selection, view.id);
         return (
           <Link
             key={view.id}
-            href={statisticsHref(selection, view.id)}
+            href={href}
+            onClick={(event: MouseEvent<HTMLAnchorElement>) => {
+              if (
+                !allowLocalNavigation
+                || event.button !== 0
+                || event.metaKey
+                || event.ctrlKey
+                || event.shiftKey
+                || event.altKey
+              ) return;
+
+              event.preventDefault();
+              window.history.pushState(null, "", href);
+              onViewChange(view.id);
+            }}
             aria-current={active ? "page" : undefined}
             className={`flex min-h-11 items-center justify-center rounded-xl px-3 text-sm font-semibold transition sm:px-5 ${
               active
@@ -556,6 +580,22 @@ export function ShooterAnalyticsDashboard({
   selection: ShooterAnalyticsFilterSelection;
   activeView: StatisticsView;
 }) {
+  const [currentView, setCurrentView] = useState(activeView);
+
+  useEffect(() => {
+    const syncViewFromHistory = () => {
+      const requestedView = new URLSearchParams(window.location.search).get("view");
+      setCurrentView(
+        views.some((view) => view.id === requestedView)
+          ? requestedView as StatisticsView
+          : "overview",
+      );
+    };
+
+    window.addEventListener("popstate", syncViewFromHistory);
+    return () => window.removeEventListener("popstate", syncViewFromHistory);
+  }, []);
+
   const summary = analytics.summary;
   const filtered = Object.values(selection).some(Boolean);
   const selectedFilters = [
@@ -572,7 +612,7 @@ export function ShooterAnalyticsDashboard({
       ? `Distance: ${analytics.filter_options.distances.find((option) => distanceOptionValue(option) === selection.distance)?.label}`
       : null,
   ].filter((value): value is string => Boolean(value));
-  const activeViewLabel = views.find((view) => view.id === activeView)?.label ?? "Overview";
+  const activeViewLabel = views.find((view) => view.id === currentView)?.label ?? "Overview";
 
   return (
     <div data-statistics-print-document className="min-w-0">
@@ -589,7 +629,7 @@ export function ShooterAnalyticsDashboard({
 
       <div data-print-only className="hidden border-y border-border py-3 text-sm text-foreground">
         <p className="font-semibold">
-          {activeView === "history"
+          {currentView === "history"
             ? `Score history · Page ${analytics.history.page} of ${Math.max(analytics.history.total_pages, 1)}`
             : activeViewLabel}
         </p>
@@ -598,8 +638,13 @@ export function ShooterAnalyticsDashboard({
         </p>
       </div>
 
-      <Filters analytics={analytics} selection={selection} activeView={activeView} />
-      <AnalysisNavigation activeView={activeView} selection={selection} />
+      <Filters analytics={analytics} selection={selection} activeView={currentView} />
+      <AnalysisNavigation
+        activeView={currentView}
+        selection={selection}
+        onViewChange={setCurrentView}
+        allowLocalNavigation={analytics.history.page === 1}
+      />
 
       {analytics.component_scope === "filtered_components" && summary.physical_shoot_count > 0 ? (
         <div className="mt-5 rounded-xl border border-brand/20 bg-brand-subtle px-4 py-3 text-xs leading-5 text-brand-deep">
@@ -609,16 +654,16 @@ export function ShooterAnalyticsDashboard({
 
       {summary.physical_shoot_count === 0 ? <EmptyState filtered={filtered} /> : <Summary analytics={analytics} />}
 
-      {activeView === "overview" ? (
+      {currentView === "overview" ? (
         <>
           {summary.physical_shoot_count > 0 ? <div className="mt-6"><RecentForm scores={analytics.recent_scores} /></div> : null}
           <IfSeededToday analyses={analytics.if_seeded_today} />
         </>
-      ) : activeView === "performance" && summary.physical_shoot_count > 0 ? (
+      ) : currentView === "performance" && summary.physical_shoot_count > 0 ? (
         <PerformanceAnalysis analytics={analytics} />
-      ) : activeView === "seasons" && summary.physical_shoot_count > 0 ? (
+      ) : currentView === "seasons" && summary.physical_shoot_count > 0 ? (
         <SeasonAnalysis analytics={analytics} />
-      ) : activeView === "history" && summary.physical_shoot_count > 0 ? (
+      ) : currentView === "history" && summary.physical_shoot_count > 0 ? (
         <ScoreHistory analytics={analytics} selection={selection} />
       ) : null}
     </div>

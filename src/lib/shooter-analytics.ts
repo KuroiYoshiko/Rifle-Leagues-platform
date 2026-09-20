@@ -5,6 +5,11 @@ import {
   getMyShootingCompetitions,
 } from "@/lib/my-shooting-competitions";
 import { getIfSeededTodayDivision } from "@/lib/shooter-statistics-seeding.mjs";
+import type {
+  DistanceOption,
+  EquipmentOption,
+  PositionOption,
+} from "@/lib/shooter-analytics-options";
 import { createClient } from "@/lib/supabase/server";
 
 export type ShooterAnalyticsTrendDirection =
@@ -91,27 +96,6 @@ export type IfSeededTodayAnalysis = {
   starting_average: number | null;
   running_average: number | null;
   unavailable_reason: string | null;
-};
-
-type EquipmentOption = {
-  kind: "builtin" | "custom" | "unspecified";
-  code: string | null;
-  custom_id: number | null;
-  label: string;
-};
-
-type PositionOption = {
-  mode: "fixed" | "variable" | "not_applicable" | "unspecified";
-  code: string | null;
-  custom_id: number | null;
-  label: string;
-};
-
-type DistanceOption = {
-  mode: "fixed" | "variable" | "not_applicable" | "unspecified";
-  value: number | null;
-  unit: "metres" | "yards" | "feet" | null;
-  label: string;
 };
 
 export type ShooterAnalytics = {
@@ -312,29 +296,17 @@ export function parseShooterAnalyticsFilters(input: {
   };
 }
 
-export function equipmentOptionValue(option: EquipmentOption) {
-  if (option.kind === "builtin" && option.code) return `builtin:${option.code}`;
-  if (option.kind === "custom" && option.custom_id) return `custom:${option.custom_id}`;
-  return "unspecified";
-}
-
-export function positionOptionValue(option: PositionOption) {
-  if (option.mode === "fixed" && option.code) return `fixed:builtin:${option.code}`;
-  if (option.mode === "fixed" && option.custom_id) return `fixed:custom:${option.custom_id}`;
-  return option.mode;
-}
-
-export function distanceOptionValue(option: DistanceOption) {
-  if (option.mode === "fixed" && option.value && option.unit) {
-    return `fixed:${option.value}:${option.unit}`;
-  }
-  return option.mode;
-}
-
 export const getMyShooterAnalytics = cache(
   async (filters: ShooterAnalyticsRpcFilters) => {
     const supabase = await createClient();
-    const { data, error } = await supabase.rpc("get_my_shooter_analytics", filters);
+    const analyticsRequest = supabase.rpc("get_my_shooter_analytics", filters);
+    const myShootingRequest = filters.p_include_if_seeded_today
+      ? getMyShootingCompetitions()
+      : Promise.resolve(null);
+    const [{ data, error }, myShooting] = await Promise.all([
+      analyticsRequest,
+      myShootingRequest,
+    ]);
 
     if (error || !data || typeof data !== "object" || Array.isArray(data)) {
       throw new Error("Shooter analytics could not be loaded.");
@@ -343,8 +315,7 @@ export const getMyShooterAnalytics = cache(
     const raw = data as RawShooterAnalytics;
     const inputs = raw.if_seeded_today_inputs ?? [];
     const activeCompetitionIds = new Set<number>();
-    if (inputs.length > 0) {
-      const myShooting = await getMyShootingCompetitions();
+    if (inputs.length > 0 && myShooting) {
       for (const participation of myShooting.competitions) {
         if (
           classifyMyShootingCompetition(participation, myShooting.as_of_date)

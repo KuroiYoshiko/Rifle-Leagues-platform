@@ -47,6 +47,7 @@ export default async function StatisticsPage({
 
   return (
     <ShooterAnalyticsDashboard
+      key={`${view}:${filters.selection.season}:${filters.selection.equipment}:${filters.selection.position}:${filters.selection.distance}:${filters.rpc.p_history_page}`}
       analytics={analytics}
       selection={filters.selection}
       activeView={view}
