@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { after, afterEach, before, beforeEach, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
-import { installCanonicalDatabase, sqlFile } from "./helpers/canonical-database.mjs";
+import { installCanonicalDatabase } from "./helpers/canonical-database.mjs";
 
 const db = new PGlite();
 const actors = {
@@ -480,7 +480,7 @@ test("draft references block archive, duplicate selections fail clearly, and arc
   assert.equal(linked.club_team_name_snapshot, "Draft Team");
 });
 
-test("legacy save payloads remain valid and the canonical Club Team schema is rerunnable", async () => {
+test("legacy save payloads remain valid and the canonical Club Team schema is complete", async () => {
   const legacy = await call("save_club_competition_entry", [2, JSON.stringify([[1, 2]])]);
   assert.equal(legacy.status, "draft");
   const row = (await admin(`select club_team_id, club_team_name_snapshot
@@ -491,7 +491,6 @@ test("legacy save payloads remain valid and the canonical Club Team schema is re
   const isolated = new PGlite();
   try {
     await installCanonicalDatabase(isolated);
-    await isolated.exec(await sqlFile("club-teams"));
     const columns = await isolated.query(`select column_name
       from information_schema.columns
       where table_schema='public' and table_name='competition_entrants'
@@ -551,18 +550,18 @@ test("legacy save payloads remain valid and the canonical Club Team schema is re
 
 test("UI and schema expose current Pair/Team rosters without changing scoring or average ownership", async () => {
   const [schema, editor, manager, frame, results, averages, concurrent] = await Promise.all([
-    readFile(new URL("../database/club-teams.sql", import.meta.url), "utf8"),
+    readFile(new URL("../database/03_clubs.sql", import.meta.url), "utf8"),
     readFile(new URL("../src/components/competition-entry-editor.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/club-teams-manager.tsx", import.meta.url), "utf8"),
     readFile(new URL("../src/components/club-page-frame.tsx", import.meta.url), "utf8"),
-    readFile(new URL("../database/competition-results.sql", import.meta.url), "utf8"),
-    readFile(new URL("../database/competition-averages.sql", import.meta.url), "utf8"),
-    readFile(new URL("../database/concurrent-shooting.sql", import.meta.url), "utf8"),
+    readFile(new URL("../database/10_results.sql", import.meta.url), "utf8"),
+    readFile(new URL("../database/13_averages.sql", import.meta.url), "utf8"),
+    readFile(new URL("../database/15_concurrent_shooting.sql", import.meta.url), "utf8"),
   ]);
 
   assert.match(schema, /club_team_id bigint/);
   assert.match(schema, /club_team_name_snapshot/);
-  assert.match(schema, /create table if not exists public\.club_team_roster_members/);
+  assert.match(schema, /create table "public"\."club_team_roster_members"/);
   assert.match(schema, /unit_type text/);
   assert.match(schema, /fixed_size integer/);
   assert.doesNotMatch(schema, /organisation_id.*club_teams/i);

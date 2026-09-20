@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { after, afterEach, before, beforeEach, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
-import { installCanonicalDatabase, sqlFile } from "./helpers/canonical-database.mjs";
+import { installCanonicalDatabase } from "./helpers/canonical-database.mjs";
 
 const db = new PGlite();
 const actors = Object.fromEntries(
@@ -1460,35 +1460,20 @@ test("Stage 3A lifecycle metadata mirrors safe cancellation rules", async () => 
   assert.equal(lifecycle.cancel_block_reason, "competition_started");
 });
 
-test("the additive migration is rerunnable", async () => {
-  const rerun = new PGlite();
+test("the canonical install contains the complete final Concurrent Shooting subsystem", async () => {
+  const installed = new PGlite();
   try {
-    await installCanonicalDatabase(rerun);
-    const shootingDetails = await sqlFile("competition-shooting-details");
-    const sql = await sqlFile("concurrent-shooting");
-    const stage2 = await sqlFile("concurrent-shooting-stage-2");
-    const stage3a = await sqlFile("concurrent-shooting-stage-3a");
-    const physicalCompatibility = await sqlFile("concurrent-shooting-physical-compatibility");
-    const managementUx = await sqlFile("concurrent-shooting-management-ux");
-    const finalAudit = await sqlFile("concurrent-shooting-final-audit");
-    await rerun.exec(shootingDetails);
-    await rerun.exec(shootingDetails);
-    await rerun.exec(sql);
-    await rerun.exec(sql);
-    await rerun.exec(stage2);
-    await rerun.exec(stage2);
-    await rerun.exec(stage3a);
-    await rerun.exec(stage3a);
-    await rerun.exec(physicalCompatibility);
-    await rerun.exec(physicalCompatibility);
-    await rerun.exec(managementUx);
-    await rerun.exec(managementUx);
-    await rerun.exec(finalAudit);
-    await rerun.exec(finalAudit);
-    assert.equal((await rerun.query(
+    await installCanonicalDatabase(installed);
+    assert.equal((await installed.query(
       "select count(*)::int n from information_schema.tables where table_schema='public' and table_name like 'concurrent_shooting%'",
     )).rows[0].n, 4);
+    assert.equal((await installed.query(`select count(*)::int n from pg_proc
+      where oid in (
+        'public.get_concurrent_shooting_group_lifecycle(bigint,bigint)'::regprocedure,
+        'public.get_individual_competition_score_entry(bigint,bigint,bigint,bigint,bigint)'::regprocedure,
+        'public.save_individual_competition_round_scores(bigint,bigint,bigint,bigint,bigint,jsonb)'::regprocedure
+      )`)).rows[0].n, 3);
   } finally {
-    await rerun.close();
+    await installed.close();
   }
 });

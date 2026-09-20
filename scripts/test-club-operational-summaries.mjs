@@ -85,7 +85,7 @@ before(async () => {
   `);
 
   const sql = await readFile(
-    new URL("../database/club-operational-summaries.sql", import.meta.url),
+    new URL("../database/09_club_operations.sql", import.meta.url),
     "utf8",
   );
   await db.exec(sql);
@@ -352,7 +352,7 @@ test("anonymous callers cannot execute the operational RPC", async () => {
   await db.exec("set request.jwt.claim.sub = ''; set role anon;");
   await assert.rejects(
     () => db.query("select * from public.get_club_operational_summaries(null)"),
-    /permission denied/i,
+    /permission denied|Authentication is required/i,
   );
 });
 

@@ -357,11 +357,11 @@ test("the read model is authenticated, hardened, rerunnable, and cannot expose f
   const isolated = new PGlite();
   try {
     await installCanonicalDatabase(isolated);
-    await isolated.exec(await sqlFile("my-shooting-competitions"));
+    await isolated.exec(await sqlFile("16_public_read_models"));
   } finally {
     await isolated.close();
   }
-  const source = await read("database/my-shooting-competitions.sql");
+  const source = await read("database/16_public_read_models.sql");
   assert.doesNotMatch(source, /user_organisations/);
   assert.doesNotMatch(source, /shooting_score_(?:sources|values)|competition_score_usages/);
 });

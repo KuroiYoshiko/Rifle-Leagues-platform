@@ -5,6 +5,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { installCanonicalDatabase, sqlFile } from "./helpers/canonical-database.mjs";
 import {
   CANONICAL_FRESH_INSTALL_ORDER,
+  FRESH_INSTALL_ONLY_SQL_FILES,
   NON_STANDALONE_SQL_FILES,
   ORDERED_BUNDLE_ONLY_SQL_FILES,
   ORDERED_RERUN_BUNDLES,
@@ -44,11 +45,13 @@ test("the manifest classifies every current database SQL file exactly once", asy
     [
       ...STANDALONE_RERUNNABLE_SQL_FILES,
       ...ORDERED_BUNDLE_ONLY_SQL_FILES,
+      ...FRESH_INSTALL_ONLY_SQL_FILES,
     ].sort(),
     [...CANONICAL_FRESH_INSTALL_ORDER].sort(),
   );
   for (const bundle of ORDERED_RERUN_BUNDLES) {
-    assert.deepEqual(bundle.files, CANONICAL_FRESH_INSTALL_ORDER);
+    assert.ok(bundle.files.length > 0);
+    for (const name of bundle.files) assert.ok(ORDERED_BUNDLE_ONLY_SQL_FILES.includes(name));
   }
 });
 
@@ -74,4 +77,3 @@ test("supported SQL reruns preserve current reads, RPCs and database metadata", 
     await assertDatabaseMetadataInvariants(db, projections);
   }
 });
-

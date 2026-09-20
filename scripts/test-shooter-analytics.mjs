@@ -531,14 +531,14 @@ test("the RPC is current-shooter-only, excludes inactive contexts, and denies an
   });
 });
 
-test("one score has an unavailable trend and the migration is rerunnable", async () => {
+test("one score has an unavailable trend and the analytics read model is rerunnable", async () => {
   const fixture = await createCompetition({ name: "One point" });
   await addScore(fixture, [{ set: 1, component: 1, achieved: 90 }]);
   assert.equal((await analytics()).summary.trend_direction, "unavailable");
   const isolated = new PGlite();
   try {
-    await installCanonicalDatabase(isolated, { concurrentShootingStage3a: true });
-    await isolated.exec(await sqlFile("shooter-analytics"));
+    await installCanonicalDatabase(isolated);
+    await isolated.exec(await sqlFile("17_shooter_analytics"));
   } finally {
     await isolated.close();
   }

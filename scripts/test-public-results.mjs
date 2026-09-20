@@ -15,6 +15,7 @@ const db = new PGlite();
 before(async () => {
   await db.exec(`
     create role anon; create role authenticated;
+    create schema private;
     grant usage on schema public to anon, authenticated;
     create table organisations(
       id bigint primary key, name text, slug text, short_name text,
@@ -65,7 +66,9 @@ before(async () => {
     create table club_memberships(id bigint primary key, user_id uuid, club_id bigint, status text, role text);
     create table competition_entrant_participants(id bigint primary key, competition_entrant_id bigint, club_membership_id bigint, slot_number integer);
   `);
-  const sql = await readFile(new URL("../database/public-results.sql", import.meta.url), "utf8");
+  const resultsSql = await readFile(new URL("../database/10_results.sql", import.meta.url), "utf8");
+  const sql = await readFile(new URL("../database/16_public_read_models.sql", import.meta.url), "utf8");
+  await db.exec(resultsSql);
   await db.exec(sql);
   await db.exec(sql);
 });
@@ -568,14 +571,18 @@ test("anonymous Competition capabilities omit every entry and management control
   assert.equal(authenticatedOwner.showCompetitionManagement, true);
 });
 
-test("catalog migration grants only function execution and leaves table policy/grant surface alone", async () => {
-  const sql = await readFile(new URL("../database/public-results.sql", import.meta.url), "utf8");
+test("public read models and central security grant only their intended function execution", async () => {
+  const [sql, security] = await Promise.all([
+    readFile(new URL("../database/16_public_read_models.sql", import.meta.url), "utf8"),
+    readFile(new URL("../database/18_security_and_integrity.sql", import.meta.url), "utf8"),
+  ]);
   assert.doesNotMatch(sql, /grant\s+(?:select|insert|update|delete|all).*on\s+table/is);
   assert.doesNotMatch(sql, /create\s+policy|alter\s+table.*(?:disable|enable)\s+row\s+level\s+security/is);
-  assert.match(sql, /revoke execute on function public\.get_public_results_catalog[\s\S]*from public, anon, authenticated/i);
-  assert.match(sql, /grant execute on function public\.get_public_results_catalog[\s\S]*to anon, authenticated/i);
-  assert.match(sql, /revoke execute on function public\.get_public_club_results_catalog[\s\S]*from public, anon, authenticated/i);
-  assert.match(sql, /grant execute on function public\.get_public_club_results_catalog[\s\S]*to anon, authenticated/i);
+  for (const name of ["get_public_results_catalog", "get_public_club_results_catalog"]) {
+    assert.match(security, new RegExp(`revoke all privileges on function "public"\\."${name}"[\\s\\S]{0,240}from public, anon, authenticated, service_role`, "i"));
+    assert.match(security, new RegExp(`grant execute on function "public"\\."${name}"[\\s\\S]{0,240}to "anon"`, "i"));
+    assert.match(security, new RegExp(`grant execute on function "public"\\."${name}"[\\s\\S]{0,240}to "authenticated"`, "i"));
+  }
 });
 
 test("anonymous callers still cannot select club participation or private source tables", async () => {
@@ -601,7 +608,7 @@ test("anonymous callers still cannot select club participation or private source
   }
 
   const managementSql = await readFile(
-    new URL("../database/competition-entries.sql", import.meta.url),
+    new URL("../database/18_security_and_integrity.sql", import.meta.url),
     "utf8",
   );
   assert.doesNotMatch(

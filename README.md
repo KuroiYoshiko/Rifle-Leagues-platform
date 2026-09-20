@@ -18,22 +18,18 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 
 ## Supabase database setup
 
-The application profile feature requires the SQL in
-[`database/user-profiles.sql`](database/user-profiles.sql). Run the entire file
-once in the Supabase Dashboard SQL Editor before testing `/dashboard` or
-`/profile`.
-
-The script is safe to rerun. It creates the private `public.profiles` table,
-backfills existing Auth users from their first/last-name metadata, installs the
-new-user and `updated_at` triggers, grants authenticated Data API access, and
-enables owner-only Row Level Security policies.
+The numbered SQL files in `database/` are the complete current fresh-install
+schema. Run them in numeric order; do not replay removed historical stage files
+or individual fresh-install-only files against an upgraded database. See the
+[`database/README.md`](database/README.md) layout and the executable manifest in
+`scripts/helpers/database-install-manifest.mjs`.
 
 No service-role key is used by the application and no additional environment
 variables are required.
 
 ## Destructive development/staging data reset
 
-[`database/dev-reset-all-data.sql`](database/dev-reset-all-data.sql) is manual,
+[`database/dev/dev-reset-all-data.sql`](database/dev/dev-reset-all-data.sql) is manual,
 destructive local/staging tooling. It is **not a migration**, is not part of the
 canonical database installer/deployment chain, and must never be run against
 production.
@@ -59,7 +55,7 @@ Run `npm run test:dev-reset` after changing the canonical schema or this tool.
 The new staging-history seed is implemented by
 [`scripts/seed-staging-demo.mjs`](scripts/seed-staging-demo.mjs). It is separate
 from the reset and from the canonical migration installer. It must only be run
-after `database/dev-reset-all-data.sql` has left exactly one Auth user and no
+after `database/dev/dev-reset-all-data.sql` has left exactly one Auth user and no
 application data, and it must never be run against production.
 
 The CLI uses the Supabase Auth Admin API to create 95 passwordless synthetic
@@ -91,13 +87,12 @@ seed model or runner.
 
 ## Organisation management access
 
-Run the complete [`database/organisation-staff.sql`](database/organisation-staff.sql)
-file in the Supabase Dashboard SQL Editor after `database/user-profiles.sql` and
-`database/organisations.sql`. This adds the separate organisation-management
+The organisation-management schema is installed by
+[`database/02_organisations.sql`](database/02_organisations.sql). It adds the separate organisation-management
 relationship, its constraints and RLS policy, and the narrowly scoped RPCs used
 to request, approve, reject, revoke, list, and transfer access.
 
-The script is safe to rerun and does not modify `public.user_organisations`.
+This subsystem does not modify `public.user_organisations`.
 Dashboard follows remain personal shortcuts and never grant management access.
 It also does not assign an owner automatically.
 
@@ -167,10 +162,8 @@ safe.
 
 ## Organisation registration
 
-Run the complete
-[`database/organisation-registration.sql`](database/organisation-registration.sql)
-file in the Supabase Dashboard SQL Editor after `database/organisations.sql` and
-`database/organisation-staff.sql`. The file is safe to rerun.
+The final registration schema is part of
+[`database/02_organisations.sql`](database/02_organisations.sql).
 
 It adds the organisation type, address, postcode, and telephone registration
 fields, backfills pre-existing organisations to the `other` type, and creates
@@ -185,11 +178,9 @@ with no rows committed; the function does not create a random suffixed copy.
 
 ## Organisation About and Contact management
 
-Run the complete
-[`database/organisation-about-contact.sql`](database/organisation-about-contact.sql)
-file in the Supabase Dashboard SQL Editor after `database/organisations.sql`,
-`database/organisation-staff.sql`, and `database/organisation-registration.sql`.
-The file is safe to rerun and does not create placeholder content.
+The final About and Contact schema is part of
+[`database/02_organisations.sql`](database/02_organisations.sql) and creates no
+placeholder content.
 
 It adds the single nullable `about_content` Markdown document to each
 organisation and narrowly scoped About and structured Contact update RPCs.
@@ -199,11 +190,9 @@ and other authenticated users retain read-only access, and direct client
 
 ## Organisation information cards
 
-Run the complete
-[`database/organisation-information-cards.sql`](database/organisation-information-cards.sql)
-file in the Supabase Dashboard SQL Editor after `database/user-profiles.sql`,
-`database/organisations.sql`, and `database/organisation-staff.sql`. The file is
-safe to rerun and does not add placeholder or development content.
+The final information-card schema is part of
+[`database/02_organisations.sql`](database/02_organisations.sql) and adds no
+placeholder or development content.
 
 It creates the generic information-card table, read-only authenticated access,
 and the narrowly scoped create, update, delete, and atomic reorder RPCs. Only an
@@ -213,10 +202,8 @@ and the database permits at most five ordered cards per organisation.
 
 ## League seasons
 
-Run the complete [`database/league-seasons.sql`](database/league-seasons.sql)
-file in the Supabase Dashboard SQL Editor after `database/user-profiles.sql`,
-`database/organisations.sql`, and `database/organisation-staff.sql`. The file is
-safe to rerun and creates no example seasons.
+The final Season schema is in
+[`database/04_seasons.sql`](database/04_seasons.sql) and creates no example seasons.
 
 It creates `public.league_seasons`, its constraints, indexes, audit trigger,
 read-only authenticated Data API grant, and draft-aware RLS policy. Normal
@@ -230,20 +217,14 @@ seasons are always drafts. Status can remain unchanged or move one step forward
 through `draft`, `open`, `active`, and `completed`. Season route slugs are unique
 within an organisation and remain stable after a rename.
 
-For an existing populated installation that already has the season schema, run
-the focused additive [`database/season-description.sql`](database/season-description.sql)
-migration once. It adds the nullable, 2,000-character plain-text description
-column and backward-compatible RPC overloads without resetting or reseeding any
-season data. The migration is safe to rerun.
+The final definition includes the nullable, 2,000-character plain-text
+description column and backward-compatible RPC contract without example data.
 
 ## Competition and round configuration
 
-Run the complete
-[`database/competition-rounds.sql`](database/competition-rounds.sql) file in the
-Supabase Dashboard SQL Editor after `database/user-profiles.sql`,
-`database/organisations.sql`, `database/organisation-staff.sql`, and
-`database/league-seasons.sql`. The file is safe to rerun and creates no example
-competitions or rounds.
+The final Competition configuration schema is in
+[`database/05_competitions.sql`](database/05_competitions.sql) and creates no
+example competitions or rounds.
 
 It creates `public.competitions` and `public.competition_rounds`, their hard
 limits, indexes, audit and validation triggers, read-only authenticated Data API
@@ -257,21 +238,11 @@ active organisation, exact season, exact competition, and active owner before
 atomically saving configuration and the round schedule. New competitions are
 always drafts, and publishing remains a deliberate validated transition.
 
-For an existing populated installation, then run the complete focused additive
-[`database/competition-configuration-refactor.sql`](database/competition-configuration-refactor.sql)
-file after `database/season-description.sql`, `database/competition-rounds.sql`,
-`database/competition-entries.sql`, `database/club-teams.sql`, and
-`database/competition-divisions.sql`.
-It adds Competition date inheritance, optional Shoot-by dates, ranking and
+The final definition includes Competition date inheritance, optional Shoot-by dates, ranking and
 scoring-access configuration, and the relational Course of Fire table. It
 backfills existing one-score Competitions without replacing any Competition,
 Round, Entry, Entrant, Participant, Division, or assignment row. No reset or
-reseed is required. The historical baseline SQL files should be run before this
-focused upgrade; rerun the upgrade last if a baseline file is reapplied.
-
-Then run
-[`database/competition-lifecycle-management.sql`](database/competition-lifecycle-management.sql)
-after the Competition configuration refactor and Division SQL. It adds narrowly
+reseed is required. It also includes narrowly
 scoped owner-only publish, return-to-draft, and safe-delete RPCs. Return to draft
 and deletion are blocked atomically when any club entry, entrant, participant,
 division configuration, division, or assignment exists. Safe deletion removes
@@ -282,50 +253,38 @@ no database reset or reseed is required.
 
 ### Competition Series backend foundation (Stage 1)
 
-After installing the current Competition configuration, lifecycle, source-score,
-division, Results and Round Robin foundations documented below, run these complete
-files in order:
-
-1. [`database/competition-series.sql`](database/competition-series.sql)
-2. [`database/competition-series-management.sql`](database/competition-series-management.sql)
-
-No existing SQL needs rerunning on an up-to-date installation. Both new files are
-additive and rerunnable; existing Competitions remain unlinked with unchanged IDs,
-configuration and participation. Run this upgrade last if reapplying earlier SQL.
+The final Series schema is in
+[`database/12_series.sql`](database/12_series.sql). Existing Competitions remain
+unlinked with unchanged IDs, configuration, and participation.
 
 ### Concurrent Shooting (Stages 1, 2, and 3A)
 
-After all existing Competition, score, Series, and Average migrations through
-`database/competition-averages-stage-3.sql`, run these complete files in order:
+The final physical model and Concurrent Shooting schema are in
+[`database/14_shooting_details.sql`](database/14_shooting_details.sql) and
+[`database/15_concurrent_shooting.sql`](database/15_concurrent_shooting.sql).
 
-1. [`database/concurrent-shooting.sql`](database/concurrent-shooting.sql)
-2. [`database/concurrent-shooting-stage-2.sql`](database/concurrent-shooting-stage-2.sql)
-3. [`database/concurrent-shooting-stage-3a.sql`](database/concurrent-shooting-stage-3a.sql)
-4. [`database/competition-shooting-details.sql`](database/competition-shooting-details.sql)
-5. [`database/concurrent-shooting-physical-compatibility.sql`](database/concurrent-shooting-physical-compatibility.sql)
-
-The first file adds opt-in Organisation/Season-scoped groups, explicit physical
+The Concurrent subsystem adds opt-in Organisation/Season-scoped groups, explicit physical
 Round mappings, strict server-derived Course-of-Fire signatures, lifecycle
 guards, source association/version fields, and generic append-only audit
-storage. The second adds atomic shared-score resolution and usage propagation,
+storage. It includes atomic shared-score resolution and usage propagation,
 optimistic conflicts, global clear, audit recording, late-entry reconciliation,
-and shared score-entry metadata. The third adds narrow management read models
+and shared score-entry metadata, narrow management read models,
 and an atomic Draft mapping setter for the Organisation Management workflow.
 Existing unmapped scoring and Results remain unchanged; none of these files
 creates links, merges sources, or backfills history.
 
-The fourth file adds stable built-in equipment and position taxonomies,
+The physical-details subsystem adds stable built-in equipment and position taxonomies,
 normalised reusable Organisation custom values, Competition-level equipment,
 and component-level position/style, distance, and physical shots. New structured
 drafts derive `shots_per_round` on the server as sets multiplied by the sum of
 component shots. Existing rows remain explicitly legacy (`shooting_details_version
 IS NULL`) with no inferred values. Series identity and continuation preserve the
-physical definition. The fifth file installs exact physical compatibility V2;
+physical definition. The Concurrent subsystem installs exact physical compatibility V2;
 legacy or incomplete Competitions show “Physical shooting details required” and
 cannot be newly linked merely because their score-entry shapes match.
 
-See [the Concurrent Shooting architecture and deployment boundary](database/CONCURRENT-SHOOTING.md).
-See [the structured physical shooting model](database/COMPETITION-SHOOTING-DETAILS.md)
+See [the Concurrent Shooting architecture and deployment boundary](database/docs/CONCURRENT-SHOOTING.md).
+See [the structured physical shooting model](database/docs/COMPETITION-SHOOTING-DETAILS.md)
 for taxonomy, Series inheritance, legacy behavior, and analytics rationale.
 Run `npm run test:concurrent` and `npm run test:shooting-details` for the disposable
 PostgreSQL regression suites.
@@ -336,17 +295,17 @@ No reset, reseed, name-based association or live database application is automat
 After the complete Competition, Results, Series, Averages, structured shooting
 details, and Concurrent Shooting chain (including the current management/final
 audit files), run
-[`database/shooter-analytics.sql`](database/shooter-analytics.sql). It adds one
+[`database/17_shooter_analytics.sql`](database/17_shooter_analytics.sql). It adds one
 authenticated current-shooter read RPC and no score table, cached total, or data
 backfill. The application exposes the result at `/statistics`.
 
-See [the analytics model audit and deployment notes](database/SHOOTER-ANALYTICS.md)
+See [the analytics model audit and deployment notes](database/docs/SHOOTER-ANALYTICS.md)
 and run `npm run test:analytics` for the data/security and UI contract suite.
 
 ### My Shooting Competition hub
 
 After the public Competition, Division, and Results projections are installed,
-run [`database/my-shooting-competitions.sql`](database/my-shooting-competitions.sql).
+run [`database/16_public_read_models.sql`](database/16_public_read_models.sql).
 It adds one authenticated current-shooter participation RPC for `/competitions`.
 The RPC reads only submitted entrant slots and published Division/schedule
 metadata; official placing and averages continue to come from the existing
@@ -361,21 +320,16 @@ continuation RPCs, manager draft authoring, source selection metadata and owner-
 Series lifecycle. It also repairs unchanged-component upserts when editing a scored
 Competition's description. The Add Competition UI remains unchanged.
 
-See [`database/COMPETITION-SERIES.md`](database/COMPETITION-SERIES.md) for the exact
+See [`database/docs/COMPETITION-SERIES.md`](database/docs/COMPETITION-SERIES.md) for the exact
 RPC payloads, permission model, copy rules, deployment checks and Stage 2 checklist.
 Run `npm run test:series` for disposable PGlite coverage.
 
 ### Source-score foundation
 
-After the Competition configuration and entry foundations above, run these
-focused additive files in this order:
-
-1. [`database/competition-configuration-save-fix.sql`](database/competition-configuration-save-fix.sql)
-2. [`database/competition-configuration-owner-save-fix.sql`](database/competition-configuration-owner-save-fix.sql)
-3. [`database/competition-scores.sql`](database/competition-scores.sql)
-4. [`database/competition-scores-deferred-trigger-security.sql`](database/competition-scores-deferred-trigger-security.sql)
-5. [`database/competition-scores-participant-formats.sql`](database/competition-scores-participant-formats.sql)
-6. [`database/competition-results.sql`](database/competition-results.sql)
+The final source-score and Results foundations are in
+[`database/08_scoring.sql`](database/08_scoring.sql),
+[`database/10_results.sql`](database/10_results.sql), and the final shared-score
+RPCs in [`database/15_concurrent_shooting.sql`](database/15_concurrent_shooting.sql).
 
 The score files create participant-owned physical source scores and link them
 to exact Competition participant/Round slots without copying the canonical
@@ -392,22 +346,12 @@ score editing workflow.
 
 ## Aggregate Competition Results
 
-For an existing installation with the tested Results foundation, run these **complete
-files in this order** in the Supabase SQL Editor:
+[`database/10_results.sql`](database/10_results.sql) contains the shared private
+derivation and released Aggregate projection. It is a transactional, supported
+standalone rerun and causes no reset, reseed, source-score redesign, fake zeros,
+NSR rows, materialized standings, or data backfill.
 
-1. [`database/competition-results.sql`](database/competition-results.sql) — rerun
-   the updated foundation to extract its shared private derivation. The existing
-   authorised diagnostic RPC keeps its signature and access checks.
-2. [`database/competition-aggregate-results.sql`](database/competition-aggregate-results.sql)
-   — add the released `get_competition_aggregate_results` RPC.
-
-Both files are transactional and safe to rerun. They only define functions and
-their grants/comments: no reset, reseed, source-score redesign, fake zeros, NSR
-rows, materialized standings, or data backfill. Rerun the Aggregate file last if
-reapplying earlier foundation SQL.
-
-For the points-dropped standings update on an installation that already has the
-shared foundation, rerun only `database/competition-aggregate-results.sql`.
+The points-dropped standings implementation in the same file
 It derives the homogeneous gun result directly from achieved/maximum totals and
 uses that one value for Round placement, cells and overall totals. It no longer
 depends on the foundation's presentation-only `display_score` field. No source
@@ -415,12 +359,9 @@ score, score-entry, shared derivation, or mixed-method behavior changes are need
 
 ## Gun Score Competition Results
 
-For an existing installation, run these complete files in order:
-
-1. [`database/competition-results.sql`](database/competition-results.sql) — ensure
-   the current shared participant/entrant derivation is installed.
-2. [`database/competition-gun-score-results.sql`](database/competition-gun-score-results.sql)
-   — add the narrow public `get_competition_gun_score_results` RPC.
+The shared participant/entrant derivation and narrow public
+`get_competition_gun_score_results` RPC are both in
+[`database/10_results.sql`](database/10_results.sql).
 
 Gun Score standings accumulate complete released shooting results directly. Points
 scored rank high-to-low; points dropped are derived from maximum minus canonical
@@ -440,9 +381,8 @@ PGlite, route, loader, public-boundary, and rendered-matrix coverage.
 
 ## Best N Average Competition Results
 
-After `database/competition-results.sql`, run
-[`database/competition-best-n-average-results.sql`](database/competition-best-n-average-results.sql).
-It adds the public `get_competition_best_n_average_results` projection without
+[`database/10_results.sql`](database/10_results.sql) also contains the public
+`get_competition_best_n_average_results` projection without
 persisting standings. Each entrant's highest configured N complete, released
 canonical achieved-score Round totals form the ranking average. Before N complete
 returns exist, every complete released return counts. NSR and unreleased values
@@ -620,11 +560,8 @@ updates to open Results.
 
 ## Club competition entries
 
-Run the complete
-[`database/competition-entries.sql`](database/competition-entries.sql) file
-after the profile, organisation, organisation staff, clubs and memberships,
-league seasons, and competition rounds SQL listed above. The file is safe to
-rerun and creates no example entries.
+The final entry schema is in
+[`database/06_entries.sql`](database/06_entries.sql) and creates no example entries.
 
 It creates the club submission, entrant-unit, and participant tables; strict
 RLS and Data API grants; club-owner/official mutation and roster RPCs; safe
@@ -634,30 +571,15 @@ an open parent season, and the configured inclusive entry window.
 
 ## Persistent Club Pairs and Teams
 
-Run the complete additive
-[`database/club-teams.sql`](database/club-teams.sql) file after
-`database/competition-entries.sql` and before the Division, Competition
-configuration, Results, public Results, and My Shooting projections. It creates
+[`database/03_clubs.sql`](database/03_clubs.sql) contains the persistent Club
+Pair/Team tables, while [`database/06_entries.sql`](database/06_entries.sql)
+contains their current entry RPCs. Together they create
 Club-owned Pair/Team identities, fixed-size normalized current rosters, and
 nullable edition-local entrant links without backfilling existing entrants.
 Existing V1 identities are retained in an explicit `Needs setup` state until a
 Club manager chooses the type, fixed size, and complete active roster. Existing
 unlinked Pair/Team entrants continue to use their `Pair N`/`Team N` labels, so
 no reset or reseed is required.
-
-For an already-installed database, deploy the changed SQL files in this order:
-
-1. `database/club-teams.sql`
-2. `database/competition-divisions.sql`
-3. `database/competition-configuration-refactor.sql`
-4. `database/competition-results.sql`
-5. `database/public-results.sql`
-6. `database/my-shooting-competitions.sql`
-
-When upgrading an installation that already has the complete Persistent Club
-Teams V1 chain, this Pair/current-roster correction only requires rerunning
-`database/club-teams.sql`, then `database/competition-results.sql`, then
-`database/public-results.sql`.
 
 Club owners and officials manage names and current rosters through narrow
 authenticated RPCs. Members may read their active Club's Pair/Team list, while
@@ -670,14 +592,9 @@ existing ownership and calculation boundaries.
 
 ## Club roles and membership approval
 
-Run the complete [`database/clubs-and-memberships.sql`](database/clubs-and-memberships.sql)
-file in the Supabase Dashboard SQL Editor before testing club roles, membership
-approval, the Members page, or Club settings.
-
-The file is the canonical club schema and is safe to rerun. It preserves every
-existing club and membership row, adds existing memberships as `member`, and
-recreates only idempotent constraints, indexes, policies, triggers, grants, and
-functions. It does not select an owner for an existing club.
+The final Club roles and membership schema is in
+[`database/03_clubs.sql`](database/03_clubs.sql). It does not select an owner for
+an existing club.
 
 After running the schema, bootstrap a specific existing development club owner
 with this guarded SQL. Replace only the example email and slug:
@@ -764,10 +681,9 @@ Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/bui
 
 The first Round Robin implementation adds persisted entrant-unit fixtures and
 released match standings using the existing source-score derivation. Deploy
-`database/competition-round-robin.sql`, then
-`database/competition-round-robin-results.sql`. In development, run
-`database/development-round-robin-fixture.sql` afterward.
+`database/11_round_robin.sql`. In development, run
+`database/dev/development-round-robin-fixture.sql` afterward.
 
-See [the Round Robin implementation and deployment report](database/ROUND-ROBIN.md)
+See [the Round Robin implementation and deployment report](database/docs/ROUND-ROBIN.md)
 for lifecycle rules, NSR policy, expected standings, exact manual paths and checks.
 Run `npm run test:round-robin` or the complete `npm run test:results`.
