@@ -1,6 +1,6 @@
 import { Fragment, type CSSProperties } from "react";
 import { Card } from "@/components/ui";
-import { ParticipantBreakdown } from "@/components/competition-aggregate-results";
+import { MobileParticipantDisclosure, ParticipantBreakdown } from "@/components/competition-aggregate-results";
 import type { CompetitionRoundRobinResults, RoundRobinCell, RoundRobinEntrant } from "@/lib/competition-round-robin-results";
 
 const formatNumber = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 });
@@ -176,6 +176,58 @@ const printOutcome = (cell: RoundRobinCell) => {
 };
 const outcomes = { win: "W", draw: "D", loss: "L", bye: "Bye · W", bye_nsr: "Bye · no win", unresolved: "Unresolved", pending: "Pending" };
 
+function MobileRoundRobinCard({ entrant, rounds, opponentLabels, usesX, showStarting, showRunning, releasedRoundCount }: {
+  entrant: RoundRobinEntrant;
+  rounds: Array<{ id: number; round_number: number; deadline: string; released: boolean }>;
+  opponentLabels: ReturnType<typeof roundRobinOpponentLabels>;
+  usesX: boolean;
+  showStarting: boolean;
+  showRunning: boolean;
+  releasedRoundCount: number;
+}) {
+  const hasPosition = releasedRoundCount > 0 && entrant.position != null;
+  return (
+    <article data-mobile-entrant-card={entrant.entrant_id} className="min-w-0 overflow-hidden rounded-xl border border-border bg-surface shadow-sm">
+      <div data-mobile-entrant-identity className="p-4">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="inline-flex min-w-6 shrink-0 justify-end pt-0.5 text-sm font-bold text-muted-foreground" aria-label={hasPosition ? `${entrant.tied ? "Tied " : ""}position ${entrant.position}` : "Not ranked yet"}>{hasPosition ? `${entrant.position}${entrant.tied ? "=" : ""}` : "—"}</span>
+          <div className="min-w-0 flex-1">
+            <h3 className="break-words text-base font-semibold leading-snug text-foreground">{name(entrant)}</h3>
+            <p className="mt-1 break-words text-xs leading-snug text-muted-foreground">{entrant.club_name}</p>
+            {entrant.entrant_format === "individual" ? individualAverageSummary(entrant, showStarting, showRunning) : null}
+          </div>
+          <div data-mobile-final-summary className="shrink-0 border-l border-brand/20 pl-3 text-right tabular-nums">
+            <span className="mb-1 block text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Match pts</span>
+            <span className="block text-[13px] font-bold text-brand-deep">{entrant.total_match_points} pts</span>
+            <span className="mt-0.5 block text-[10px] text-muted-foreground">{number(entrant.gun_total)} gun total{usesX ? ` · ${number(entrant.x_total)}X` : ""}</span>
+          </div>
+        </div>
+      </div>
+      <div data-mobile-round-scroller role="region" aria-label={`Round scores for ${name(entrant)}. Swipe or scroll horizontally to view all Rounds.`} tabIndex={0} className="results-mobile-round-scroller relative min-w-0 max-w-full overflow-x-auto overscroll-x-contain border-y border-border bg-surface-muted/30 [contain:inline-size] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-brand">
+        <div className="flex w-max min-w-full snap-x snap-proximity">
+          {rounds.map((round) => {
+            const cell = entrant.rounds.find((candidate) => candidate.round_id === round.id);
+            const opponent = cell?.opponent_id == null ? undefined : opponentLabels.get(cell.opponent_id);
+            return <div key={round.id} data-mobile-round={round.id} className="flex min-h-24 w-[6.5rem] shrink-0 snap-start flex-col border-r border-border/70 px-2 py-2.5 text-center tabular-nums last:border-r-0">
+              <div className="text-[10px] leading-snug text-muted-foreground">
+                <span className="block text-[11px] font-semibold text-foreground">R{round.round_number}</span>
+                <time dateTime={round.deadline} aria-label={`Round End ${round.deadline}`} className="mt-0.5 block whitespace-nowrap">{date.format(new Date(`${round.deadline}T00:00:00Z`))}</time>
+                {!round.released ? <span className="block">Unreleased</span> : null}
+              </div>
+              <div title={opponent ? `Versus ${opponent.full}` : undefined} className="mt-2 break-words text-[9px] leading-tight text-muted-foreground">{opponent ? <><span aria-hidden="true">v {opponent.compact}</span><span className="sr-only">Versus {opponent.full}</span></> : cell ? "Bye" : "No fixture"}</div>
+              {!cell || cell.outcome === "pending" ? <span className="mt-1 block text-[11px] text-muted-foreground">Pending</span> : <>
+                <span className="mt-1 block text-[13px] font-semibold text-foreground">{cell.state === "nsr" ? <abbr title="No score returned: incomplete at Round End" className="no-underline">NSR</abbr> : number(cell.gun_score)}{usesX && cell.state === "scored" ? <span className="ml-0.5 text-[10px] font-normal text-muted-foreground">{number(cell.x_total)}X</span> : null}</span>
+                <span className="mt-0.5 block whitespace-nowrap text-[10px] text-muted-foreground">{outcomes[cell.outcome]}{cell.match_points == null ? " · —" : ` · ${cell.match_points} pts`}</span>
+              </>}
+            </div>;
+          })}
+        </div>
+      </div>
+      {entrant.entrant_format !== "individual" ? <MobileParticipantDisclosure entrant={entrant} rounds={rounds} usesX={usesX} /> : null}
+    </article>
+  );
+}
+
 export function CompetitionRoundRobinResultsTable({ data }: {data: CompetitionRoundRobinResults}) {
   if (data.status === "awaiting_divisions") {
     return <Card className="p-6 text-sm text-muted-foreground">Round Robin requires published Divisions and fixtures. Finalise Divisions before Competition Start; an existing live competition without fixtures needs organiser attention.</Card>;
@@ -205,7 +257,11 @@ export function CompetitionRoundRobinResultsTable({ data }: {data: CompetitionRo
       <div data-print-only="true" className="results-round-robin-legend hidden" aria-label={`${group.name} opponent code legend`}>
         {[...printLabels.values()].map(label => <div key={label.code} className="results-round-robin-legend-item"><strong>{label.code}</strong><span aria-hidden="true"> = </span>{label.legend}</div>)}
       </div>
-      <div role="region" aria-labelledby={`rr-division-${group.id}`} tabIndex={0} className="results-table-region relative max-w-full overflow-x-auto rounded-xl border border-border bg-surface outline-none focus-visible:ring-2 focus-visible:ring-brand">
+      <div data-screen-only="true" data-mobile-results className="min-w-0 space-y-3 md:hidden">
+        {data.rounds.length > 1 ? <p className="text-xs font-medium text-muted-foreground">Swipe to view all Rounds <span aria-hidden="true">→</span></p> : null}
+        {group.entrants.map((entrant) => <MobileRoundRobinCard key={entrant.entrant_id} entrant={entrant} rounds={data.rounds} opponentLabels={opponentLabels} usesX={data.uses_x_score} showStarting={showStartingAverage} showRunning={showRunningAverage} releasedRoundCount={data.released_round_count} />)}
+      </div>
+      <div data-desktop-results role="region" aria-labelledby={`rr-division-${group.id}`} tabIndex={0} className="results-table-region relative hidden max-w-full overflow-x-auto rounded-xl border border-border bg-surface outline-none focus-visible:ring-2 focus-visible:ring-brand md:block">
         <table style={tableStyle} data-average-columns={averageColumnCount} className="results-score-table results-round-robin-table w-full table-fixed border-separate border-spacing-0 text-xs tabular-nums">
           <caption className="sr-only">Round Robin standings: match points, {gunLabel}, then X when enabled. Equal positions remain tied. Scroll horizontally for Rounds.</caption>
           <colgroup>

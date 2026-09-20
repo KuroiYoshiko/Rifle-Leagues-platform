@@ -118,7 +118,7 @@ test("print Round Robin cells use two-line codes and compact outcomes while scre
   const html = renderToStaticMarkup(createElement(Table,{data:{status:"ready",display_scoring_mode:"points_scored",uses_x_score:true,released_round_count:4,
     rounds,groups:[{id:1,name:"Division 1",entrants}]}}));
 
-  const legend = html.match(/class="results-round-robin-legend[^>]*>(.*?)<\/div><div role="region"/s)?.[1] ?? "";
+  const legend = html.match(/class="results-round-robin-legend[^>]*>(.*?)<\/div><div data-screen-only="true" data-mobile-results/s)?.[1] ?? "";
   for (const {code, legend: description} of printLabels(entrants).values()) {
     assert.match(legend, new RegExp(`${code}.*${description.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "s"));
   }
@@ -145,7 +145,8 @@ test("Pair/Team disclosure belongs to the sticky entrant cell and controls a tri
     } else {
       assert.match(stickyCell,/<details[^>]*><summary aria-controls="rr-participants-1-1"/);
       assert.match(stickyCell,/Participants/);
-      assert.equal((html.match(/<summary/g) ?? []).length,1);
+      assert.equal((html.match(/<summary/g) ?? []).length,2, "desktop and mobile disclosures are both present");
+      assert.match(html, /<details data-mobile-participants[^>]*><summary[^>]*>[\s\S]*Participants/);
       const breakdown=html.match(/<tr id="rr-participants-1-1"[^>]*class="hidden[^>]*>(.*?)<\/tr>/s)?.[1];
       assert.match(breakdown,/Released shooting results by participant/);
       assert.doesNotMatch(breakdown,/<summary|<details/);

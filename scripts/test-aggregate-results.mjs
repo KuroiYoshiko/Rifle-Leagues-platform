@@ -152,7 +152,7 @@ test("actual Competition route -> Supabase SSR RPC -> SQL -> rendered cells: Sum
   const roundDateHeaders = Array.from(
     html.matchAll(/<time[^>]*date[Tt]ime="\d{4}-\d{2}-\d{2}"[^>]*>([^<]+)<\/time>/g),
   );
-  assert.equal(roundDateHeaders.length, 3);
+  assert.equal(roundDateHeaders.length, 3 * (1 + renderedRows.length));
   for (const header of roundDateHeaders) {
     assert.match(header[1], /^\d{1,2} [A-Z][a-z]{2}$/);
     assert.doesNotMatch(header[1], /\d{4}/);
