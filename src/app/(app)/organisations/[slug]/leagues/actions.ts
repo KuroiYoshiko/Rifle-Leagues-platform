@@ -26,6 +26,11 @@ export type LeagueSeasonFormState = {
   fieldErrors?: Partial<Record<LeagueSeasonField, string>>;
 };
 
+export type LeagueSeasonDeleteState = {
+  status?: "error";
+  message?: string;
+};
+
 type LeagueSeasonRpcResult = {
   id: number;
   organisation_slug: string;
@@ -193,6 +198,26 @@ function mutationErrorMessage(code: string | undefined, fallback: string) {
   return fallback;
 }
 
+function deleteSeasonErrorMessage(code: string | undefined) {
+  if (code === "42501") {
+    return "Only this organisation’s active owner can delete a Season.";
+  }
+
+  if (code === "P0002") {
+    return "That Season or active Organisation is no longer available. Refresh and try again.";
+  }
+
+  if (code === "22023" || code === "23503") {
+    return "Only an unused draft Season can be deleted.";
+  }
+
+  if (code === "PGRST202" || code === "42883") {
+    return "Season deletion is not available because the database upgrade has not been applied yet.";
+  }
+
+  return "The Season could not be deleted because of an unexpected database error. Try again later or contact support.";
+}
+
 function revalidateLeagueRoutes(result: LeagueSeasonRpcResult) {
   const organisationPath = `/organisations/${result.organisation_slug}`;
   const leaguePath = `${organisationPath}/leagues/${result.season_slug}`;
@@ -349,4 +374,51 @@ export async function updateLeagueSeason(
     message: "Season saved.",
     values,
   };
+}
+
+export async function deleteLeagueSeason(
+  _previousState: LeagueSeasonDeleteState,
+  formData: FormData,
+): Promise<LeagueSeasonDeleteState> {
+  const organisationId = readPositiveInteger(formData.get("organisation_id"));
+  const leagueSeasonId = readPositiveInteger(formData.get("league_season_id"));
+
+  if (!organisationId || !leagueSeasonId) {
+    return {
+      status: "error",
+      message: "The season could not be identified. Refresh and try again.",
+    };
+  }
+
+  const { supabase, authenticated } = await createAuthenticatedClient();
+  if (!authenticated) {
+    return {
+      status: "error",
+      message: "Sign in again before deleting the season.",
+    };
+  }
+
+  const { data, error } = await supabase.rpc("delete_league_season", {
+    p_organisation_id: organisationId,
+    p_league_season_id: leagueSeasonId,
+  });
+
+  if (error) {
+    return {
+      status: "error",
+      message: deleteSeasonErrorMessage(error.code),
+    };
+  }
+
+  const result = readRpcResult(data);
+  if (!result || result.id !== leagueSeasonId || result.status !== "draft") {
+    return {
+      status: "error",
+      message:
+        "The deletion result could not be verified. Return to the Seasons page and refresh.",
+    };
+  }
+
+  revalidateLeagueRoutes(result);
+  redirect(`/organisations/${result.organisation_slug}/leagues?seasonDeleted=1`);
 }

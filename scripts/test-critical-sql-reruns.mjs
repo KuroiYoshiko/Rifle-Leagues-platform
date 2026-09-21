@@ -6,6 +6,7 @@ import { installCanonicalDatabase, sqlFile } from "./helpers/canonical-database.
 import {
   CANONICAL_FRESH_INSTALL_ORDER,
   FRESH_INSTALL_ONLY_SQL_FILES,
+  INCREMENTAL_UPGRADE_SQL_FILES,
   NON_STANDALONE_SQL_FILES,
   ORDERED_BUNDLE_ONLY_SQL_FILES,
   ORDERED_RERUN_BUNDLES,
@@ -36,6 +37,7 @@ test("the manifest classifies every current database SQL file exactly once", asy
     .sort();
   const classifiedFiles = [
     ...CANONICAL_FRESH_INSTALL_ORDER,
+    ...INCREMENTAL_UPGRADE_SQL_FILES,
     ...NON_STANDALONE_SQL_FILES,
   ].sort();
 

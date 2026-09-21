@@ -50,21 +50,23 @@ function CompetitionCard({
     <Card className="min-w-0 p-5 sm:p-6">
       <div className="grid min-w-0 gap-5 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
         <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <Badge
-              tone={competition.status === "draft" ? "warning" : "positive"}
-            >
-              {competition.status === "draft" ? "Draft" : "Published"}
-            </Badge>
-            {competition.status === "draft" ? (
+          <div className="flex min-w-0 flex-wrap items-center gap-2">
+            <h3 className="break-words text-lg font-semibold tracking-[-0.02em] text-foreground">
+              <Link href={detailPath} className="hover:text-brand-deep hover:underline">
+                {competition.name}
+              </Link>
+            </h3>
+            {canManage ? (
+              <span data-competition-lifecycle-badge>
+                <Badge tone={competition.status === "draft" ? "warning" : "positive"}>
+                  {competition.status === "draft" ? "Draft" : "Published"}
+                </Badge>
+              </span>
+            ) : null}
+            {canManage && competition.status === "draft" ? (
               <span className="text-xs text-muted-foreground">Management only</span>
             ) : null}
           </div>
-          <h3 className="mt-3 break-words text-lg font-semibold tracking-[-0.02em] text-foreground">
-            <Link href={detailPath} className="hover:text-brand-deep hover:underline">
-              {competition.name}
-            </Link>
-          </h3>
           <p className="mt-2 text-xs leading-5 text-muted-foreground">
             {entryFormat}
             {competition.entry_format === "team"
@@ -191,7 +193,11 @@ export default async function LeagueSeasonDetailPage({
               <h2 className="min-w-0 break-words text-2xl font-semibold tracking-[-0.035em] text-foreground sm:text-3xl">
                 {season.name}
               </h2>
-              <LeagueSeasonPhaseBadge phase={seasonPhase} />
+              {managementContext && season.status === "draft" ? (
+                <Badge tone="warning">Draft</Badge>
+              ) : (
+                <LeagueSeasonPhaseBadge phase={seasonPhase} />
+              )}
             </div>
             {season.description ? (
               <p className="mt-3 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
@@ -242,6 +248,19 @@ export default async function LeagueSeasonDetailPage({
         </dl>
       </Card>
 
+      {season.status === "draft" && managementContext ? (
+        <Card data-draft-season-guidance className="mt-4 p-5 sm:p-6">
+          <div>
+            <h2 className="font-semibold text-foreground">This Season is private.</h2>
+            <p className="mt-1 text-sm leading-6 text-muted-foreground">
+              {isOwner
+                ? "Add and review its Competitions, then move the Season to Open when clubs should be able to see it and use its entry windows."
+                : "You can prepare its Competitions. An Organisation Owner must move the Season to Open."}
+            </p>
+          </div>
+        </Card>
+      ) : null}
+
       <section className="mt-10" aria-label="Competitions">
         <SectionHeader
           title="Competitions"
@@ -251,8 +270,9 @@ export default async function LeagueSeasonDetailPage({
               : "Published competitions within this season"
           }
           action={
-            canManageCompetitions ? (
+            canManageCompetitions && competitions.length > 0 ? (
               <Link
+                data-competition-create-action="header"
                 href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/new`}
                 className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep"
               >
@@ -284,6 +304,15 @@ export default async function LeagueSeasonDetailPage({
                     ? "Configure its entry format, scoring details, and explicit round deadlines. It will begin as a private draft."
                     : "This season does not have any published competitions to show yet."}
                 </p>
+                {canManageCompetitions ? (
+                  <Link
+                    data-competition-create-action="empty"
+                    href={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/new`}
+                    className="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep"
+                  >
+                    Add the first competition
+                  </Link>
+                ) : null}
               </div>
             </div>
           </Card>

@@ -10,6 +10,16 @@ import { Card } from "@/components/ui";
 import type { CompetitionClubEntryContext } from "@/lib/competition-entries";
 
 const initialState: CompetitionEntryActionState = {};
+const entryDateFormatter = new Intl.DateTimeFormat("en-GB", {
+  day: "numeric",
+  month: "long",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+function formatEntryDate(value: string) {
+  return entryDateFormatter.format(new Date(`${value}T00:00:00Z`));
+}
 
 function entryHref(basePath: string, entryId: number) {
   return `${basePath}/entry?entry=${entryId}`;
@@ -29,10 +39,12 @@ export function CompetitionEntryControls({
   contexts,
   competitionId,
   basePath,
+  entryOpensAt,
 }: {
   contexts: CompetitionClubEntryContext[];
   competitionId: number;
   basePath: string;
+  entryOpensAt: string | null;
 }) {
   const manageable = useMemo(
     () => contexts.filter((context) => context.can_manage),
@@ -152,6 +164,7 @@ export function CompetitionEntryControls({
 
       {memberOnly.map((context) => (
         <Card key={context.club_id} className={`${manageable.length > 0 ? "mt-3" : ""} p-4 sm:p-5`}>
+          {context.entry_status === "submitted" ? (
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
             <div className="min-w-0">
               <p className="font-semibold text-foreground">{context.club_name}</p>
@@ -165,6 +178,23 @@ export function CompetitionEntryControls({
               Club officials manage the roster
             </p>
           </div>
+          ) : (
+            <div>
+              <h3 className="font-semibold text-foreground">
+                Club entry is managed by your Club officials
+              </h3>
+              <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                A Club Owner or Official must prepare and submit the Club&apos;s entry. Once submitted, your participation will appear here.
+              </p>
+              {context.entry_window_state === "upcoming" && entryOpensAt ? (
+                <p className="mt-2 text-sm font-medium text-foreground">
+                  Entries open {formatEntryDate(entryOpensAt)}.
+                </p>
+              ) : context.entry_window_state === "closed" ? (
+                <p className="mt-2 text-sm font-medium text-foreground">Entries have closed.</p>
+              ) : null}
+            </div>
+          )}
         </Card>
       ))}
     </section>

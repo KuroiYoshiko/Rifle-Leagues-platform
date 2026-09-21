@@ -361,7 +361,7 @@ begin
   end if;
 
   if v_entry_format not in ('pairs', 'team') then
-    raise exception 'Persistent Club Pairs or Teams can only be linked to matching Pair/Team Competition entrants.'
+    raise exception 'Club Pairs or Club Teams can only be linked to matching Pair or Team Competition entrants.'
       using errcode = '23514';
   end if;
 

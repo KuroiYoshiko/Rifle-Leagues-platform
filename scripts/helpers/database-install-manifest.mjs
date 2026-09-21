@@ -38,6 +38,12 @@ export const FRESH_INSTALL_ONLY_SQL_FILES = Object.freeze(
   CANONICAL_FRESH_INSTALL_ORDER.filter((name) => !standaloneFiles.has(name)),
 );
 
+// Targeted deployment artifacts for databases already at the documented
+// baseline. These are tested separately from canonical fresh installs.
+export const INCREMENTAL_UPGRADE_SQL_FILES = Object.freeze([
+  "upgrades/2026-09-21_prelaunch-ux-polish",
+]);
+
 // Development utilities, fixtures, and diagnostics are never supported manual
 // reruns against a current database.
 export const NON_STANDALONE_SQL_FILES = Object.freeze([

@@ -604,6 +604,77 @@ begin
 end;
 $function$;
 
+CREATE OR REPLACE FUNCTION public.get_competition_publish_readiness(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  competition_record record;
+  components jsonb;
+  round_deadlines date[];
+  requirements text[];
+begin
+  perform private.require_competition_author(p_organisation_id, false);
+
+  select competition.*,
+    effective.effective_entry_opens_at,
+    effective.effective_entry_closes_at,
+    effective.effective_starts_at
+  into competition_record
+  from public.competitions competition
+  join public.league_seasons season on season.id = competition.league_season_id
+  cross join lateral private.get_competition_effective_dates(competition.id) effective
+  where competition.id = p_competition_id
+    and competition.league_season_id = p_league_season_id
+    and season.organisation_id = p_organisation_id;
+
+  if not found then
+    raise exception 'Competition not found in this Organisation and Season.' using errcode = 'P0002';
+  end if;
+
+  select coalesce(jsonb_agg(jsonb_build_object(
+    'short_label', component.short_label,
+    'maximum_score', component.maximum_score,
+    'score_method', component.score_method
+  ) order by component.position), '[]'::jsonb)
+  into components
+  from public.competition_score_components component
+  where component.competition_id = p_competition_id;
+
+  select coalesce(array_agg(round.deadline order by round.round_number), array[]::date[])
+  into round_deadlines
+  from public.competition_rounds round
+  where round.competition_id = p_competition_id;
+
+  requirements := private.competition_publication_readiness_errors(
+    competition_record.effective_entry_opens_at,
+    competition_record.effective_entry_closes_at,
+    competition_record.effective_starts_at,
+    competition_record.ranking_method,
+    components,
+    competition_record.best_rounds_count,
+    competition_record.number_of_rounds,
+    round_deadlines
+  );
+
+  if competition_record.shooting_details_version is not null
+    and not private.competition_has_complete_shooting_details(p_competition_id) then
+    requirements := array_prepend(
+      'Choose equipment and complete position/style, distance, and Shots for every Course of Fire component.',
+      requirements
+    );
+  end if;
+
+  return jsonb_build_object(
+    'status', competition_record.status,
+    'requirements', to_jsonb(requirements),
+    'ready', cardinality(requirements) = 0
+  );
+end;
+$function$;
+
 CREATE OR REPLACE FUNCTION public.update_competition_shooting_details_draft(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint, p_configuration jsonb)
  RETURNS jsonb
  LANGUAGE plpgsql

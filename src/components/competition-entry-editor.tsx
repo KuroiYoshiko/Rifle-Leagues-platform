@@ -387,7 +387,7 @@ export function CompetitionEntryEditor({
                     <option value="" disabled>Choose a compatible Club {formatLabel(format).toLowerCase()}</option>
                     {entrant.clubTeamId && !currentUnit ? (
                       <option value={entrant.clubTeamId} disabled>
-                        {entrant.clubTeamNameSnapshot ?? "Unavailable unit"} (archived, incomplete, or incompatible)
+                        {entrant.clubTeamNameSnapshot ?? `Unavailable Club ${formatLabel(format)}`} (archived, incomplete, or incompatible)
                       </option>
                     ) : null}
                     {compatibleUnits.map((team) => (
@@ -410,7 +410,7 @@ export function CompetitionEntryEditor({
               ) : null}
               {!entrant.clubTeamId && format !== "individual" ? (
                 <p className="mt-3 text-xs leading-5 text-muted-foreground">
-                  This legacy entrant remains valid. Select a persistent Club {formatLabel(format).toLowerCase()} to replace it with a reusable current roster.
+                  This legacy entrant remains valid. Select a current Club {formatLabel(format).toLowerCase()} to replace it with a reusable current roster.
                 </p>
               ) : null}
 

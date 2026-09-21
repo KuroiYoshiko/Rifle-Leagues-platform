@@ -352,6 +352,26 @@ test("component shots derive the only editable Round total and publication requi
   assert.equal((await db.query(
     "select shots_per_round from competitions where id=$1", [incomplete.id],
   )).rows[0].shots_per_round, null);
+  const incompleteReadiness = (await db.query(
+    "select public.get_competition_publish_readiness(1,1,$1) data",
+    [incomplete.id],
+  )).rows[0].data;
+  assert.equal(incompleteReadiness.ready, false);
+  assert.match(incompleteReadiness.requirements.join(" "), /choose equipment.*complete position\/style.*distance.*Shots/i);
+
+  const readyReadiness = (await db.query(
+    "select public.get_competition_publish_readiness(1,1,$1) data",
+    [dewar.id],
+  )).rows[0].data;
+  assert.equal(readyReadiness.ready, true);
+  assert.deepEqual(readyReadiness.requirements, []);
+
+  await become(manager);
+  assert.equal((await db.query(
+    "select public.get_competition_publish_readiness(1,1,$1) data",
+    [dewar.id],
+  )).rows[0].data.ready, true);
+  await become(owner);
   await rejected(
     "select public.publish_competition(1,1,$1)", [incomplete.id],
     /Physical shooting details required/,

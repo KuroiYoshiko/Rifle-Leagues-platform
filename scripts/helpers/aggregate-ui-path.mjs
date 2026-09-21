@@ -120,6 +120,9 @@ export async function renderAggregateResultsRoute({
       "@/components/competition-lifecycle-actions": {
         CompetitionLifecycleActions: () => createElement("div", { "data-lifecycle-actions": "true" }),
       },
+      "@/components/competition-readiness-card": {
+        CompetitionReadinessCard: () => createElement("div", { "data-readiness-card": "true" }),
+      },
       "@/components/organisation-page-frame": { OrganisationPageFrame: ({ children }) => children },
       "@/components/published-competition-divisions": { PublishedCompetitionDivisionsView: () => null },
       "@/lib/competition-aggregate-results": resultsLoader,

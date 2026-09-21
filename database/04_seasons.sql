@@ -373,6 +373,94 @@ begin
 end;
 $function$;
 
+CREATE OR REPLACE FUNCTION public.delete_league_season(p_organisation_id bigint, p_league_season_id bigint)
+ RETURNS jsonb
+ LANGUAGE plpgsql
+ SECURITY DEFINER
+ SET search_path TO ''
+AS $function$
+declare
+  v_actor_id uuid := (select auth.uid());
+  v_organisation_slug text;
+  v_season_slug text;
+  v_season_status text;
+begin
+  if v_actor_id is null then
+    raise exception 'Authentication is required.' using errcode = '42501';
+  end if;
+
+  select organisation.slug
+  into v_organisation_slug
+  from public.organisations as organisation
+  where organisation.id = p_organisation_id
+    and organisation.status = 'active'
+  for share;
+
+  if v_organisation_slug is null then
+    raise exception 'Active organisation not found.' using errcode = 'P0002';
+  end if;
+
+  perform staff.id
+  from public.organisation_staff as staff
+  where staff.organisation_id = p_organisation_id
+    and staff.user_id = v_actor_id
+    and staff.role = 'owner'
+    and staff.status = 'active'
+  for share;
+
+  if not found then
+    raise exception 'Only this organisation owner can delete the league season.'
+      using errcode = '42501';
+  end if;
+
+  select season.slug, season.status
+  into v_season_slug, v_season_status
+  from public.league_seasons as season
+  where season.id = p_league_season_id
+    and season.organisation_id = p_organisation_id
+  for update;
+
+  if v_season_slug is null then
+    raise exception 'League season not found in this organisation.'
+      using errcode = 'P0002';
+  end if;
+
+  if v_season_status <> 'draft' then
+    raise exception 'Only a draft league season can be deleted.'
+      using errcode = '22023';
+  end if;
+
+  if exists (
+    select 1
+    from public.competitions as competition
+    where competition.league_season_id = p_league_season_id
+  ) then
+    raise exception 'A league season containing Competitions cannot be deleted.'
+      using errcode = '22023';
+  end if;
+
+  if exists (
+    select 1
+    from public.concurrent_shooting_groups as group_row
+    where group_row.league_season_id = p_league_season_id
+  ) then
+    raise exception 'A league season containing Concurrent Shooting setup cannot be deleted.'
+      using errcode = '22023';
+  end if;
+
+  delete from public.league_seasons as season
+  where season.id = p_league_season_id
+    and season.organisation_id = p_organisation_id;
+
+  return jsonb_build_object(
+    'id', p_league_season_id,
+    'organisation_slug', v_organisation_slug,
+    'season_slug', v_season_slug,
+    'status', v_season_status
+  );
+end;
+$function$;
+
 
 commit;
 

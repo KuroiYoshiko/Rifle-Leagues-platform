@@ -368,7 +368,7 @@ function IfSeededTodayCard({ analysis }: { analysis: IfSeededTodayAnalysis }) {
         </dl>
       )}
       <p className="mt-5 text-xs leading-5 text-muted-foreground">
-        This is a comparison only. Your published Division does not change. Management decisions may differ from automatic seeding.
+        This is a read-only comparison. It does not change your official Division or predict promotion or demotion.
       </p>
       <Link data-screen-only href={analysis.competition_path} className="mt-4 inline-flex text-xs font-semibold text-brand-strong hover:underline">
         View Competition

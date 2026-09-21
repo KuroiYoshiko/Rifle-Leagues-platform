@@ -347,6 +347,44 @@ begin
 end;
 $function$;
 
+CREATE OR REPLACE FUNCTION private.competition_publication_readiness_errors(p_effective_entry_opens_at date, p_effective_entry_closes_at date, p_effective_starts_at date, p_ranking_method text, p_score_components jsonb, p_best_rounds_count integer, p_number_of_rounds integer, p_round_deadlines date[])
+ RETURNS text[]
+ LANGUAGE plpgsql
+ IMMUTABLE
+ SET search_path TO ''
+AS $function$
+declare
+  v_errors text[] := array[]::text[];
+  v_round_deadlines date[] := coalesce(p_round_deadlines, array[]::date[]);
+begin
+  if p_effective_entry_opens_at is null or p_effective_entry_closes_at is null then
+    v_errors := array_append(v_errors, 'Set a complete effective Competition entry window before publishing.');
+  end if;
+  if p_effective_starts_at is null then
+    v_errors := array_append(v_errors, 'Set an effective Competition Start before publishing.');
+  end if;
+  if p_ranking_method = 'round_robin'
+    and p_effective_entry_closes_at is not null
+    and p_effective_starts_at is not null
+    and p_effective_entry_closes_at >= p_effective_starts_at then
+    v_errors := array_append(v_errors, 'Round Robin requires time to finalise divisions after entries close. Competition Start must be after the Entry Close date.');
+  end if;
+  if p_score_components is null
+    or jsonb_typeof(p_score_components) <> 'array'
+    or jsonb_array_length(p_score_components) = 0 then
+    v_errors := array_append(v_errors, 'Add at least one Course of Fire score component before publishing.');
+  end if;
+  if p_ranking_method = 'best_n_average' and p_best_rounds_count is null then
+    v_errors := array_append(v_errors, 'Set how many rounds count for Best N rounds average.');
+  end if;
+  if cardinality(v_round_deadlines) <> p_number_of_rounds
+    or exists (select 1 from unnest(v_round_deadlines) as supplied(value) where supplied.value is null) then
+    v_errors := array_append(v_errors, 'Set a Round End for every configured round before publishing.');
+  end if;
+  return v_errors;
+end;
+$function$;
+
 CREATE OR REPLACE FUNCTION private.validate_competition_configuration(p_status text, p_entry_format text, p_team_size integer, p_shots_per_round integer, p_uses_x_score boolean, p_number_of_rounds integer, p_entry_fee numeric, p_entry_window_mode text, p_custom_entry_opens_at date, p_custom_entry_closes_at date, p_start_date_mode text, p_custom_starts_at date, p_effective_entry_opens_at date, p_effective_entry_closes_at date, p_effective_starts_at date, p_season_ends_at date, p_sets_per_round integer, p_score_components jsonb, p_ranking_method text, p_best_rounds_count integer, p_local_scoring_enabled boolean, p_round_deadlines date[], p_round_shoot_by_dates date[])
  RETURNS void
  LANGUAGE plpgsql
@@ -362,6 +400,7 @@ declare
   v_round_shoot_by_dates date[] := coalesce(p_round_shoot_by_dates, array[]::date[]);
   v_round_number integer;
   v_previous_deadline date;
+  v_publication_error text;
 begin
   if p_status not in ('draft', 'published') then
     raise exception 'Select a valid competition status.' using errcode = '22023';
@@ -594,32 +633,18 @@ begin
   end if;
 
   if p_status = 'published' then
-    if p_effective_entry_opens_at is null or p_effective_entry_closes_at is null then
-      raise exception 'Set a complete effective Competition entry window before publishing.'
-        using errcode = '22023';
-    end if;
-    if p_effective_starts_at is null then
-      raise exception 'Set an effective Competition Start before publishing.'
-        using errcode = '22023';
-    end if;
-    if p_ranking_method = 'round_robin'
-      and p_effective_entry_closes_at >= p_effective_starts_at then
-      raise exception 'Round Robin requires time to finalise divisions after entries close. Competition Start must be after the Entry Close date.'
-        using errcode = '22023';
-    end if;
-    if jsonb_array_length(p_score_components) = 0 then
-      raise exception 'Add at least one Course of Fire score component before publishing.'
-        using errcode = '22023';
-    end if;
-    if p_ranking_method = 'best_n_average' and p_best_rounds_count is null then
-      raise exception 'Set how many rounds count for Best N rounds average.'
-        using errcode = '22023';
-    end if;
-    if cardinality(v_round_deadlines) <> p_number_of_rounds
-      or exists (select 1 from unnest(v_round_deadlines) as supplied(value) where supplied.value is null) then
-      raise exception 'Set a Round End for every configured round before publishing.'
-        using errcode = '22023';
-    end if;
+    foreach v_publication_error in array private.competition_publication_readiness_errors(
+      p_effective_entry_opens_at,
+      p_effective_entry_closes_at,
+      p_effective_starts_at,
+      p_ranking_method,
+      p_score_components,
+      p_best_rounds_count,
+      p_number_of_rounds,
+      v_round_deadlines
+    ) loop
+      raise exception '%', v_publication_error using errcode = '22023';
+    end loop;
   end if;
 end;
 $function$;

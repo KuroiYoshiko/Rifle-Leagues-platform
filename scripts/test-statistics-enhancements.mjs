@@ -90,8 +90,9 @@ test("Statistics Division inputs are Individual-only, frozen, read-only and cont
   assert.match(loader, /getCompetitionResultAverages/);
   assert.match(loader, /getIfSeededTodayDivision/);
   assert.doesNotMatch(loader, /supabase\.(?:from|rpc)\([^\n]+(?:insert|update|delete)/);
-  assert.match(dashboard, /Your published Division does not change/);
-  assert.doesNotMatch(dashboard, /Projected promotion|promotion|demotion/i);
+  assert.match(dashboard, /This is a read-only comparison/);
+  assert.match(dashboard, /does not change your official Division or predict promotion or demotion/);
+  assert.doesNotMatch(dashboard, /Projected promotion|promotion threshold|demotion threshold/i);
   assert.match(loader, /getMyShootingCompetitions/);
   assert.match(loader, /classifyMyShootingCompetition/);
   assert.match(loader, /=== "active"/);

@@ -519,6 +519,7 @@ test("Competition route renders public Results without authenticated controls", 
   });
   assert.match(publicView.html, /<section id="results"/);
   assert.doesNotMatch(publicView.html, /data-entry-controls|data-lifecycle-actions|Competition management/);
+  assert.doesNotMatch(publicView.html, /data-competition-lifecycle-badge/);
   assert.match(publicView.html, /data-scoring-access="false"/);
 
   const authenticatedView = await renderAggregateResultsRoute({
@@ -531,6 +532,7 @@ test("Competition route renders public Results without authenticated controls", 
   });
   assert.match(authenticatedView.html, /data-entry-controls="true"/);
   assert.match(authenticatedView.html, /data-scoring-access="true"/);
+  assert.doesNotMatch(authenticatedView.html, /data-competition-lifecycle-badge/);
 });
 
 test("anonymous viewers receive the same released-only Aggregate projection", async () => {
