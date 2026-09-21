@@ -1,12 +1,16 @@
 # Existing database upgrades
 
-The numbered files in the database root are for clean installs, not incremental
-upgrades.
+The numbered `database/*.sql` files are the canonical schema for clean installs.
+Do not paste or replay those subsystem files into an existing database.
 
-An existing database that had the complete pre-cleanup schema installed already
-matches the numbered schema and requires no reset, reseed, or SQL transition.
-Run `npm run test:database-contracts` locally to verify the repository contract.
+Existing databases receive the targeted, dated upgrade files in this directory.
+Each upgrade states the baseline it expects and should contain only the objects
+that changed after that baseline. Do not replay removed historical stage files.
 
-Future deployed-schema changes that cannot be applied by a documented
-standalone rerun belong here as explicit, versioned upgrade artifacts. Do not
-replay removed historical stage files against a current database.
+The `fix/prelaunch-ux-polish` application code requires:
+
+`database/upgrades/2026-09-21_prelaunch-ux-polish.sql`
+
+Apply that upgrade before, or in the same deployment as, the corresponding
+application code. Run `npm run test:database-contracts` locally to verify the
+current repository contract.

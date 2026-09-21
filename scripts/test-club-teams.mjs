@@ -212,6 +212,29 @@ test("active owners and officials manage complete Club units; members and organi
   await expectError(() => createUnit({ name: "Anonymous Team" }), /permission denied/i);
 });
 
+test("ordinary members receive safe entry context without seeing a Club draft", async () => {
+  await actor("member");
+  const beforeSubmission = (await db.query(
+    "select * from public.get_competition_club_entry_context($1)",
+    [1],
+  )).rows;
+  assert.equal(beforeSubmission.length, 1);
+  assert.equal(beforeSubmission[0].club_role, "member");
+  assert.equal(beforeSubmission[0].can_manage, false);
+  assert.equal(beforeSubmission[0].entry_id, null);
+  assert.equal(beforeSubmission[0].entry_status, null);
+  assert.equal(beforeSubmission[0].entrant_count, 0);
+  assert.equal(beforeSubmission[0].participant_count, 0);
+
+  await admin("update club_competition_entries set status='submitted', submitted_at=now() where id=1");
+  const afterSubmission = (await db.query(
+    "select * from public.get_competition_club_entry_context($1)",
+    [1],
+  )).rows;
+  assert.equal(afterSubmission[0].entry_id, 1);
+  assert.equal(afterSubmission[0].entry_status, "submitted");
+});
+
 test("Club Team read RPC retains its exact hardened callable contract", async () => {
   const metadata = (await admin(`select
       p.oid::regprocedure::text as signature,
@@ -336,7 +359,7 @@ test("database constraints enforce Club ownership, Pair/Team compatibility, uniq
   );
   await expectError(
     () => admin("insert into competition_entrants(club_competition_entry_id,position,club_team_id) values(3,1,$1)", [sameClub.id]),
-    /matching Pair\/Team/i,
+    /matching Pair or Team/i,
   );
 
   const linked = (await admin(`insert into competition_entrants(

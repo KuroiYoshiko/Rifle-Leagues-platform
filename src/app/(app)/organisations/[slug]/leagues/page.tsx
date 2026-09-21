@@ -6,7 +6,7 @@ import {
   OrganisationPageFrame,
 } from "@/components/organisation-page-frame";
 import { LeagueSeasonPhaseBadge } from "@/components/league-season-phase-badge";
-import { Card, SectionHeader } from "@/components/ui";
+import { Badge, Card, SectionHeader } from "@/components/ui";
 import {
   getLeagueEntrySummary,
   getLeagueSeasons,
@@ -48,12 +48,14 @@ const phaseSections: Array<{
 function LeagueSeasonCard({
   season,
   organisationSlug,
+  hasManagementAccess,
   isOwner,
   phase,
   today,
 }: {
   season: LeagueSeason;
   organisationSlug: string;
+  hasManagementAccess: boolean;
   isOwner: boolean;
   phase: LeagueSeasonPresentationPhase;
   today: string;
@@ -81,9 +83,13 @@ function LeagueSeasonCard({
                 {season.name}
               </Link>
             </h3>
-            <LeagueSeasonPhaseBadge phase={phase} />
+            {hasManagementAccess && season.status === "draft" ? (
+              <Badge tone="warning">Draft</Badge>
+            ) : (
+              <LeagueSeasonPhaseBadge phase={phase} />
+            )}
             {season.status === "draft" ? (
-              <span className="text-xs text-muted-foreground">Owner only</span>
+              <span className="text-xs text-muted-foreground">Management only</span>
             ) : null}
           </div>
           <div className="mt-2 space-y-0.5 text-xs leading-5 text-muted-foreground">
@@ -105,10 +111,13 @@ function LeagueSeasonCard({
 
 export default async function OrganisationLeaguesPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ slug: string }>;
+  searchParams: Promise<{ seasonDeleted?: string | string[] }>;
 }) {
   const { slug } = await params;
+  const { seasonDeleted } = await searchParams;
   const viewerId = await getViewerId();
   const publicCatalog = viewerId
     ? null
@@ -128,6 +137,10 @@ export default async function OrganisationLeaguesPage({
     ? await getLeagueSeasons(organisation.id)
     : (publicCatalog?.seasons ?? []);
   const isOwner = managementContext?.access.role === "owner";
+  const hasManagementAccess = Boolean(managementContext);
+  const deletionSucceeded = Array.isArray(seasonDeleted)
+    ? seasonDeleted[0] === "1"
+    : seasonDeleted === "1";
   const today = getLeagueToday();
   const presentedSeasons = seasons.map((season) => ({
     season,
@@ -136,6 +149,15 @@ export default async function OrganisationLeaguesPage({
 
   return (
     <OrganisationPageFrame organisation={organisation} currentSection="leagues">
+      {isOwner && deletionSucceeded ? (
+        <div
+          className="mb-6 rounded-2xl border border-success/20 bg-success-subtle px-5 py-4 text-sm leading-6 text-success"
+          role="status"
+        >
+          <strong className="font-semibold">Season deleted.</strong> The unused
+          draft Season has been permanently removed.
+        </div>
+      ) : null}
       <SectionHeader
         title="Seasons"
         description={
@@ -144,8 +166,9 @@ export default async function OrganisationLeaguesPage({
             : "Published seasons"
         }
         action={
-          isOwner ? (
+          isOwner && seasons.length > 0 ? (
             <Link
+              data-season-create-action="header"
               href={`/organisations/${organisation.slug}/leagues/new`}
               className="inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep"
             >
@@ -168,6 +191,7 @@ export default async function OrganisationLeaguesPage({
           />
           {isOwner ? (
             <Link
+              data-season-create-action="empty"
               href={`/organisations/${organisation.slug}/leagues/new`}
               className="mt-6 inline-flex min-h-11 items-center justify-center rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground! transition hover:bg-brand-deep"
             >
@@ -212,6 +236,7 @@ export default async function OrganisationLeaguesPage({
                       key={season.id}
                       season={season}
                       organisationSlug={organisation.slug}
+                      hasManagementAccess={hasManagementAccess}
                       isOwner={isOwner}
                       phase={phase}
                       today={today}

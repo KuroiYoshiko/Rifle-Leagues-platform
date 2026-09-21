@@ -30,6 +30,13 @@ const nextStatuses: Partial<Record<LeagueSeasonStatus, LeagueSeasonStatus>> = {
   active: "completed",
 };
 
+const statusDescriptions: Record<LeagueSeasonStatus, string> = {
+  draft: "Visible only to Organisation management.",
+  open: "Public; configured Competition entry windows can accept entries.",
+  active: "Public; entries are closed and shooting is underway.",
+  completed: "Public historical and final Season state.",
+};
+
 function FieldError({ id, message }: { id: string; message?: string }) {
   return message ? (
     <p id={id} className="mt-2 text-sm leading-5 text-danger" role="alert">
@@ -332,13 +339,24 @@ export function LeagueSeasonForm({
             />
           </>
         )}
-        <p id="league-status-help" className="mt-2 text-xs leading-5 text-muted-foreground">
-          {editing
-            ? nextStatus
-              ? `You can keep this season ${statusLabels[season!.status].toLowerCase()} or move it forward to ${statusLabels[nextStatus].toLowerCase()}.`
-              : "Completed is the final status and cannot be moved backward."
-            : "New seasons are private drafts. Publish the season from its edit page when it is ready."}
-        </p>
+        <div id="league-status-help" className="mt-2 space-y-1 text-xs leading-5 text-muted-foreground">
+          <p>
+            <span className="font-semibold text-foreground">
+              {statusLabels[season?.status ?? "draft"]}:
+            </span>{" "}
+            {statusDescriptions[season?.status ?? "draft"]}
+          </p>
+          {editing && nextStatus ? (
+            <p>
+              <span className="font-semibold text-foreground">Next — {statusLabels[nextStatus]}:</span>{" "}
+              {statusDescriptions[nextStatus]}
+            </p>
+          ) : editing ? (
+            <p>Completed is final and cannot be moved backward.</p>
+          ) : (
+            <p>When setup is ready, edit the Season to move it to Open.</p>
+          )}
+        </div>
         <FieldError
           id="league-status-error"
           message={state.fieldErrors?.status}

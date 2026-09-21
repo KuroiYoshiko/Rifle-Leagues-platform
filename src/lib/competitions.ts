@@ -158,6 +158,12 @@ export type CompetitionLifecycleState = {
   can_delete: boolean;
 };
 
+export type CompetitionPublishReadiness = {
+  status: CompetitionStatus;
+  ready: boolean;
+  requirements: string[];
+};
+
 export const competitionColumns =
   "id, league_season_id, competition_series_id, name, slug, description, status, entry_format, team_size, scoring_method, maximum_score_per_round, shots_per_round, uses_x_score, number_of_rounds, entry_fee, entry_window_mode, custom_entry_opens_at, custom_entry_closes_at, start_date_mode, custom_starts_at, sets_per_round, ranking_method, best_rounds_count, local_scoring_enabled, shooting_details_version, equipment_type_code, organisation_equipment_type_id, created_at, updated_at";
 export const competitionRoundColumns =
@@ -381,6 +387,40 @@ export const getCompetitionLifecycleState = cache(
     }
 
     return value as CompetitionLifecycleState;
+  },
+);
+
+export const getCompetitionPublishReadiness = cache(
+  async (
+    organisationId: number,
+    leagueSeasonId: number,
+    competitionId: number,
+  ) => {
+    const supabase = await createClient();
+    const { data, error } = await supabase.rpc(
+      "get_competition_publish_readiness",
+      {
+        p_organisation_id: organisationId,
+        p_league_season_id: leagueSeasonId,
+        p_competition_id: competitionId,
+      },
+    );
+
+    if (error || !data || typeof data !== "object" || Array.isArray(data)) {
+      throw new Error("Competition publish readiness could not be loaded.");
+    }
+
+    const value = data as Record<string, unknown>;
+    if (
+      !COMPETITION_STATUSES.includes(value.status as CompetitionStatus) ||
+      typeof value.ready !== "boolean" ||
+      !Array.isArray(value.requirements) ||
+      !value.requirements.every((requirement) => typeof requirement === "string")
+    ) {
+      throw new Error("Competition publish readiness returned an invalid state.");
+    }
+
+    return value as CompetitionPublishReadiness;
   },
 );
 

@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRef, useState, useTransition, type FormEvent } from "react";
 import {
   archiveClubTeam,
@@ -94,7 +95,7 @@ function TeamCard({
             </ol>
           ) : (
             <p className="mt-3 text-sm text-muted-foreground">
-              No current roster. Complete setup before using this unit in a Competition.
+              No current roster. Complete setup before using this Pair or Team in a Competition.
             </p>
           )}
           <p className="mt-3 text-xs text-muted-foreground">
@@ -265,7 +266,7 @@ export function ClubTeamsManager({
       <div className="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
         <SectionHeader
           title="Club Pairs and Teams"
-          description="Reusable named units with a current Club roster"
+          description="Reusable Club Pairs and Club Teams with a current roster"
         />
         {canManage ? (
           <button
@@ -295,7 +296,7 @@ export function ClubTeamsManager({
             />
           )) : (
             <Card className="bg-surface-muted p-6 text-sm text-muted-foreground">
-              No persistent Club Pairs or Teams have been created yet.
+              No Club Pairs or Club Teams have been created yet.
             </Card>
           )}
         </div>
@@ -306,7 +307,7 @@ export function ClubTeamsManager({
           Archived Pairs and Teams
         </h2>
         <p className="mt-1 text-sm text-muted-foreground">
-          Archived units keep their historical Competition links and current management metadata.
+          Archived Club Pairs and Club Teams keep their historical Competition links and current management details.
         </p>
         <div className="mt-3 space-y-3">
           {archivedTeams.length ? archivedTeams.map((team) => (
@@ -373,11 +374,27 @@ export function ClubTeamsManager({
               <legend className="text-sm font-semibold text-foreground">Current shooters</legend>
               <p className="mt-1 text-xs leading-5 text-muted-foreground">
                 {fixedSize
-                  ? `This unit has a fixed size of ${fixedSize}. Select exactly ${fixedSize} active Club members.`
+                  ? `This Pair or Team has a fixed size of ${fixedSize}. Select exactly ${fixedSize} active Club members.`
                   : unitType === "pair"
                     ? "Select exactly 2 active Club members."
                     : "Select 3–20 active Club members. The selected count becomes the fixed Team size."}
               </p>
+              {memberOptions.length === 0 ? (
+                <Card className="mt-3 p-4">
+                  <h3 className="font-semibold text-foreground">No active Club members available</h3>
+                  <p className="mt-1 text-sm leading-6 text-muted-foreground">
+                    Approve or add active Club members before creating a Club Pair or Club Team.
+                  </p>
+                  {canManage ? (
+                    <Link
+                      href={`/clubs/${club.slug}/members`}
+                      className="mt-3 inline-flex min-h-11 items-center justify-center rounded-xl border border-border bg-surface px-4 text-sm font-semibold text-brand-deep hover:bg-brand-subtle"
+                    >
+                      Manage Club members
+                    </Link>
+                  ) : null}
+                </Card>
+              ) : (
               <div className="mt-3 max-h-72 space-y-2 overflow-y-auto rounded-xl border border-border p-3">
                 {memberOptions.map((member) => {
                   const checked = selectedMemberIds.includes(member.membership_id);
@@ -404,6 +421,7 @@ export function ClubTeamsManager({
                   );
                 })}
               </div>
+              )}
               <p className="mt-2 text-xs font-semibold text-brand-deep">
                 {selectedMemberIds.length} selected{requiredCount ? ` · ${requiredCount} required` : ""}
               </p>
@@ -424,7 +442,13 @@ export function ClubTeamsManager({
               disabled={pending || !unitType || !validRoster || (Boolean(editor?.team) && !name.trim())}
               className="min-h-11 rounded-xl bg-primary px-5 text-sm font-semibold text-primary-foreground disabled:opacity-60"
             >
-              {pending ? "Saving…" : editor?.team ? "Save changes" : "Create unit"}
+              {pending
+                ? "Saving…"
+                : editor?.team
+                  ? "Save changes"
+                  : unitType
+                    ? `Create Club ${unitType === "pair" ? "Pair" : "Team"}`
+                    : "Create Pair or Team"}
             </button>
           </div>
         </form>
@@ -434,8 +458,8 @@ export function ClubTeamsManager({
         open={Boolean(archiveState)}
         title={archiveState?.archived ? "Archive Club Pair or Team?" : "Unarchive Club Pair or Team?"}
         description={archiveState?.archived
-          ? "The unit will no longer be offered for new Competition entries. Submitted historical entries keep their name and participants. A unit linked to a Draft entry cannot be archived."
-          : "The unit will return to management. It is selectable only when its current roster is complete and active."}
+          ? "The Pair or Team will no longer be offered for new Competition entries. Submitted historical entries keep their name and participants. A Pair or Team linked to a Draft entry cannot be archived."
+          : "The Pair or Team will return to management. It is selectable only when its current roster is complete and active."}
         onCancel={() => setArchiveState(null)}
         cancelDisabled={pending}
       >
@@ -455,7 +479,7 @@ export function ClubTeamsManager({
             archiveState?.archived ? "bg-danger" : "bg-primary"
           }`}
         >
-          {pending ? "Working…" : archiveState?.archived ? "Archive unit" : "Unarchive unit"}
+          {pending ? "Working…" : archiveState?.archived ? "Archive Pair or Team" : "Unarchive Pair or Team"}
         </button>
       </ConfirmationDialog>
     </>

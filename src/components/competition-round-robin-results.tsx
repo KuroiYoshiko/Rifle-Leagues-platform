@@ -1,6 +1,6 @@
 import { Fragment, type CSSProperties } from "react";
 import { Card } from "@/components/ui";
-import { MobileParticipantDisclosure, ParticipantBreakdown } from "@/components/competition-aggregate-results";
+import { MobileParticipantDisclosure, ParticipantBreakdown, ResultsAverageLegend } from "@/components/competition-aggregate-results";
 import type { CompetitionRoundRobinResults, RoundRobinCell, RoundRobinEntrant } from "@/lib/competition-round-robin-results";
 
 const formatNumber = new Intl.NumberFormat("en-GB", { maximumFractionDigits: 2 });
@@ -233,9 +233,13 @@ export function CompetitionRoundRobinResultsTable({ data }: {data: CompetitionRo
     return <Card className="p-6 text-sm text-muted-foreground">Round Robin requires published Divisions and fixtures. Finalise Divisions before Competition Start; an existing live competition without fixtures needs organiser attention.</Card>;
   }
   const gunLabel = data.display_scoring_mode === "points_dropped" ? "Points dropped" : data.display_scoring_mode === "mixed" ? "Achieved points" : "Points scored";
+  const allParticipants = data.groups.flatMap((group) => group.entrants.flatMap((entrant) => entrant.participants));
+  const legendShowsStarting = allParticipants.some((participant) => Object.hasOwn(participant, "starting_average") && participant.starting_average != null);
+  const legendShowsRunning = allParticipants.some((participant) => participant.running_average != null);
   return <div className="min-w-0 space-y-6">
     <p className="text-sm text-muted-foreground">Win 2 · Draw 1 · Loss 0 match points. A bye earns 2 only with a complete score. Results release after Round End.</p>
-    {data.released_round_count === 0 ? <p className="rounded-xl bg-brand-subtle px-4 py-3 text-sm text-brand-deep">No Rounds have been released yet.</p> : null}
+    {data.released_round_count === 0 ? <div className="rounded-xl bg-brand-subtle px-4 py-3 text-sm text-brand-deep"><p className="font-semibold">No Results released yet</p><p className="mt-1">Results release automatically after each Round End. Scores remain hidden until then.</p></div> : null}
+    <ResultsAverageLegend showStarting={legendShowsStarting} showRunning={legendShowsRunning} />
     {data.groups.map(group => {
       const opponentLabels = roundRobinOpponentLabels(group.entrants);
       const printLabels = roundRobinPrintLabels(group.entrants);

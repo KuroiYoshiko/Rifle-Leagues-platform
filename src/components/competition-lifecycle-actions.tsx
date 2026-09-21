@@ -58,6 +58,7 @@ export function CompetitionLifecycleActions({
   canReturnToDraft,
   canDelete,
   editHref,
+  showPublishAction = true,
 }: {
   organisationId: number;
   leagueSeasonId: number;
@@ -67,6 +68,7 @@ export function CompetitionLifecycleActions({
   canReturnToDraft: boolean;
   canDelete: boolean;
   editHref: string;
+  showPublishAction?: boolean;
 }) {
   const id = useId();
   const menuId = `${id}-menu`;
@@ -93,7 +95,7 @@ export function CompetitionLifecycleActions({
     deleteCompetitionFromDetail,
     initialState,
   );
-  const canPublish = status === "draft";
+  const canPublish = status === "draft" && showPublishAction;
   const hasLifecycleActions = canPublish || canReturnToDraft || canDelete;
   const submitting = publishing || returning || deleting;
 

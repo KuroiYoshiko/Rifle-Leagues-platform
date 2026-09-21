@@ -90,8 +90,9 @@ test("Statistics Division inputs are Individual-only, frozen, read-only and cont
   assert.match(loader, /getCompetitionResultAverages/);
   assert.match(loader, /getIfSeededTodayDivision/);
   assert.doesNotMatch(loader, /supabase\.(?:from|rpc)\([^\n]+(?:insert|update|delete)/);
-  assert.match(dashboard, /Your published Division does not change/);
-  assert.doesNotMatch(dashboard, /Projected promotion|promotion|demotion/i);
+  assert.match(dashboard, /This is a read-only comparison/);
+  assert.match(dashboard, /does not change your official Division or predict promotion or demotion/);
+  assert.doesNotMatch(dashboard, /Projected promotion|promotion threshold|demotion threshold/i);
   assert.match(loader, /getMyShootingCompetitions/);
   assert.match(loader, /classifyMyShootingCompetition/);
   assert.match(loader, /=== "active"/);
@@ -99,9 +100,10 @@ test("Statistics Division inputs are Individual-only, frozen, read-only and cont
 });
 
 test("Statistics workspace exposes coherent views, explained trend, chart choices and paged physical history", async () => {
-  const [page, dashboard, chart, sql] = await Promise.all([
+  const [page, dashboard, loading, chart, sql] = await Promise.all([
     read("src/app/(app)/statistics/page.tsx"),
     read("src/components/shooter-analytics-dashboard.tsx"),
+    read("src/app/(app)/statistics/loading.tsx"),
     read("src/components/shooter-performance-chart.tsx"),
     read("database/17_shooter_analytics.sql"),
   ]);
@@ -119,6 +121,33 @@ test("Statistics workspace exposes coherent views, explained trend, chart choice
   assert.match(dashboard, />Last</);
   assert.match(dashboard, /md:hidden[\s\S]*hidden md:block/);
   assert.doesNotMatch(dashboard, /overflow-x-auto/);
+  assert.match(dashboard, /window\.history\.pushState/);
+  assert.match(dashboard, /window\.addEventListener\("popstate"/);
+  assert.match(dashboard, /allowLocalNavigation=\{analytics\.history\.page === 1\}/);
+  assert.match(loading, /aria-busy="true"/);
+  assert.match(loading, /aria-label="Loading Statistics"/);
+  assert.match(loading, /Analysis scope|grid-cols-2/);
+});
+
+test("Statistics overlaps independent analytics requests before the averages fan-out", async () => {
+  const loader = await read("src/lib/shooter-analytics.ts");
+  assert.match(loader, /const analyticsRequest = supabase\.rpc\("get_my_shooter_analytics", filters\)/);
+  assert.match(loader, /const myShootingRequest = filters\.p_include_if_seeded_today/);
+  assert.match(loader, /Promise\.all\(\[\s*analyticsRequest,\s*myShootingRequest/);
+  assert.match(loader, /Promise\.all\(activeInputs\.map/);
+});
+
+test("public homepage Login is one aligned, comfortably sized navigation target", async () => {
+  const [homepage, css] = await Promise.all([
+    read("src/app/page.tsx"),
+    read("src/app/globals.css"),
+  ]);
+  assert.match(
+    homepage,
+    /<Link href="\/login" className="[^"]*inline-flex[^"]*min-h-11[^"]*items-center[^"]*justify-center[^"]*leading-none[^"]*">\s*Login\s*<\/Link>/,
+  );
+  assert.doesNotMatch(homepage, /<Link href="\/login"[^>]*>\s*<(?:span|button)[^>]*>\s*Login/);
+  assert.match(css, /\.target-mark \{\s*pointer-events: none;/);
 });
 
 test("canonical discipline and Season comparisons never use display names as identities", async () => {

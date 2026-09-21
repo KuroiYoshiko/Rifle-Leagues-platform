@@ -367,12 +367,13 @@ begin
     on membership.user_id = v_actor_id and membership.status = 'active'
   join public.clubs as club on club.id = membership.club_id and club.status = 'active'
   left join public.club_competition_entries as entry
-    on entry.competition_id = competition.id and entry.club_id = club.id
+    on entry.competition_id = competition.id
+    and entry.club_id = club.id
+    and (membership.role in ('owner', 'official') or entry.status = 'submitted')
   where competition.id = p_competition_id
     and competition.status = 'published'
     and season.status in ('open', 'active', 'completed')
     and organisation.status = 'active'
-    and (membership.role in ('owner', 'official') or entry.status = 'submitted')
   order by club.name, club.id;
 end;
 $function$;
@@ -446,7 +447,7 @@ begin
       if v_team_value is not null and jsonb_typeof(v_team_value) <> 'null' then
         if jsonb_typeof(v_team_value) <> 'number'
           or v_team_value::text !~ '^[1-9][0-9]*$' then
-          raise exception 'Club Pair or Team selections must use a valid persistent unit ID.'
+          raise exception 'Select a valid Club Pair or Club Team.'
             using errcode = '22023';
         end if;
         v_team_id := v_team_value::text::bigint;
@@ -502,7 +503,7 @@ begin
           and membership.status = 'active';
       end if;
     else
-      raise exception 'Individual entrants use participant lists; Pair and Team entrants use a persistent unit selection or a legacy participant list.'
+      raise exception 'Individual entrants use participant lists; Pair and Team entrants select a Club Pair or Club Team.'
         using errcode = '22023';
     end if;
 
@@ -541,7 +542,7 @@ begin
     from jsonb_array_elements(v_normalised) as unit(value)
     where jsonb_typeof(unit.value -> 'club_team_id') = 'number'
   ) <> v_selected_team_count then
-    raise exception 'A persistent Club Pair or Team can only be used once in this club entry.'
+    raise exception 'A Club Pair or Club Team can only be used once in this Club entry.'
       using errcode = '23505',
         constraint = 'competition_entrants_entry_club_team_unique';
   end if;
@@ -686,7 +687,7 @@ exception
   when unique_violation then
     get stacked diagnostics v_constraint_name = constraint_name;
     if v_constraint_name = 'competition_entrants_entry_club_team_unique' then
-      raise exception 'A persistent Club Pair or Team can only be used once in this club entry.'
+      raise exception 'A Club Pair or Club Team can only be used once in this Club entry.'
         using errcode = '23505';
     end if;
     raise exception 'A shooter can only be selected once in this club entry.'

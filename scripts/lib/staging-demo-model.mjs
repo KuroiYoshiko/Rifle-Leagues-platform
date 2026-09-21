@@ -15,7 +15,7 @@ const organisations = [
     website: "https://ersa.example.org",
     about: "Eastern Region Shooting Association coordinates postal and shoulder-to-shoulder leagues across the eastern counties. The programme balances established prone disciplines with air rifle, benchrest and multi-position shooting.",
     cards: [
-      ["Entry guidance", "Club officials submit complete Individual, Pair and Team entries before the published closing date. Late substitutions must be agreed with the league secretary."],
+      ["Entry guidance", "Club officials submit complete Individual, Pair and Team entries before the published closing date."],
       ["League programme", "Summer leagues run from May to September. Winter leagues run from October to March, with most competitions using ten fortnightly rounds."],
       ["Competition rules", "Scores must be witnessed at an affiliated range. The current course of fire, deadline and tie-break rules shown on each Competition are authoritative."],
     ],

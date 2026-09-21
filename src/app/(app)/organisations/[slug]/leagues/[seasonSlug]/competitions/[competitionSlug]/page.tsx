@@ -19,6 +19,7 @@ import {
 } from "@/lib/competition-result-averages";
 import { CompetitionRoundRobinResultsTable } from "@/components/competition-round-robin-results";
 import { CompetitionLifecycleActions } from "@/components/competition-lifecycle-actions";
+import { CompetitionReadinessCard } from "@/components/competition-readiness-card";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { PublishedCompetitionDivisionsView } from "@/components/published-competition-divisions";
 import { PrintResultsButton } from "@/components/print-results-button";
@@ -33,6 +34,7 @@ import {
   getCompetitionBySlug,
   getCompetitionEntryFormatLabel,
   getCompetitionLifecycleState,
+  getCompetitionPublishReadiness,
   getCompetitionRankingMethodLabel,
   getCompetitionRounds,
   getCompetitionScoreComponents,
@@ -119,7 +121,7 @@ export default async function CompetitionDetailPage({
     competitionPublished: competition.status === "published",
     hasDivisionManagement: false,
   });
-  const [rounds, scoreComponents, shootingDisplay, entryContexts, divisionManagement, publishedDivisions, lifecycleState, aggregateResults, bestNAverageResults, gunScoreResults, roundRobinResults, resultAverages, concurrentShootingSummary] = await Promise.all([
+  const [rounds, scoreComponents, shootingDisplay, entryContexts, divisionManagement, publishedDivisions, lifecycleState, publishReadiness, aggregateResults, bestNAverageResults, gunScoreResults, roundRobinResults, resultAverages, concurrentShootingSummary] = await Promise.all([
     viewerId
       ? getCompetitionRounds(competition.id)
       : Promise.resolve(publicCatalog?.rounds ?? []),
@@ -142,6 +144,13 @@ export default async function CompetitionDetailPage({
       : Promise.resolve(publicCatalog?.published_divisions ?? null),
     initialCapabilities.showLifecycleActions
       ? getCompetitionLifecycleState(
+          organisation.id,
+          season.id,
+          competition.id,
+        )
+      : Promise.resolve(null),
+    managementContext && competition.status === "draft"
+      ? getCompetitionPublishReadiness(
           organisation.id,
           season.id,
           competition.id,
@@ -301,14 +310,18 @@ export default async function CompetitionDetailPage({
       <Card className="mt-5 min-w-0 p-5 sm:p-6">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
-            <Badge
-              tone={competition.status === "draft" ? "warning" : "positive"}
-            >
-              {getCompetitionStatusLabel(competition.status)}
-            </Badge>
-            <h2 className="mt-3 break-words text-2xl font-semibold tracking-[-0.035em] text-foreground sm:text-3xl">
-              {competition.name}
-            </h2>
+            <div className="flex min-w-0 flex-wrap items-center gap-3">
+              <h2 className="min-w-0 break-words text-2xl font-semibold tracking-[-0.035em] text-foreground sm:text-3xl">
+                {competition.name}
+              </h2>
+              {managementContext ? (
+                <span data-competition-lifecycle-badge>
+                  <Badge tone={competition.status === "draft" ? "warning" : "positive"}>
+                    {getCompetitionStatusLabel(competition.status)}
+                  </Badge>
+                </span>
+              ) : null}
+            </div>
             {competition.description ? (
               <p className="mt-2 max-w-3xl whitespace-pre-wrap text-sm leading-6 text-muted-foreground">
                 {competition.description}
@@ -330,6 +343,7 @@ export default async function CompetitionDetailPage({
               canReturnToDraft={lifecycleState.can_return_to_draft}
               canDelete={lifecycleState.can_delete}
               editHref={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/edit`}
+              showPublishAction={false}
             />
           ) : managementContext && competition.status === "draft" ? (
             <Link
@@ -372,6 +386,17 @@ export default async function CompetitionDetailPage({
         </p>
       </Card>
 
+      {managementContext && competition.status === "draft" && publishReadiness ? (
+        <CompetitionReadinessCard
+          readiness={publishReadiness}
+          isOwner={isOwner}
+          organisationId={organisation.id}
+          leagueSeasonId={season.id}
+          competitionId={competition.id}
+          editHref={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}/edit`}
+        />
+      ) : null}
+
       {concurrentShootingSummary ? (
         <CompetitionConcurrentShootingIndicator
           organisationSlug={organisation.slug}
@@ -384,6 +409,7 @@ export default async function CompetitionDetailPage({
           contexts={entryContexts}
           competitionId={competition.id}
           basePath={`/organisations/${organisation.slug}/leagues/${season.slug}/competitions/${competition.slug}`}
+          entryOpensAt={effectiveDates.effective_entry_opens_at}
         />
       ) : null}
 

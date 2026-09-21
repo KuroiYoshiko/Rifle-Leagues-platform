@@ -108,6 +108,7 @@ a { color: inherit; text-decoration: none; }
 }
 
 .target-mark {
+  pointer-events: none;
   background:
     radial-gradient(circle at center, var(--brand) 0 7%, transparent 7.5% 18%, color-mix(in srgb, var(--brand) 92%, transparent) 18.5% 20%, transparent 20.5% 33%, rgba(255, 255, 255, 0.72) 33.5% 35%, transparent 35.5% 49%, rgba(255, 255, 255, 0.3) 49.5% 51%, transparent 51.5% 66%, rgba(255, 255, 255, 0.14) 66.5% 68%, transparent 68.5%);
 }

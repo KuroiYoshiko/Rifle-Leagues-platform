@@ -154,7 +154,7 @@ async function statisticsMarkup() {
       ShooterPerformanceChart: () => createElement("figure", { "data-statistics-chart": true }, "Performance chart"),
     },
     "@/components/ui": ui,
-    "@/lib/shooter-analytics": {
+    "@/lib/shooter-analytics-options": {
       distanceOptionValue: () => "",
       equipmentOptionValue: () => "",
       positionOptionValue: () => "",

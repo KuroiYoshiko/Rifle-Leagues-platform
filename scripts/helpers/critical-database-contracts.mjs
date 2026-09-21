@@ -234,6 +234,9 @@ export async function assertCriticalReadContracts(db, projections) {
 }
 
 const CRITICAL_RPC_SIGNATURES = Object.freeze({
+  delete_league_season: [
+    "p_organisation_id bigint, p_league_season_id bigint",
+  ],
   get_club_operational_summaries: [
     "p_club_id bigint, p_warning_days integer",
   ],
@@ -245,6 +248,9 @@ const CRITICAL_RPC_SIGNATURES = Object.freeze({
     "p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint",
   ],
   get_competition_gun_score_results: [
+    "p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint",
+  ],
+  get_competition_publish_readiness: [
     "p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint",
   ],
   get_competition_result_averages: [

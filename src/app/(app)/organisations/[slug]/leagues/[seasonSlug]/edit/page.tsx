@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { LeagueSeasonForm } from "@/components/league-season-form";
+import { LeagueSeasonDeletePanel } from "@/components/league-season-delete-panel";
 import { OrganisationPageFrame } from "@/components/organisation-page-frame";
 import { Card, SectionHeader } from "@/components/ui";
+import { getCompetitions } from "@/lib/competitions";
+import { getConcurrentShootingGroups } from "@/lib/concurrent-shooting";
 import { getLeagueSeasonBySlug } from "@/lib/league-seasons";
 import { getOrganisationManagementContextBySlug } from "@/lib/organisations";
 
@@ -28,6 +31,21 @@ export default async function EditLeagueSeasonPage({
     notFound();
   }
 
+  const [competitions, concurrentShootingGroups] = await Promise.all([
+    getCompetitions(season.id),
+    getConcurrentShootingGroups(context.organisation.id, season.id),
+  ]);
+  const canDelete = season.status === "draft"
+    && competitions.length === 0
+    && concurrentShootingGroups.length === 0;
+  const deleteUnavailableReason = season.status !== "draft"
+    ? "This Season can no longer be deleted because it is not a draft."
+    : competitions.length > 0
+      ? "This Season cannot be deleted while it contains Competitions."
+      : concurrentShootingGroups.length > 0
+        ? "This Season cannot be deleted while it contains Concurrent Shooting setup."
+        : null;
+
   return (
     <OrganisationPageFrame
       organisation={context.organisation}
@@ -51,6 +69,13 @@ export default async function EditLeagueSeasonPage({
           Status changes are manual and forward-only. Dates never change the
           status automatically.
         </p>
+        <LeagueSeasonDeletePanel
+          organisationId={context.organisation.id}
+          seasonId={season.id}
+          seasonName={season.name}
+          eligible={canDelete}
+          unavailableReason={deleteUnavailableReason}
+        />
       </section>
     </OrganisationPageFrame>
   );

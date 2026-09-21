@@ -18,6 +18,28 @@ import type {
   GunScoreRoundCell,
 } from "@/lib/competition-gun-score-results";
 
+export function ResultsAverageLegend({
+  showStarting,
+  showRunning,
+}: {
+  showStarting: boolean;
+  showRunning: boolean;
+}) {
+  if (!showStarting && !showRunning) return null;
+
+  return (
+    <p className="mb-3 text-xs leading-5 text-muted-foreground">
+      {showStarting ? (
+        <span><strong className="font-semibold text-foreground">S/Av:</strong> the Starting Average fixed for this Competition.</span>
+      ) : null}
+      {showStarting && showRunning ? <span aria-hidden="true">{" · "}</span> : null}
+      {showRunning ? (
+        <span><strong className="font-semibold text-foreground">R/Av:</strong> the live average of this shooter&apos;s complete, released scores in this Competition.</span>
+      ) : null}
+    </p>
+  );
+}
+
 export type ResultsRankingMethod = "aggregate" | "best_n_average" | "gun_score";
 type ResultsEntrant = AggregateEntrant | BestNAverageEntrant | GunScoreEntrant;
 type ResultsRoundCell = AggregateRoundCell | BestNAverageRoundCell | GunScoreRoundCell;
@@ -99,6 +121,16 @@ function averageColumnVisibility(entrants: ResultsEntrant[]) {
   );
   const showRunning = individualParticipants.some((participant) => participant.running_average != null);
   return { showStarting, showRunning, count: Number(showStarting) + Number(showRunning) };
+}
+
+function participantAverageVisibility(entrants: ResultsEntrant[]) {
+  const participants = entrants.flatMap((entrant) => entrant.participants);
+  return {
+    showStarting: participants.some((participant) =>
+      hasStartingAverage(participant) && participant.starting_average != null,
+    ),
+    showRunning: participants.some((participant) => participant.running_average != null),
+  };
 }
 
 function RoundCell({ cell, usesX, rankingMethod }: {
@@ -348,9 +380,15 @@ function CompetitionResultsTable({ data, rankingMethod }: {
     : rankingMethod === "best_n_average"
       ? `Best ${bestRoundsCount} rounds average standings. Complete released achieved scores only.`
       : `Gun Score standings. ${gunLabel} per Round.`;
+  const allEntrants: ResultsEntrant[] = [];
+  for (const group of data.groups) {
+    allEntrants.push(...(group.entrants as ResultsEntrant[]));
+  }
+  const averageLegend = participantAverageVisibility(allEntrants);
 
   return <div className="min-w-0 space-y-6">
-    {data.released_round_count === 0 ? <p className="rounded-xl bg-brand-subtle px-4 py-3 text-sm text-brand-deep">No Rounds have been released yet.</p> : null}
+    {data.released_round_count === 0 ? <div className="rounded-xl bg-brand-subtle px-4 py-3 text-sm text-brand-deep"><p className="font-semibold">No Results released yet</p><p className="mt-1">Results release automatically after each Round End. Scores remain hidden until then.</p></div> : null}
+    <ResultsAverageLegend showStarting={averageLegend.showStarting} showRunning={averageLegend.showRunning} />
     {data.groups.map((group) => {
       const averageColumns = averageColumnVisibility(group.entrants);
       const tableStyle = {
