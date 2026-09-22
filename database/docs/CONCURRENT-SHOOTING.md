@@ -11,6 +11,40 @@ Stage 3B presents those existing shared-score contracts to scorers, including
 global-clear confirmation, stale-version recovery, participant state, and
 linked Competition context. It changes no database semantics.
 
+## Real PostgreSQL race check
+
+`npm run test:concurrent-race-postgres` uses three independent connections to a
+real PostgreSQL server. It verifies score save versus late-entry reconciliation
+in both orders, plus competing score writers, by observing a blocked advisory
+lock before releasing the first transaction. PGlite cannot substitute for this
+multi-session check. Ordinary Concurrent domain cases remain in
+`npm run test:concurrent`.
+
+Use an **empty, disposable local** database named `rifle_leagues_race_test` and
+a superuser connection. The test rejects non-local URLs, non-empty databases,
+and missing `TEST_DATABASE_DISPOSABLE=1`. It installs the current numbered
+canonical SQL and leaves the disposable database available for failure
+inspection; recreate it before another run. Never supply a production or
+staging database URL.
+
+If Docker is available, start a fresh local container in one terminal:
+
+```powershell
+docker run --rm --name rifle-race-pg -e POSTGRES_HOST_AUTH_METHOD=trust -e POSTGRES_DB=rifle_leagues_race_test -p 127.0.0.1:55432:5432 postgres:17
+```
+
+Then, in another PowerShell terminal:
+
+```powershell
+$env:TEST_DATABASE_URL='postgres://postgres@127.0.0.1:55432/rifle_leagues_race_test'
+$env:TEST_DATABASE_DISPOSABLE='1'
+npm run test:concurrent-race-postgres
+```
+
+Stop the container with `docker stop rifle-race-pg` after the run. The local
+container's trust authentication is only for this disposable loopback-bound
+example; an existing local PostgreSQL installation may use its own password.
+
 ## Mental model
 
 The four concepts have separate responsibilities:

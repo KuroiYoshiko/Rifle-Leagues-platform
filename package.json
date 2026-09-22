@@ -20,6 +20,7 @@
     "test:club-operations": "node --test scripts/test-club-operational-summaries.mjs scripts/test-club-teams.mjs",
     "test:series": "node --test scripts/test-competition-series.mjs",
     "test:concurrent": "node --test scripts/test-concurrent-shooting.mjs scripts/test-concurrent-shooting-ui.mjs scripts/test-concurrent-score-entry-ui.mjs",
+    "test:concurrent-race-postgres": "node --test scripts/concurrent-race-postgres.mjs",
     "test:concurrent-score-entry": "node --test scripts/test-concurrent-score-entry-ui.mjs",
     "test:ux-consistency": "node --test scripts/test-ux-consistency.mjs",
     "test:shooting-details": "node --test scripts/test-competition-shooting-details.mjs",
