@@ -1,15 +1,19 @@
 import assert from "node:assert/strict";
-import { execFileSync } from "node:child_process";
 import { readFile } from "node:fs/promises";
 import { after, afterEach, before, beforeEach, test } from "node:test";
 import { PGlite } from "@electric-sql/pglite";
 import { CANONICAL_FRESH_INSTALL_ORDER } from "./helpers/database-install-manifest.mjs";
+import { installCanonicalDatabase } from "./helpers/canonical-database.mjs";
 import {
   assertCriticalReadContracts,
   assertDatabaseMetadataInvariants,
   loadProductionReadProjections,
   seedCriticalReadContractFixture,
 } from "./helpers/critical-database-contracts.mjs";
+import {
+  loadPrelaunchUxHistoricalBaseline,
+  PRELAUNCH_UX_BASELINE_COMMIT,
+} from "./helpers/prelaunch-ux-baseline.mjs";
 
 const db = new PGlite();
 const actors = {
@@ -21,15 +25,7 @@ const actors = {
 };
 let projections;
 
-function mainSql(name) {
-  return execFileSync(
-    "git",
-    ["show", `main:database/${name}.sql`],
-    { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 },
-  );
-}
-
-async function installMainDatabase() {
+async function installHistoricalDatabase() {
   await db.exec(`
     create role anon; create role authenticated; create role service_role;
     set timezone = 'UTC';
@@ -44,13 +40,38 @@ async function installMainDatabase() {
       $$ select nullif(current_setting('request.jwt.claim.sub',true),'')::uuid $$;
   `);
 
+  const baseline = await loadPrelaunchUxHistoricalBaseline();
   for (const name of CANONICAL_FRESH_INSTALL_ORDER) {
     try {
-      await db.exec(mainSql(name));
+      await db.exec(baseline.get(name));
     } catch (error) {
-      throw new Error(`Main schema ${name}: ${error.message}`, { cause: error });
+      throw new Error(
+        `Historical ${PRELAUNCH_UX_BASELINE_COMMIT} schema ${name}: ${error.message}`,
+        { cause: error },
+      );
     }
   }
+}
+
+const upgradedFunctionSignatures = Object.freeze([
+  "private.validate_competition_entrant_club_team()",
+  "public.delete_league_season(bigint,bigint)",
+  "private.competition_publication_readiness_errors(date,date,date,text,jsonb,integer,integer,date[])",
+  "private.validate_competition_configuration(text,text,integer,integer,boolean,integer,numeric,text,date,date,text,date,date,date,date,date,integer,jsonb,text,integer,boolean,date[],date[])",
+  "public.get_competition_club_entry_context(bigint)",
+  "public.save_club_competition_entry(bigint,jsonb)",
+  "public.get_competition_publish_readiness(bigint,bigint,bigint)",
+]);
+
+async function upgradedFunctionDefinitions(database) {
+  const definitions = await database.query(`
+    select requested.signature,
+      pg_get_functiondef(to_regprocedure(requested.signature)) as definition
+    from unnest($1::text[]) as requested(signature)
+    order by requested.signature
+  `, [upgradedFunctionSignatures]);
+  assert.ok(definitions.rows.every((row) => row.definition));
+  return definitions.rows;
 }
 
 async function actor(name) {
@@ -81,7 +102,7 @@ async function expectError(run, pattern) {
 
 before(async () => {
   projections = await loadProductionReadProjections();
-  await installMainDatabase();
+  await installHistoricalDatabase();
 
   const beforeUpgrade = await db.query(`
     select
@@ -107,6 +128,19 @@ before(async () => {
   );
   await db.exec(upgrade);
   await db.exec(upgrade);
+
+  const canonicalDb = new PGlite();
+  try {
+    await installCanonicalDatabase(canonicalDb);
+    assert.deepEqual(
+      await upgradedFunctionDefinitions(db),
+      await upgradedFunctionDefinitions(canonicalDb),
+      "The dated upgrade function bodies differ from the current canonical schema",
+    );
+  } finally {
+    await canonicalDb.close();
+  }
+
   await seedCriticalReadContractFixture(db);
   await db.exec("reset role");
 });

@@ -2,6 +2,12 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { DATABASE_SERVICE_UNAVAILABLE_MESSAGE } from "@/lib/server/database-errors";
+import { getRegistrationConfirmationUrl } from "@/lib/server/site-url";
+import {
+  createServerErrorDiagnostic,
+  reportUnexpectedServerError,
+} from "@/lib/server/unexpected-error";
 import { createClient } from "@/lib/supabase/server";
 
 type RegisterField =
@@ -35,10 +41,11 @@ function validatePassword(password: string) {
 
 async function getConfirmationUrl() {
   const requestHeaders = await headers();
-  const fallbackOrigin = requestHeaders.get("origin") ?? "http://localhost:3000";
-  const configuredOrigin = process.env.NEXT_PUBLIC_SITE_URL ?? fallbackOrigin;
-
-  return new URL("/auth/confirm", configuredOrigin).toString();
+  return getRegistrationConfirmationUrl({
+    nodeEnv: process.env.NODE_ENV,
+    configuredSiteUrl: process.env.NEXT_PUBLIC_SITE_URL,
+    requestOrigin: requestHeaders.get("origin"),
+  });
 }
 
 export async function register(
@@ -80,6 +87,20 @@ export async function register(
     return { fieldErrors, values };
   }
 
+  let emailRedirectTo: string;
+  try {
+    emailRedirectTo = await getConfirmationUrl();
+  } catch (error) {
+    reportUnexpectedServerError(createServerErrorDiagnostic({
+      operation: "auth.register-confirmation-url",
+      category: "deployment",
+      code: error && typeof error === "object" && "code" in error
+        ? String(error.code)
+        : "SITE_URL_INVALID",
+    }));
+    return { message: DATABASE_SERVICE_UNAVAILABLE_MESSAGE, values };
+  }
+
   const supabase = await createClient();
   const { data, error } = await supabase.auth.signUp({
     email,
@@ -89,7 +110,7 @@ export async function register(
         first_name: firstName,
         last_name: lastName,
       },
-      emailRedirectTo: await getConfirmationUrl(),
+      emailRedirectTo,
     },
   });
 

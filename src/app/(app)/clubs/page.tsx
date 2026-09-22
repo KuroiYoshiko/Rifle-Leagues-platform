@@ -113,8 +113,8 @@ export default async function ClubsPage({
           <div role="alert">
             <h2 className="font-semibold text-foreground">Club discovery unavailable</h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              The club database could not be loaded. Run the supplied clubs and
-              memberships SQL in Supabase, then refresh this page.
+              This service is temporarily unavailable. Please try again later or
+              contact support.
             </p>
           </div>
         </Card>

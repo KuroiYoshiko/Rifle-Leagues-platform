@@ -1,6 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import {
+  resolveDatabaseError,
+  type SafeDomainErrorRule,
+} from "@/lib/server/database-errors";
 import { createClient } from "@/lib/supabase/server";
 
 export type DivisionActionState = {
@@ -74,32 +78,59 @@ function validDraft(input: DivisionDraftInput) {
   );
 }
 
+const divisionDomainErrors: readonly SafeDomainErrorRule[] = [
+  {
+    code: "40001",
+    message: /.+/,
+    userMessage:
+      "Starting Averages changed since this layout was reviewed. Refresh, review the values, and save again.",
+  },
+  ...[
+    "Save a division draft before publishing.",
+    "Divisions cannot be published until the competition entry window has closed.",
+    "At least one submitted entrant unit is required before publishing.",
+    "Create at least one division before publishing.",
+    "Every currently submitted entrant unit must be assigned to exactly one division before publishing.",
+    "Target division size must be between 1 and 1,000 entrant units.",
+    "Divisions must be supplied as a list.",
+    "A competition cannot contain more than 200 divisions.",
+    "Choose Edit divisions before changing a published allocation.",
+    "Every division needs a name between 1 and 80 characters and an entrant list.",
+    "Division names must be unique within the competition.",
+    "A division draft cannot contain more than 20,000 assignments.",
+    "Every assignment must reference a valid entrant unit.",
+    "An entrant unit can only appear in one division.",
+    "Only currently submitted entrant units from this exact competition may be assigned.",
+  ].map((message) => ({
+    code: ["22023", "23505", "23514"] as const,
+    message,
+    userMessage: message,
+  })),
+];
+
 function divisionError(
-  code: string | undefined,
-  databaseMessage: string | undefined,
+  error: { code?: string; message?: string },
   fallback: string,
+  operation: string,
+  identity: DivisionIdentity,
 ): DivisionActionState {
-  if (code === "42501") {
-    return {
-      status: "error",
-      message:
+  return {
+    status: "error",
+    message: resolveDatabaseError(error, {
+      operation,
+      entityIds: {
+        organisationId: identity.organisationId,
+        leagueSeasonId: identity.leagueSeasonId,
+        competitionId: identity.competitionId,
+      },
+      authorizationMessage:
         "Only an active owner or manager of this exact organisation can manage these divisions.",
-    };
-  }
-
-  if (code === "22023" || code === "23505" || code === "23514") {
-    return { status: "error", message: databaseMessage || fallback };
-  }
-
-  if (code === "40001") {
-    return {
-      status: "error",
-      message:
-        "Starting Averages changed since this layout was reviewed. Refresh, review the values, and save again.",
-    };
-  }
-
-  return { status: "error", message: fallback };
+      missingMessage:
+        "That Competition or its Division setup is no longer available. Refresh and try again.",
+      unexpectedMessage: fallback,
+      safeDomainErrors: divisionDomainErrors,
+    }).message,
+  };
 }
 
 function revalidateDivisionViews() {
@@ -133,9 +164,10 @@ export async function saveCompetitionDivisionDraft(
 
   if (error) {
     return divisionError(
-      error.code,
-      error.message,
-      "The division draft could not be saved. Check that the latest division SQL has been run, then try again.",
+      error,
+      "The division draft could not be saved. Please try again.",
+      "competition-divisions.save-draft",
+      input,
     );
   }
 
@@ -169,9 +201,10 @@ export async function publishCompetitionDivisions(
 
   if (error) {
     return divisionError(
-      error.code,
-      error.message,
+      error,
       "The divisions could not be published. Please try again.",
+      "competition-divisions.publish",
+      input,
     );
   }
 
@@ -199,9 +232,10 @@ export async function editCompetitionDivisions(
 
   if (error) {
     return divisionError(
-      error.code,
-      error.message,
+      error,
       "The divisions could not be returned to draft.",
+      "competition-divisions.edit",
+      input,
     );
   }
 

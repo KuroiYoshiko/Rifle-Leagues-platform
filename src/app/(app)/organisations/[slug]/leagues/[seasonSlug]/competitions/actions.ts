@@ -19,6 +19,10 @@ import {
   type CompetitionStatus,
 } from "@/lib/competitions";
 import { formatLeagueSeasonDate } from "@/lib/league-seasons";
+import {
+  resolveDatabaseError,
+  type SafeDomainErrorRule,
+} from "@/lib/server/database-errors";
 import { createClient } from "@/lib/supabase/server";
 
 export type CompetitionField =
@@ -592,99 +596,84 @@ type CompetitionMutationError = {
   hint?: string | null;
 };
 
-function mutationMessage(error: CompetitionMutationError, fallback: string) {
-  if (error.code === "42501" && (
-    error.message === "Only this organisation owner can create competitions." ||
-    error.message === "Only this organisation owner can edit competitions."
-  )) {
-    return "Only this organisation’s active owner can manage competitions.";
-  }
-  if (error.code === "42501" && error.message === "Authentication is required.") {
-    return "Sign in again before saving the Competition.";
-  }
-  if (error.code === "42501" && error.message?.includes("Organisation author permission")) {
-    return "Active owner or manager access is required to save this Competition.";
-  }
-  if (error.code === "40001") {
-    return "The source edition changed. Refresh this page and review it again before continuing.";
-  }
-  if (error.code === "P0002") return "That Competition, Season, or organisation is no longer available. Refresh and try again.";
-  if (error.code === "23505" && `${error.message ?? ""} ${error.details ?? ""}`.includes("competitions_series_season_unique")) {
-    return "This Series already has a Competition in the target Season.";
-  }
-  if (error.code === "23505") return "A competition with this name already exists in this Season.";
-  if (error.message?.includes("Average Context") || error.message?.includes("Average Policy") ||
-    error.message?.includes("does not normalise") || error.message?.includes("exactly equal")) {
-    return "The selected Starting Average setup is no longer compatible or available. Refresh and choose an active exact-match Context and Policy.";
-  }
-  if ((error.code === "22023" || error.code === "23514") && error.message) return error.message;
-  return fallback;
-}
+const competitionDomainErrors: readonly SafeDomainErrorRule[] = [
+  {
+    code: "42501",
+    message: "Authentication is required.",
+    userMessage: "Sign in again before saving the Competition.",
+  },
+  {
+    code: "42501",
+    message: /^Active contextual Organisation author permission is required\.$/,
+    userMessage: "Active owner or manager access is required to save this Competition.",
+  },
+  {
+    code: "40001",
+    message: /.+/,
+    userMessage:
+      "The source edition changed. Refresh this page and review it again before continuing.",
+  },
+  {
+    code: "23505",
+    message: "A competition with this name already exists in this Season.",
+    userMessage: "A competition with this name already exists in this Season.",
+  },
+  {
+    code: ["22023", "23514"],
+    message: /^(?=.*(?:Average Context|Average Policy|does not normalise|exactly equal)).+$/,
+    userMessage:
+      "The selected Starting Average setup is no longer compatible or available. Refresh and choose an active exact-match Context and Policy.",
+  },
+  ...[
+    "Team entries must contain between 3 and 20 shooters.",
+    "Set a complete effective Competition entry window before publishing.",
+    "Set an effective Competition Start before publishing.",
+    "Round Robin requires time to finalise divisions after entries close. Competition Start must be after the Entry Close date.",
+    "Add at least one Course of Fire score component before publishing.",
+    "Set how many rounds count for Best N rounds average.",
+    "Set a Round End for every configured round before publishing.",
+    "Choose equipment and complete position/style, distance, and Shots for every Course of Fire component.",
+    "Only a draft Competition can update physical shooting details.",
+    "Only a draft Competition can be published.",
+    "Only a published Competition can be returned to draft.",
+    "This competition already has entries or competition participation data and cannot be returned to draft.",
+    "This competition already has entries or competition participation data and cannot be deleted.",
+  ].map((message) => ({
+    code: ["22023", "23514"] as const,
+    message,
+    userMessage: message,
+  })),
+];
 
-async function reportMutationError(
-  operation: "create" | "update",
+function mutationMessage(
   error: CompetitionMutationError,
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  fallback: string,
+  operation: string,
   context: {
     organisationId: number;
     leagueSeasonId: number;
     competitionId?: number;
   },
 ) {
-  if (process.env.NODE_ENV === "production") return;
+  if (
+    error.code === "23505" &&
+    `${error.message ?? ""} ${error.details ?? ""}`.includes(
+      "competitions_series_season_unique",
+    )
+  ) {
+    return "This Series already has a Competition in the target Season.";
+  }
 
-  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
-  const authUserId = claimsData?.claims?.sub;
-  const [seasonResult, staffResult, competitionResult] = await Promise.all([
-    supabase
-      .from("league_seasons")
-      .select("id, organisation_id")
-      .eq("id", context.leagueSeasonId)
-      .maybeSingle(),
-    authUserId
-      ? supabase
-        .from("organisation_staff")
-        .select("organisation_id, user_id, role, status")
-        .eq("organisation_id", context.organisationId)
-        .eq("user_id", authUserId)
-        .maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
-    context.competitionId
-      ? supabase
-        .from("competitions")
-        .select("id, league_season_id")
-        .eq("id", context.competitionId)
-        .maybeSingle()
-      : Promise.resolve({ data: null, error: null }),
-  ]);
-
-  console.error(`[competition:${operation}] RPC failed`, {
-    code: error.code,
-    message: error.message,
-    details: error.details,
-    hint: error.hint,
-    authorizationContext: {
-      authUserId: authUserId ?? null,
-      submittedOrganisationId: context.organisationId,
-      submittedSeasonId: context.leagueSeasonId,
-      submittedCompetitionId: context.competitionId ?? null,
-      resolvedSeasonOrganisationId:
-        seasonResult.data?.organisation_id ?? null,
-      resolvedCompetitionSeasonId:
-        competitionResult.data?.league_season_id ?? null,
-      activeStaffRowFound: staffResult.data?.status === "active",
-      resolvedStaffOrganisationId:
-        staffResult.data?.organisation_id ?? null,
-      resolvedStaffRole: staffResult.data?.role ?? null,
-      resolvedStaffStatus: staffResult.data?.status ?? null,
-      diagnosticErrors: {
-        claims: claimsError?.message ?? null,
-        season: seasonResult.error?.message ?? null,
-        staff: staffResult.error?.message ?? null,
-        competition: competitionResult.error?.message ?? null,
-      },
-    },
-  });
+  return resolveDatabaseError(error, {
+    operation,
+    entityIds: context,
+    authorizationMessage:
+      "Only an active owner or manager of this exact organisation can manage this Competition.",
+    missingMessage:
+      "That Competition, Season, or organisation is no longer available. Refresh and try again.",
+    unexpectedMessage: fallback,
+    safeDomainErrors: competitionDomainErrors,
+  }).message;
 }
 
 function revalidateCompetitionRoutes(result: CompetitionRpcResult) {
@@ -702,24 +691,23 @@ function revalidateCompetitionRoutes(result: CompetitionRpcResult) {
 function lifecycleErrorMessage(
   error: CompetitionMutationError,
   fallback: string,
+  operation: "publish" | "return-to-draft" | "delete",
+  context: {
+    organisationId: number;
+    leagueSeasonId: number;
+    competitionId: number;
+  },
 ) {
-  if (
-    error.code === "42501" &&
-    error.message ===
-      "Only this organisation owner can manage this Competition lifecycle."
-  ) {
-    return "Only this organisation’s active owner can manage this Competition lifecycle.";
-  }
-  if (error.code === "42501" && error.message === "Authentication is required.") {
-    return "Sign in again before continuing.";
-  }
-  if (error.code === "P0002") {
-    return "That Competition, Season, or organisation is no longer available. Refresh and try again.";
-  }
-  if ((error.code === "22023" || error.code === "23514") && error.message) {
-    return error.message;
-  }
-  return fallback;
+  return resolveDatabaseError(error, {
+    operation: `competition.${operation}`,
+    entityIds: context,
+    authorizationMessage:
+      "Only this organisation’s active owner can manage this Competition lifecycle.",
+    missingMessage:
+      "That Competition, Season, or organisation is no longer available. Refresh and try again.",
+    unexpectedMessage: fallback,
+    safeDomainErrors: competitionDomainErrors,
+  }).message;
 }
 
 async function prepareLifecycleMutation(formData: FormData) {
@@ -743,19 +731,6 @@ async function prepareLifecycleMutation(formData: FormData) {
     competitionId,
     supabase,
   } as const;
-}
-
-function reportLifecycleError(
-  operation: "publish" | "return-to-draft" | "delete",
-  error: CompetitionMutationError,
-) {
-  if (process.env.NODE_ENV === "production") return;
-  console.error(`[competition:${operation}] lifecycle RPC failed`, {
-    code: error.code,
-    message: error.message,
-    details: error.details,
-    hint: error.hint,
-  });
 }
 
 function revalidateLifecycleResult(result: CompetitionLifecycleRpcResult) {
@@ -803,13 +778,18 @@ export async function createCompetition(_previousState: CompetitionFormState, fo
       p_organisation_id: organisationId,
       p_league_season_id: leagueSeasonId,
       p_configuration: getConfigurationValues(values),
-    });
+  });
   if (error) {
-    await reportMutationError("create", error, supabase, {
-      organisationId,
-      leagueSeasonId,
-    });
-    return { status: "error", message: mutationMessage(error, "The Competition could not be created. Check the development server log for the database error."), values };
+    return {
+      status: "error",
+      message: mutationMessage(
+        error,
+        "The Competition could not be created. Please try again.",
+        "competition.create",
+        { organisationId, leagueSeasonId },
+      ),
+      values,
+    };
   }
   const result = readRpcResult(data);
   if (!result) return { status: "error", message: "The Competition was created, but its page could not be opened automatically.", values };
@@ -848,12 +828,16 @@ export async function createCompetitionSeries(
       p_league_season_id: leagueSeasonId,
       p_series_name: values.seriesName,
       p_configuration: getConfigurationValues(values),
-    });
+  });
   if (error) {
-    await reportMutationError("create", error, supabase, { organisationId, leagueSeasonId });
     return {
       status: "error",
-      message: mutationMessage(error, "The Series and its first draft could not be created."),
+      message: mutationMessage(
+        error,
+        "The Series and its first draft could not be created.",
+        "competition-series.create-with-first-edition",
+        { organisationId, leagueSeasonId },
+      ),
       values,
     };
   }
@@ -894,10 +878,14 @@ export async function continueCompetitionSeries(
     p_edition_values: getEditionValues(values),
   });
   if (error) {
-    await reportMutationError("create", error, supabase, { organisationId, leagueSeasonId });
     return {
       status: "error",
-      message: mutationMessage(error, "The new Series edition could not be created."),
+      message: mutationMessage(
+        error,
+        "The new Series edition could not be created.",
+        "competition-series.continue",
+        { organisationId, leagueSeasonId },
+      ),
       values,
     };
   }
@@ -933,10 +921,14 @@ export async function updateCompetitionSeriesDraft(
     p_configuration: getConfigurationValues(values),
   });
   if (error) {
-    await reportMutationError("update", error, supabase, { organisationId, leagueSeasonId, competitionId });
     return {
       status: "error",
-      message: mutationMessage(error, "The Competition draft could not be saved."),
+      message: mutationMessage(
+        error,
+        "The Competition draft could not be saved.",
+        "competition.update-series-draft",
+        { organisationId, leagueSeasonId, competitionId },
+      ),
       values,
     };
   }
@@ -973,14 +965,18 @@ export async function updateCompetition(_previousState: CompetitionFormState, fo
     : await supabase.rpc("update_competition", {
       p_organisation_id: organisationId, p_league_season_id: leagueSeasonId,
       p_competition_id: competitionId, ...getRpcValues(values), p_status: desiredStatus,
-    });
+  });
   if (error) {
-    await reportMutationError("update", error, supabase, {
-      organisationId,
-      leagueSeasonId,
-      competitionId,
-    });
-    return { status: "error", message: mutationMessage(error, "The Competition could not be saved. Check the development server log for the database error."), values };
+    return {
+      status: "error",
+      message: mutationMessage(
+        error,
+        "The Competition could not be saved. Please try again.",
+        "competition.update",
+        { organisationId, leagueSeasonId, competitionId },
+      ),
+      values,
+    };
   }
   const result = readRpcResult(data);
   if (!result) return { status: "error", message: "The Competition was saved, but the refreshed details could not be verified.", values };
@@ -1002,12 +998,13 @@ export async function publishCompetitionFromDetail(
     p_competition_id: competitionId,
   });
   if (error) {
-    reportLifecycleError("publish", error);
     return {
       status: "error",
       message: lifecycleErrorMessage(
         error,
         "The Competition could not be published. Please try again.",
+        "publish",
+        { organisationId, leagueSeasonId, competitionId },
       ),
     };
   }
@@ -1037,12 +1034,13 @@ export async function returnCompetitionToDraft(
     p_competition_id: competitionId,
   });
   if (error) {
-    reportLifecycleError("return-to-draft", error);
     return {
       status: "error",
       message: lifecycleErrorMessage(
         error,
         "The Competition could not be returned to draft. Please try again.",
+        "return-to-draft",
+        { organisationId, leagueSeasonId, competitionId },
       ),
     };
   }
@@ -1072,12 +1070,13 @@ export async function deleteCompetitionFromDetail(
     p_competition_id: competitionId,
   });
   if (error) {
-    reportLifecycleError("delete", error);
     return {
       status: "error",
       message: lifecycleErrorMessage(
         error,
         "The Competition could not be deleted. Please try again.",
+        "delete",
+        { organisationId, leagueSeasonId, competitionId },
       ),
     };
   }

@@ -1,6 +1,10 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import {
+  resolveDatabaseError,
+  type SafeDomainErrorRule,
+} from "@/lib/server/database-errors";
 import { createClient } from "@/lib/supabase/server";
 
 export type CompetitionSeriesActionState = {
@@ -31,10 +35,46 @@ async function prepare(formData: FormData) {
   return { organisationId, seriesId, organisationSlug, supabase } as const;
 }
 
-function errorMessage(error: { code?: string; message?: string }, fallback: string) {
-  if (error.code === "42501") return "Only this organisation’s active owner can manage Competition Series.";
-  if ((error.code === "22023" || error.code === "23514") && error.message) return error.message;
-  return fallback;
+const seriesDomainErrors: readonly SafeDomainErrorRule[] = [
+  {
+    code: "22023",
+    message: "Series name must contain between 2 and 160 characters.",
+    userMessage: "Series name must contain between 2 and 160 characters.",
+  },
+  {
+    code: "22023",
+    message: "Series not found in this Organisation.",
+    userMessage: "That Competition Series is no longer available. Refresh and try again.",
+  },
+  {
+    code: "22023",
+    message: "Series with editions cannot be deleted. Archive it instead.",
+    userMessage: "Series with editions cannot be deleted. Archive it instead.",
+  },
+  {
+    code: "22023",
+    message: "Choose archive or restore.",
+    userMessage: "Choose archive or restore.",
+  },
+];
+
+function errorMessage(
+  error: { code?: string; message?: string },
+  fallback: string,
+  operation: string,
+  organisationId: number,
+  seriesId: number,
+) {
+  return resolveDatabaseError(error, {
+    operation,
+    entityIds: { organisationId, competitionSeriesId: seriesId },
+    authorizationMessage:
+      "Only this organisation’s active owner can manage Competition Series.",
+    missingMessage:
+      "That Competition Series or organisation is no longer available. Refresh and try again.",
+    unexpectedMessage: fallback,
+    safeDomainErrors: seriesDomainErrors,
+  }).message;
 }
 
 function refresh(organisationSlug: string) {
@@ -58,7 +98,18 @@ export async function renameCompetitionSeries(
     p_competition_series_id: prepared.seriesId,
     p_name: name,
   });
-  if (error) return { status: "error", message: errorMessage(error, "The Series could not be renamed.") };
+  if (error) {
+    return {
+      status: "error",
+      message: errorMessage(
+        error,
+        "The Series could not be renamed.",
+        "competition-series.rename",
+        prepared.organisationId,
+        prepared.seriesId,
+      ),
+    };
+  }
   refresh(prepared.organisationSlug);
   return { status: "success", message: "Series name saved." };
 }
@@ -75,7 +126,18 @@ export async function setCompetitionSeriesArchived(
     p_competition_series_id: prepared.seriesId,
     p_archived: archived,
   });
-  if (error) return { status: "error", message: errorMessage(error, "The Series archive state could not be changed.") };
+  if (error) {
+    return {
+      status: "error",
+      message: errorMessage(
+        error,
+        "The Series archive state could not be changed.",
+        archived ? "competition-series.archive" : "competition-series.restore",
+        prepared.organisationId,
+        prepared.seriesId,
+      ),
+    };
+  }
   refresh(prepared.organisationSlug);
   return { status: "success", message: archived ? "Series archived." : "Series restored." };
 }
@@ -90,7 +152,18 @@ export async function deleteEmptyCompetitionSeries(
     p_organisation_id: prepared.organisationId,
     p_competition_series_id: prepared.seriesId,
   });
-  if (error) return { status: "error", message: errorMessage(error, "The empty Series could not be deleted.") };
+  if (error) {
+    return {
+      status: "error",
+      message: errorMessage(
+        error,
+        "The empty Series could not be deleted.",
+        "competition-series.delete-empty",
+        prepared.organisationId,
+        prepared.seriesId,
+      ),
+    };
+  }
   refresh(prepared.organisationSlug);
   return { status: "success", message: "Empty Series deleted." };
 }

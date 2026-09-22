@@ -129,9 +129,12 @@ test("Season deletion is owner-only, confirmed, and unavailable for used or non-
   assert.match(panel, /will be permanently removed/);
   assert.match(actions, /supabase\.rpc\("delete_league_season"/);
   assert.match(actions, /seasonDeleted=1/);
-  assert.match(actions, /code === "PGRST202" \|\| code === "42883"/);
-  assert.match(actions, /database upgrade has not been applied yet/);
-  assert.match(actions, /Only an unused draft Season can be deleted/);
+  assert.match(actions, /resolveDatabaseError/);
+  assert.match(actions, /operation: "season\.delete"/);
+  assert.doesNotMatch(actions, /run .*SQL|database upgrade has not been applied/i);
+  assert.match(actions, /Only a draft league season can be deleted/);
+  assert.match(actions, /containing Competitions cannot be deleted/);
+  assert.match(actions, /containing Concurrent Shooting setup cannot be deleted/);
   assert.doesNotMatch(actions, /The Season could not be deleted\. Only an unused draft Season can be deleted/);
   assert.match(seasonsSql, /staff\.role = 'owner'/);
   assert.match(seasonsSql, /v_season_status <> 'draft'/);

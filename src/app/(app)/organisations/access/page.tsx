@@ -131,7 +131,8 @@ export default async function OrganisationAccessPage({
               Organisations could not be loaded
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Run the supplied organisation SQL in Supabase, then refresh this page.
+              This service is temporarily unavailable. Please try again later or
+              contact support.
             </p>
           </div>
         </Card>
@@ -160,8 +161,8 @@ export default async function OrganisationAccessPage({
               className="mb-4 rounded-xl border border-danger/20 bg-danger-subtle px-4 py-3 text-sm text-danger"
               role="alert"
             >
-              Management access status is unavailable. Run the latest
-              organisation staff SQL before requesting access.
+              Management access status is temporarily unavailable. Please try
+              again later or contact support.
             </p>
           ) : null}
 

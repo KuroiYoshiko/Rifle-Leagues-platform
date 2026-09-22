@@ -294,8 +294,158 @@ const INTENTIONAL_PUBLIC_OVERLOADS = Object.freeze({
   ],
 });
 
+const ANON_EXECUTABLE_RPCS = Object.freeze([
+  "public.get_competition_aggregate_results(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint)",
+  "public.get_competition_best_n_average_results(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint)",
+  "public.get_competition_gun_score_results(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint)",
+  "public.get_competition_result_averages(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint)",
+  "public.get_competition_round_robin_results(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint)",
+  "public.get_competition_shooting_display(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint)",
+  "public.get_public_club_results_catalog(p_club_slug text, p_query text, p_offset integer, p_limit integer)",
+  "public.get_public_results_catalog(p_organisation_slug text, p_season_slug text, p_competition_slug text, p_query text, p_offset integer, p_limit integer)",
+]);
+
+const AUTHENTICATED_COLUMN_WRITES = Object.freeze([
+  "club_memberships.club_id:INSERT",
+  "club_memberships.status:UPDATE",
+  "club_memberships.user_id:INSERT",
+  "profiles.address:UPDATE",
+  "profiles.county:UPDATE",
+  "profiles.first_name:UPDATE",
+  "profiles.last_name:UPDATE",
+  "profiles.phone_number:UPDATE",
+  "profiles.postcode:UPDATE",
+  "profiles.title:UPDATE",
+  "profiles.town:UPDATE",
+  "user_organisations.organisation_id:INSERT",
+  "user_organisations.user_id:INSERT",
+]);
+
+export async function assertGlobalDatabaseSecurityInvariants(db) {
+  await db.exec("reset role");
+
+  const tablesWithoutRls = await db.query(`
+    select c.relname as table_name
+    from pg_class c
+    join pg_namespace n on n.oid=c.relnamespace
+    where n.nspname='public' and c.relkind='r' and not c.relrowsecurity
+    order by c.relname
+  `);
+  assert.deepEqual(
+    tablesWithoutRls.rows,
+    [],
+    "A public application table does not have RLS enabled",
+  );
+
+  const anonTablePrivileges = await db.query(`
+    select c.relname as table_name, privilege.name as privilege
+    from pg_class c
+    join pg_namespace n on n.oid=c.relnamespace
+    cross join (values ('SELECT'),('INSERT'),('UPDATE'),('DELETE')) privilege(name)
+    where n.nspname='public' and c.relkind='r'
+      and has_table_privilege('anon',c.oid,privilege.name)
+    order by c.relname, privilege.name
+  `);
+  assert.deepEqual(
+    anonTablePrivileges.rows,
+    [],
+    "anon gained direct table DML",
+  );
+
+  const anonColumnPrivileges = await db.query(`
+    select table_name, column_name, privilege_type
+    from information_schema.column_privileges
+    where table_schema='public' and grantee='anon'
+      and privilege_type in ('SELECT','INSERT','UPDATE')
+    order by table_name,column_name,privilege_type
+  `);
+  assert.deepEqual(
+    anonColumnPrivileges.rows,
+    [],
+    "anon gained direct column DML",
+  );
+
+  const authenticatedTableWrites = await db.query(`
+    select c.relname as table_name, privilege.name as privilege
+    from pg_class c
+    join pg_namespace n on n.oid=c.relnamespace
+    cross join (values ('INSERT'),('UPDATE'),('DELETE')) privilege(name)
+    where n.nspname='public' and c.relkind='r'
+      and has_table_privilege('authenticated',c.oid,privilege.name)
+    order by c.relname, privilege.name
+  `);
+  assert.deepEqual(
+    authenticatedTableWrites.rows.map(
+      (row) => `${row.table_name}:${row.privilege}`,
+    ),
+    ["user_organisations:DELETE"],
+    "authenticated gained an unintended table-level write grant",
+  );
+
+  const authenticatedColumnWrites = await db.query(`
+    select table_name, column_name, privilege_type
+    from information_schema.column_privileges
+    where table_schema='public' and grantee='authenticated'
+      and privilege_type in ('INSERT','UPDATE')
+    order by table_name,column_name,privilege_type
+  `);
+  assert.deepEqual(
+    authenticatedColumnWrites.rows.map(
+      (row) => `${row.table_name}.${row.column_name}:${row.privilege_type}`,
+    ),
+    AUTHENTICATED_COLUMN_WRITES,
+    "authenticated gained an unintended direct column write grant",
+  );
+
+  const exposedPrivateFunctions = await db.query(`
+    select p.proname, pg_get_function_identity_arguments(p.oid) as arguments
+    from pg_proc p
+    where p.pronamespace='private'::regnamespace and p.prokind='f'
+      and (
+        has_function_privilege('anon',p.oid,'EXECUTE')
+        or has_function_privilege('authenticated',p.oid,'EXECUTE')
+        or has_function_privilege('service_role',p.oid,'EXECUTE')
+      )
+    order by p.proname,arguments
+  `);
+  assert.deepEqual(
+    exposedPrivateFunctions.rows,
+    [],
+    "A private-schema function is executable by an API role",
+  );
+
+  const anonFunctions = await db.query(`
+    select format(
+      '%I.%I(%s)',
+      n.nspname,
+      p.proname,
+      pg_get_function_identity_arguments(p.oid)
+    ) as signature,
+    p.provolatile,
+    pg_get_functiondef(p.oid) ~* '\\m(insert|update|delete|truncate)\\M' as contains_write
+    from pg_proc p
+    join pg_namespace n on n.oid=p.pronamespace
+    where n.nspname='public' and p.prokind='f'
+      and has_function_privilege('anon',p.oid,'EXECUTE')
+    order by signature
+  `);
+  assert.deepEqual(
+    anonFunctions.rows.map((row) => row.signature),
+    ANON_EXECUTABLE_RPCS,
+    "The anon-executable RPC allow-list changed",
+  );
+  assert.ok(
+    anonFunctions.rows.every(
+      (row) => ["s", "i"].includes(row.provolatile) && !row.contains_write,
+    ),
+    "An anon-executable RPC is volatile or contains a write statement",
+  );
+}
+
 export async function assertDatabaseMetadataInvariants(db, projections) {
   await db.exec("reset role");
+
+  await assertGlobalDatabaseSecurityInvariants(db);
 
   const criticalNames = Object.keys(CRITICAL_RPC_SIGNATURES);
   const functions = await db.query(`

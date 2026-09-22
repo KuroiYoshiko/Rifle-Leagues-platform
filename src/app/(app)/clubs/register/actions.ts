@@ -2,6 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import {
+  resolveDatabaseError,
+  type SafeDomainErrorRule,
+} from "@/lib/server/database-errors";
 import { createClient } from "@/lib/supabase/server";
 
 type RegistrationField = "name" | "town" | "county" | "postcode" | "website";
@@ -16,6 +20,20 @@ export type ClubRegistrationState = {
 };
 
 const routeSafeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+const clubRegistrationDomainErrors: readonly SafeDomainErrorRule[] = [
+  {
+    code: "23505",
+    message: /^(?:A club with this name appears to already be registered\.|duplicate key value violates unique constraint.+)$/,
+    userMessage:
+      "A club with this name appears to already be registered. Search for the existing club and request membership instead.",
+  },
+  {
+    code: ["22023", "23514"],
+    message: /^(?:Club name must contain between 2 and 160 characters\.|Town must contain 100 characters or fewer\.|County must contain 100 characters or fewer\.|Postcode must contain 20 characters or fewer\.|Enter a complete website address beginning with http:\/\/ or https:\/\/\.|The club name cannot produce a route-safe web address\.)$/,
+    userMessage: "Some club details were not accepted. Review the form and try again.",
+  },
+];
 
 function readValues(formData: FormData): ClubRegistrationValues {
   return {
@@ -79,14 +97,15 @@ export async function registerClub(
   if (error) {
     return {
       status: "error",
-      message:
-        error.code === "23505"
-          ? "A club with this name appears to already be registered. Search for the existing club and request membership instead."
-          : error.code === "42501"
-            ? "Your session could not be verified. Sign in again and retry."
-            : error.code === "22023" || error.code === "23514"
-              ? "Some club details were not accepted. Review the form and try again."
-              : "The club could not be registered. Check that the latest club foundation SQL has been run, then try again.",
+      message: resolveDatabaseError(error, {
+        operation: "club.register",
+        authorizationMessage:
+          "Your session could not be verified. Sign in again and retry.",
+        missingMessage:
+          "The club registration target is no longer available. Refresh and try again.",
+        unexpectedMessage: "The club could not be registered. Please try again.",
+        safeDomainErrors: clubRegistrationDomainErrors,
+      }).message,
       values,
     };
   }
