@@ -71,8 +71,8 @@ export default async function OrganisationManagementPage({
               Organisation staff could not be loaded
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Run the latest organisation staff SQL in Supabase, then refresh
-              this page.
+              This service is temporarily unavailable. Please try again later or
+              contact support.
             </p>
           </div>
         </Card>

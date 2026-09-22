@@ -2,6 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 import type { ClubTeam, ClubTeamUnitType } from "@/lib/club-teams";
+import {
+  resolveDatabaseError,
+  type SafeDomainErrorRule,
+} from "@/lib/server/database-errors";
 import { createClient } from "@/lib/supabase/server";
 
 export type ClubTeamMutation = ClubTeam;
@@ -52,24 +56,42 @@ async function authenticatedClient() {
   return { supabase, authenticated: !error && Boolean(data?.claims?.sub) };
 }
 
+const clubTeamDomainErrors: readonly SafeDomainErrorRule[] = [
+  ...[
+    "Choose Pair or Team.",
+    "Choose every current roster member.",
+    "A Pair needs exactly 2 shooters; a Team needs between 3 and 20.",
+    "A shooter cannot appear twice in one Club Pair or Team.",
+    "Every roster member must be an active member of this Club.",
+    "A Club Pair or Team type and size cannot be changed after setup. Create another unit for a different size.",
+    "Unlink or change this Club Pair or Team in its draft Competition entry before archiving it.",
+    "That Club Pair or Team name or roster contains a duplicate. Archived names cannot be reused.",
+    "A Club Pair or Team with that name already exists. Archived names cannot be reused.",
+  ].map((message) => ({
+    code: ["23505", "22023", "23514"] as const,
+    message,
+    userMessage: message,
+  })),
+];
+
 function actionError(
-  code: string | undefined,
-  databaseMessage: string | undefined,
+  error: { code?: string; message?: string },
   fallback: string,
+  operation: string,
+  entityIds: Record<string, number>,
 ): ClubTeamActionState {
-  if (code === "42501") {
-    return {
-      status: "error",
-      message: "Only an active owner or official of this exact club can manage Club Teams.",
-    };
-  }
-  if (code === "23505" || code === "22023" || code === "23514") {
-    return { status: "error", message: databaseMessage || fallback };
-  }
-  if (code === "P0002") {
-    return { status: "error", message: "That Club Team is no longer available." };
-  }
-  return { status: "error", message: fallback };
+  return {
+    status: "error",
+    message: resolveDatabaseError(error, {
+      operation,
+      entityIds,
+      authorizationMessage:
+        "Only an active owner or official of this exact club can manage Club Teams.",
+      missingMessage: "That Club Team is no longer available.",
+      unexpectedMessage: fallback,
+      safeDomainErrors: clubTeamDomainErrors,
+    }).message,
+  };
 }
 
 function revalidateClubTeamRoutes(slug: string) {
@@ -108,7 +130,14 @@ export async function createClubTeam(input: {
     p_unit_type: unitType,
     p_roster_membership_ids: roster,
   });
-  if (error) return actionError(error.code, error.message, "The Club Pair or Team could not be created.");
+  if (error) {
+    return actionError(
+      error,
+      "The Club Pair or Team could not be created.",
+      "club-team.create",
+      { clubId },
+    );
+  }
 
   revalidateClubTeamRoutes(clubSlug);
   return {
@@ -148,7 +177,14 @@ export async function updateClubTeam(input: {
     p_unit_type: unitType,
     p_roster_membership_ids: roster,
   });
-  if (error) return actionError(error.code, error.message, "The Club Pair or Team could not be updated.");
+  if (error) {
+    return actionError(
+      error,
+      "The Club Pair or Team could not be updated.",
+      "club-team.update",
+      { clubTeamId },
+    );
+  }
 
   revalidateClubTeamRoutes(clubSlug);
   return {
@@ -177,7 +213,14 @@ export async function renameClubTeam(input: {
     p_club_team_id: clubTeamId,
     p_name: name,
   });
-  if (error) return actionError(error.code, error.message, "The Club Team could not be renamed.");
+  if (error) {
+    return actionError(
+      error,
+      "The Club Team could not be renamed.",
+      "club-team.rename",
+      { clubTeamId },
+    );
+  }
 
   revalidateClubTeamRoutes(clubSlug);
   return {
@@ -207,11 +250,12 @@ async function setClubTeamArchiveState(input: {
   );
   if (error) {
     return actionError(
-      error.code,
-      error.message,
+      error,
       input.archived
         ? "The Club Team could not be archived."
         : "The Club Team could not be unarchived.",
+      input.archived ? "club-team.archive" : "club-team.unarchive",
+      { clubTeamId },
     );
   }
 

@@ -1,0 +1,398 @@
+diff --git a/database/03_clubs.sql b/database/03_clubs.sql
+index 24a8a77..9460b51 100644
+--- a/database/03_clubs.sql
++++ b/database/03_clubs.sql
+@@ -361,7 +361,7 @@ begin
+   end if;
+ 
+   if v_entry_format not in ('pairs', 'team') then
+-    raise exception 'Persistent Club Pairs or Teams can only be linked to matching Pair/Team Competition entrants.'
++    raise exception 'Club Pairs or Club Teams can only be linked to matching Pair or Team Competition entrants.'
+       using errcode = '23514';
+   end if;
+ 
+diff --git a/database/04_seasons.sql b/database/04_seasons.sql
+index 3a1509e..895f6f2 100644
+--- a/database/04_seasons.sql
++++ b/database/04_seasons.sql
+@@ -373,6 +373,94 @@ begin
+ end;
+ $function$;
+ 
++CREATE OR REPLACE FUNCTION public.delete_league_season(p_organisation_id bigint, p_league_season_id bigint)
++ RETURNS jsonb
++ LANGUAGE plpgsql
++ SECURITY DEFINER
++ SET search_path TO ''
++AS $function$
++declare
++  v_actor_id uuid := (select auth.uid());
++  v_organisation_slug text;
++  v_season_slug text;
++  v_season_status text;
++begin
++  if v_actor_id is null then
++    raise exception 'Authentication is required.' using errcode = '42501';
++  end if;
++
++  select organisation.slug
++  into v_organisation_slug
++  from public.organisations as organisation
++  where organisation.id = p_organisation_id
++    and organisation.status = 'active'
++  for share;
++
++  if v_organisation_slug is null then
++    raise exception 'Active organisation not found.' using errcode = 'P0002';
++  end if;
++
++  perform staff.id
++  from public.organisation_staff as staff
++  where staff.organisation_id = p_organisation_id
++    and staff.user_id = v_actor_id
++    and staff.role = 'owner'
++    and staff.status = 'active'
++  for share;
++
++  if not found then
++    raise exception 'Only this organisation owner can delete the league season.'
++      using errcode = '42501';
++  end if;
++
++  select season.slug, season.status
++  into v_season_slug, v_season_status
++  from public.league_seasons as season
++  where season.id = p_league_season_id
++    and season.organisation_id = p_organisation_id
++  for update;
++
++  if v_season_slug is null then
++    raise exception 'League season not found in this organisation.'
++      using errcode = 'P0002';
++  end if;
++
++  if v_season_status <> 'draft' then
++    raise exception 'Only a draft league season can be deleted.'
++      using errcode = '22023';
++  end if;
++
++  if exists (
++    select 1
++    from public.competitions as competition
++    where competition.league_season_id = p_league_season_id
++  ) then
++    raise exception 'A league season containing Competitions cannot be deleted.'
++      using errcode = '22023';
++  end if;
++
++  if exists (
++    select 1
++    from public.concurrent_shooting_groups as group_row
++    where group_row.league_season_id = p_league_season_id
++  ) then
++    raise exception 'A league season containing Concurrent Shooting setup cannot be deleted.'
++      using errcode = '22023';
++  end if;
++
++  delete from public.league_seasons as season
++  where season.id = p_league_season_id
++    and season.organisation_id = p_organisation_id;
++
++  return jsonb_build_object(
++    'id', p_league_season_id,
++    'organisation_slug', v_organisation_slug,
++    'season_slug', v_season_slug,
++    'status', v_season_status
++  );
++end;
++$function$;
++
+ 
+ commit;
+ 
+diff --git a/database/05_competitions.sql b/database/05_competitions.sql
+index 30ba633..3108c31 100644
+--- a/database/05_competitions.sql
++++ b/database/05_competitions.sql
+@@ -347,6 +347,44 @@ begin
+ end;
+ $function$;
+ 
++CREATE OR REPLACE FUNCTION private.competition_publication_readiness_errors(p_effective_entry_opens_at date, p_effective_entry_closes_at date, p_effective_starts_at date, p_ranking_method text, p_score_components jsonb, p_best_rounds_count integer, p_number_of_rounds integer, p_round_deadlines date[])
++ RETURNS text[]
++ LANGUAGE plpgsql
++ IMMUTABLE
++ SET search_path TO ''
++AS $function$
++declare
++  v_errors text[] := array[]::text[];
++  v_round_deadlines date[] := coalesce(p_round_deadlines, array[]::date[]);
++begin
++  if p_effective_entry_opens_at is null or p_effective_entry_closes_at is null then
++    v_errors := array_append(v_errors, 'Set a complete effective Competition entry window before publishing.');
++  end if;
++  if p_effective_starts_at is null then
++    v_errors := array_append(v_errors, 'Set an effective Competition Start before publishing.');
++  end if;
++  if p_ranking_method = 'round_robin'
++    and p_effective_entry_closes_at is not null
++    and p_effective_starts_at is not null
++    and p_effective_entry_closes_at >= p_effective_starts_at then
++    v_errors := array_append(v_errors, 'Round Robin requires time to finalise divisions after entries close. Competition Start must be after the Entry Close date.');
++  end if;
++  if p_score_components is null
++    or jsonb_typeof(p_score_components) <> 'array'
++    or jsonb_array_length(p_score_components) = 0 then
++    v_errors := array_append(v_errors, 'Add at least one Course of Fire score component before publishing.');
++  end if;
++  if p_ranking_method = 'best_n_average' and p_best_rounds_count is null then
++    v_errors := array_append(v_errors, 'Set how many rounds count for Best N rounds average.');
++  end if;
++  if cardinality(v_round_deadlines) <> p_number_of_rounds
++    or exists (select 1 from unnest(v_round_deadlines) as supplied(value) where supplied.value is null) then
++    v_errors := array_append(v_errors, 'Set a Round End for every configured round before publishing.');
++  end if;
++  return v_errors;
++end;
++$function$;
++
+ CREATE OR REPLACE FUNCTION private.validate_competition_configuration(p_status text, p_entry_format text, p_team_size integer, p_shots_per_round integer, p_uses_x_score boolean, p_number_of_rounds integer, p_entry_fee numeric, p_entry_window_mode text, p_custom_entry_opens_at date, p_custom_entry_closes_at date, p_start_date_mode text, p_custom_starts_at date, p_effective_entry_opens_at date, p_effective_entry_closes_at date, p_effective_starts_at date, p_season_ends_at date, p_sets_per_round integer, p_score_components jsonb, p_ranking_method text, p_best_rounds_count integer, p_local_scoring_enabled boolean, p_round_deadlines date[], p_round_shoot_by_dates date[])
+  RETURNS void
+  LANGUAGE plpgsql
+@@ -362,6 +400,7 @@ declare
+   v_round_shoot_by_dates date[] := coalesce(p_round_shoot_by_dates, array[]::date[]);
+   v_round_number integer;
+   v_previous_deadline date;
++  v_publication_error text;
+ begin
+   if p_status not in ('draft', 'published') then
+     raise exception 'Select a valid competition status.' using errcode = '22023';
+@@ -594,32 +633,18 @@ begin
+   end if;
+ 
+   if p_status = 'published' then
+-    if p_effective_entry_opens_at is null or p_effective_entry_closes_at is null then
+-      raise exception 'Set a complete effective Competition entry window before publishing.'
+-        using errcode = '22023';
+-    end if;
+-    if p_effective_starts_at is null then
+-      raise exception 'Set an effective Competition Start before publishing.'
+-        using errcode = '22023';
+-    end if;
+-    if p_ranking_method = 'round_robin'
+-      and p_effective_entry_closes_at >= p_effective_starts_at then
+-      raise exception 'Round Robin requires time to finalise divisions after entries close. Competition Start must be after the Entry Close date.'
+-        using errcode = '22023';
+-    end if;
+-    if jsonb_array_length(p_score_components) = 0 then
+-      raise exception 'Add at least one Course of Fire score component before publishing.'
+-        using errcode = '22023';
+-    end if;
+-    if p_ranking_method = 'best_n_average' and p_best_rounds_count is null then
+-      raise exception 'Set how many rounds count for Best N rounds average.'
+-        using errcode = '22023';
+-    end if;
+-    if cardinality(v_round_deadlines) <> p_number_of_rounds
+-      or exists (select 1 from unnest(v_round_deadlines) as supplied(value) where supplied.value is null) then
+-      raise exception 'Set a Round End for every configured round before publishing.'
+-        using errcode = '22023';
+-    end if;
++    foreach v_publication_error in array private.competition_publication_readiness_errors(
++      p_effective_entry_opens_at,
++      p_effective_entry_closes_at,
++      p_effective_starts_at,
++      p_ranking_method,
++      p_score_components,
++      p_best_rounds_count,
++      p_number_of_rounds,
++      v_round_deadlines
++    ) loop
++      raise exception '%', v_publication_error using errcode = '22023';
++    end loop;
+   end if;
+ end;
+ $function$;
+diff --git a/database/06_entries.sql b/database/06_entries.sql
+index 8699791..34e8636 100644
+--- a/database/06_entries.sql
++++ b/database/06_entries.sql
+@@ -367,12 +367,13 @@ begin
+     on membership.user_id = v_actor_id and membership.status = 'active'
+   join public.clubs as club on club.id = membership.club_id and club.status = 'active'
+   left join public.club_competition_entries as entry
+-    on entry.competition_id = competition.id and entry.club_id = club.id
++    on entry.competition_id = competition.id
++    and entry.club_id = club.id
++    and (membership.role in ('owner', 'official') or entry.status = 'submitted')
+   where competition.id = p_competition_id
+     and competition.status = 'published'
+     and season.status in ('open', 'active', 'completed')
+     and organisation.status = 'active'
+-    and (membership.role in ('owner', 'official') or entry.status = 'submitted')
+   order by club.name, club.id;
+ end;
+ $function$;
+@@ -446,7 +447,7 @@ begin
+       if v_team_value is not null and jsonb_typeof(v_team_value) <> 'null' then
+         if jsonb_typeof(v_team_value) <> 'number'
+           or v_team_value::text !~ '^[1-9][0-9]*$' then
+-          raise exception 'Club Pair or Team selections must use a valid persistent unit ID.'
++          raise exception 'Select a valid Club Pair or Club Team.'
+             using errcode = '22023';
+         end if;
+         v_team_id := v_team_value::text::bigint;
+@@ -502,7 +503,7 @@ begin
+           and membership.status = 'active';
+       end if;
+     else
+-      raise exception 'Individual entrants use participant lists; Pair and Team entrants use a persistent unit selection or a legacy participant list.'
++      raise exception 'Individual entrants use participant lists; Pair and Team entrants select a Club Pair or Club Team.'
+         using errcode = '22023';
+     end if;
+ 
+@@ -541,7 +542,7 @@ begin
+     from jsonb_array_elements(v_normalised) as unit(value)
+     where jsonb_typeof(unit.value -> 'club_team_id') = 'number'
+   ) <> v_selected_team_count then
+-    raise exception 'A persistent Club Pair or Team can only be used once in this club entry.'
++    raise exception 'A Club Pair or Club Team can only be used once in this Club entry.'
+       using errcode = '23505',
+         constraint = 'competition_entrants_entry_club_team_unique';
+   end if;
+@@ -686,7 +687,7 @@ exception
+   when unique_violation then
+     get stacked diagnostics v_constraint_name = constraint_name;
+     if v_constraint_name = 'competition_entrants_entry_club_team_unique' then
+-      raise exception 'A persistent Club Pair or Team can only be used once in this club entry.'
++      raise exception 'A Club Pair or Club Team can only be used once in this Club entry.'
+         using errcode = '23505';
+     end if;
+     raise exception 'A shooter can only be selected once in this club entry.'
+diff --git a/database/14_shooting_details.sql b/database/14_shooting_details.sql
+index 0586299..d3ef146 100644
+--- a/database/14_shooting_details.sql
++++ b/database/14_shooting_details.sql
+@@ -604,6 +604,77 @@ begin
+ end;
+ $function$;
+ 
++CREATE OR REPLACE FUNCTION public.get_competition_publish_readiness(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint)
++ RETURNS jsonb
++ LANGUAGE plpgsql
++ SECURITY DEFINER
++ SET search_path TO ''
++AS $function$
++declare
++  competition_record record;
++  components jsonb;
++  round_deadlines date[];
++  requirements text[];
++begin
++  perform private.require_competition_author(p_organisation_id, false);
++
++  select competition.*,
++    effective.effective_entry_opens_at,
++    effective.effective_entry_closes_at,
++    effective.effective_starts_at
++  into competition_record
++  from public.competitions competition
++  join public.league_seasons season on season.id = competition.league_season_id
++  cross join lateral private.get_competition_effective_dates(competition.id) effective
++  where competition.id = p_competition_id
++    and competition.league_season_id = p_league_season_id
++    and season.organisation_id = p_organisation_id;
++
++  if not found then
++    raise exception 'Competition not found in this Organisation and Season.' using errcode = 'P0002';
++  end if;
++
++  select coalesce(jsonb_agg(jsonb_build_object(
++    'short_label', component.short_label,
++    'maximum_score', component.maximum_score,
++    'score_method', component.score_method
++  ) order by component.position), '[]'::jsonb)
++  into components
++  from public.competition_score_components component
++  where component.competition_id = p_competition_id;
++
++  select coalesce(array_agg(round.deadline order by round.round_number), array[]::date[])
++  into round_deadlines
++  from public.competition_rounds round
++  where round.competition_id = p_competition_id;
++
++  requirements := private.competition_publication_readiness_errors(
++    competition_record.effective_entry_opens_at,
++    competition_record.effective_entry_closes_at,
++    competition_record.effective_starts_at,
++    competition_record.ranking_method,
++    components,
++    competition_record.best_rounds_count,
++    competition_record.number_of_rounds,
++    round_deadlines
++  );
++
++  if competition_record.shooting_details_version is not null
++    and not private.competition_has_complete_shooting_details(p_competition_id) then
++    requirements := array_prepend(
++      'Choose equipment and complete position/style, distance, and Shots for every Course of Fire component.',
++      requirements
++    );
++  end if;
++
++  return jsonb_build_object(
++    'status', competition_record.status,
++    'requirements', to_jsonb(requirements),
++    'ready', cardinality(requirements) = 0
++  );
++end;
++$function$;
++
+ CREATE OR REPLACE FUNCTION public.update_competition_shooting_details_draft(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint, p_configuration jsonb)
+  RETURNS jsonb
+  LANGUAGE plpgsql
+diff --git a/database/18_security_and_integrity.sql b/database/18_security_and_integrity.sql
+index e44bd7e..6bbad5f 100644
+--- a/database/18_security_and_integrity.sql
++++ b/database/18_security_and_integrity.sql
+@@ -1478,6 +1478,7 @@ revoke all privileges on function "private"."validate_club_team_roster_complete"
+ revoke all privileges on function "private"."validate_club_team_roster_member"() from public, anon, authenticated, service_role;
+ revoke all privileges on function "private"."validate_competition_average_setting"() from public, anon, authenticated, service_role;
+ revoke all privileges on function "private"."validate_competition_configuration"(p_status text, p_entry_format text, p_team_size integer, p_shots_per_round integer, p_uses_x_score boolean, p_number_of_rounds integer, p_entry_fee numeric, p_entry_window_mode text, p_custom_entry_opens_at date, p_custom_entry_closes_at date, p_start_date_mode text, p_custom_starts_at date, p_effective_entry_opens_at date, p_effective_entry_closes_at date, p_effective_starts_at date, p_season_ends_at date, p_sets_per_round integer, p_score_components jsonb, p_ranking_method text, p_best_rounds_count integer, p_local_scoring_enabled boolean, p_round_deadlines date[], p_round_shoot_by_dates date[]) from public, anon, authenticated, service_role;
++revoke all privileges on function "private"."competition_publication_readiness_errors"(p_effective_entry_opens_at date, p_effective_entry_closes_at date, p_effective_starts_at date, p_ranking_method text, p_score_components jsonb, p_best_rounds_count integer, p_number_of_rounds integer, p_round_deadlines date[]) from public, anon, authenticated, service_role;
+ revoke all privileges on function "private"."validate_competition_division_assignment"() from public, anon, authenticated, service_role;
+ revoke all privileges on function "private"."validate_competition_entrant_club_team"() from public, anon, authenticated, service_role;
+ revoke all privileges on function "private"."validate_competition_entry_participant"() from public, anon, authenticated, service_role;
+@@ -1546,6 +1547,8 @@ revoke all privileges on function "public"."delete_club_information_card"(p_club
+ grant execute on function "public"."delete_club_information_card"(p_club_id bigint, p_card_id bigint) to "authenticated";
+ revoke all privileges on function "public"."delete_competition"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) from public, anon, authenticated, service_role;
+ grant execute on function "public"."delete_competition"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) to "authenticated";
++revoke all privileges on function "public"."delete_league_season"(p_organisation_id bigint, p_league_season_id bigint) from public, anon, authenticated, service_role;
++grant execute on function "public"."delete_league_season"(p_organisation_id bigint, p_league_season_id bigint) to "authenticated";
+ revoke all privileges on function "public"."delete_concurrent_shooting_round"(p_organisation_id bigint, p_concurrent_shooting_group_id bigint, p_concurrent_shooting_round_id bigint) from public, anon, authenticated, service_role;
+ grant execute on function "public"."delete_concurrent_shooting_round"(p_organisation_id bigint, p_concurrent_shooting_group_id bigint, p_concurrent_shooting_round_id bigint) to "authenticated";
+ revoke all privileges on function "public"."delete_draft_concurrent_shooting_group"(p_organisation_id bigint, p_concurrent_shooting_group_id bigint) from public, anon, authenticated, service_role;
+@@ -1587,6 +1590,8 @@ grant execute on function "public"."get_competition_gun_score_results"(p_organis
+ grant execute on function "public"."get_competition_gun_score_results"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) to "authenticated";
+ revoke all privileges on function "public"."get_competition_lifecycle_state"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) from public, anon, authenticated, service_role;
+ grant execute on function "public"."get_competition_lifecycle_state"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) to "authenticated";
++revoke all privileges on function "public"."get_competition_publish_readiness"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) from public, anon, authenticated, service_role;
++grant execute on function "public"."get_competition_publish_readiness"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) to "authenticated";
+ revoke all privileges on function "public"."get_competition_result_averages"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) from public, anon, authenticated, service_role;
+ grant execute on function "public"."get_competition_result_averages"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) to "anon";
+ grant execute on function "public"."get_competition_result_averages"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) to "authenticated";
+@@ -1845,6 +1850,7 @@ comment on function "public"."create_competition_with_shooting_details"(p_organi
+ comment on function "public"."create_league_season"(p_organisation_id bigint, p_name text, p_entry_opens_at date, p_entry_closes_at date, p_starts_at date, p_ends_at date) is 'Creates one draft season after verifying the authenticated caller is the active owner of the active organisation.';
+ comment on function "public"."create_league_season"(p_organisation_id bigint, p_name text, p_entry_opens_at date, p_entry_closes_at date, p_starts_at date, p_ends_at date, p_description text) is 'Creates one draft season with an optional plain-text description; preserves the original RPC signature as a compatibility overload.';
+ comment on function "public"."delete_competition"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) is 'Deletes only a participation-free Competition; configuration-only children follow existing cascades.';
++comment on function "public"."delete_league_season"(p_organisation_id bigint, p_league_season_id bigint) is 'Deletes only an empty draft Season after exact active Organisation Owner authorisation; Competitions and Concurrent Shooting dependencies block deletion.';
+ comment on function "public"."edit_competition_divisions"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) is 'Returns one published division allocation to draft after exact active owner/manager authorization.';
+ comment on function "public"."finalise_competition_starting_averages"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) is 'Explicitly freezes a complete configured participant S/Av set only when no division workflow exists.';
+ comment on function "public"."get_club_competition_entries"(p_club_id bigint) is 'Returns safe active club competition cards: submitted to active members and submitted or draft to active club management; withdrawn rows remain stored but are omitted.';
+@@ -1858,6 +1864,7 @@ comment on function "public"."get_competition_division_average_projection"(p_org
+ comment on function "public"."get_competition_division_management"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) is 'Returns submitted entrant-unit names, clubs, and draft/published division layout only to an active owner or manager of the exact organisation.';
+ comment on function "public"."get_competition_gun_score_results"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) is 'Public released Gun Score standings for an exact active organisation, public season, and published competition. Complete released gun results are accumulated directly: points scored rank descending and points dropped rank ascending, with higher X as the only enabled tie-break. NSR contributes no gun result or X. Pair/Team participant breakdowns contain only released derived results. UTC Round End dates are inclusive. No stored totals or source-score writes.';
+ comment on function "public"."get_competition_lifecycle_state"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) is 'Returns owner-only lifecycle availability after checking the exact Organisation, Season, and Competition relationship.';
++comment on function "public"."get_competition_publish_readiness"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) is 'Returns publication requirements to authorised Organisation management from the same validators used by publication.';
+ comment on function "public"."get_competition_result_averages"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) is 'Released Results participant statistics for Aggregate, Best-N Average, Gun Score, and Round Robin. R/Av is the unrounded numeric mean of complete released canonical achieved scores in this Competition, with null for no qualifying score. Frozen S/Av is public for Individual Results and staff-only for Pair/Team participant breakdowns; no entrant-level Pair/Team average is created. No ranking or score state is written.';
+ comment on function "public"."get_competition_round_results"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint, p_club_id bigint) is 'Returns live normalised participant and entrant Round results derived from canonical source scores. Missing required slots make totals incomplete; no aggregate totals, zero, or NSR are stored or manufactured.';
+ comment on function "public"."get_competition_round_robin_results"(p_organisation_id bigint, p_league_season_id bigint, p_competition_id bigint) is 'Published Round Robin schedule and released Results. W=2, D=1, L=0; complete bye=2. NSR matches unresolved, incomplete bye no points. Match points then gun aggregate then X; no countback. Future gun values, outcomes and points are gated at inclusive UTC Round End.';

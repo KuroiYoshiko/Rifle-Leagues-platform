@@ -3,6 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import type { EntryMemberSearchResult } from "@/lib/competition-entries";
+import {
+  resolveDatabaseError,
+  type DatabaseErrorLike,
+  type SafeDomainErrorRule,
+} from "@/lib/server/database-errors";
 import { createClient } from "@/lib/supabase/server";
 
 export type CompetitionEntryActionState = {
@@ -96,46 +101,68 @@ function parseValidationErrors(details: string | undefined) {
   }
 }
 
+const entryDomainErrors: readonly SafeDomainErrorRule[] = [
+  {
+    code: "23505",
+    message: /^(?:A Club Pair or Club Team|A persistent Club Pair or Team) can only be used once in this (?:Club|club) entry\.$/,
+    userMessage: "A Club Pair or Club Team can only be used once in this Club entry.",
+  },
+  {
+    code: "23505",
+    message: "A shooter can only be selected once in this club entry.",
+    userMessage: "A shooter can only be selected once in this club entry.",
+  },
+  ...[
+    "Competition entries are not currently open.",
+    "Restart this withdrawn entry before editing it.",
+    "Restart this withdrawn entry before submitting it.",
+    "Select a valid Club Pair or Club Team.",
+    "A selected Club Pair or Team no longer exists.",
+    "A selected Club Pair or Team belongs to a different club.",
+    "A selected Club Pair or Team is archived. Unarchive it or choose another unit.",
+    "The selected Club Pair or Team type and size are not compatible with this Competition.",
+    "Every selected shooter must be an active member of this club.",
+    "This entry isn't ready to submit.",
+  ].map((message) => ({
+    code: ["22023", "23514"] as const,
+    message,
+    userMessage: message,
+  })),
+  {
+    code: "22023",
+    message: /^Every entrant must contain exactly \d+ shooter slots\.$/,
+    userMessage: (error: DatabaseErrorLike) => error.message!,
+  },
+];
+
 function entryError(
-  code: string | undefined,
-  databaseMessage: string | undefined,
+  error: DatabaseErrorLike & { details?: string },
   details: string | undefined,
   fallback: string,
+  operation: string,
+  entityIds: Record<string, number>,
 ): CompetitionEntryActionState {
   const validationErrors = parseValidationErrors(details);
+  const classified = resolveDatabaseError(error, {
+    operation,
+    entityIds,
+    authorizationMessage:
+      "Only an active owner or official of this exact club can manage its entry.",
+    missingMessage:
+      "That club competition entry is no longer available. Refresh and try again.",
+    unexpectedMessage: fallback,
+    safeDomainErrors: entryDomainErrors,
+  });
 
-  if (code === "42501") {
-    return {
-      status: "error",
-      message: "Only an active owner or official of this exact club can manage its entry.",
-    };
-  }
-
-  if (code === "P0002") {
-    return {
-      status: "error",
-      message: "That club competition entry is no longer available. Refresh and try again.",
-    };
-  }
-
-  if (code === "23505") {
-    return {
-      status: "error",
-      message: databaseMessage?.includes("Club Team")
-        ? databaseMessage
-        : "A shooter can only be selected once in this club entry.",
-    };
-  }
-
-  if (code === "22023" || code === "23514") {
-    return {
-      status: "error",
-      message: databaseMessage || fallback,
-      errors: validationErrors,
-    };
-  }
-
-  return { status: "error", message: fallback };
+  return {
+    status: "error",
+    message: classified.message,
+    errors:
+      classified.kind === "domain" &&
+      error.message === "This entry isn't ready to submit."
+        ? validationErrors
+        : undefined,
+  };
 }
 
 function revalidateEntryViews() {
@@ -170,10 +197,11 @@ export async function startClubCompetitionEntry(
 
   if (error) {
     return entryError(
-      error.code,
-      error.message,
+      error,
       error.details,
-      "The club entry could not be started. Check that the latest competition entry SQL has been run, then try again.",
+      "The club entry could not be started. Please try again.",
+      "competition-entry.start",
+      { competitionId, clubId },
     );
   }
 
@@ -218,10 +246,11 @@ export async function saveClubCompetitionEntry(
 
   if (error) {
     return entryError(
-      error.code,
-      error.message,
+      error,
       error.details,
       "The competition entry could not be saved. Please try again.",
+      "competition-entry.save",
+      { entryId: input.entryId },
     );
   }
 
@@ -257,10 +286,11 @@ export async function submitClubCompetitionEntry(
 
   if (error) {
     return entryError(
-      error.code,
-      error.message,
+      error,
       error.details,
       "The competition entry could not be submitted. Please try again.",
+      "competition-entry.submit",
+      { entryId: input.entryId },
     );
   }
 
@@ -287,10 +317,11 @@ export async function withdrawClubCompetitionEntry(
 
   if (error) {
     return entryError(
-      error.code,
-      error.message,
+      error,
       error.details,
       "The competition entry could not be withdrawn. Please try again.",
+      "competition-entry.withdraw",
+      { entryId },
     );
   }
 
@@ -330,7 +361,15 @@ export async function searchCompetitionEntryMembers(input: {
   if (error) {
     return {
       status: "error",
-      message: "Eligible club members could not be loaded.",
+      message: resolveDatabaseError(error, {
+        operation: "competition-entry.search-members",
+        entityIds: { entryId },
+        authorizationMessage:
+          "You do not have permission to search members for this club entry.",
+        missingMessage:
+          "That club competition entry is no longer available. Refresh and try again.",
+        unexpectedMessage: "Eligible club members could not be loaded.",
+      }).message,
       members: [],
     };
   }

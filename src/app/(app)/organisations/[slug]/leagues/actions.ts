@@ -6,6 +6,10 @@ import {
   LEAGUE_SEASON_STATUSES,
   type LeagueSeasonStatus,
 } from "@/lib/league-seasons";
+import {
+  resolveDatabaseError,
+  type SafeDomainErrorRule,
+} from "@/lib/server/database-errors";
 import { createClient } from "@/lib/supabase/server";
 
 type LeagueSeasonField =
@@ -178,44 +182,73 @@ async function createAuthenticatedClient() {
   };
 }
 
-function mutationErrorMessage(code: string | undefined, fallback: string) {
-  if (code === "42501") {
-    return "Only this organisation’s active owner can manage seasons.";
-  }
+const seasonDomainErrors: readonly SafeDomainErrorRule[] = [
+  {
+    code: "23505",
+    message: /^(?:A league season with this name already exists in this organisation\.|duplicate key value violates unique constraint.+)$/,
+    userMessage: "A season with this name already exists in this organisation.",
+  },
+  ...[
+    "League name must contain between 2 and 160 characters.",
+    "Entry close date cannot be before entry open date.",
+    "End date cannot be before start date.",
+    "The league name cannot produce a route-safe web address.",
+    "Select a valid league status.",
+    "League status may only move one step forward.",
+    "Season description must contain 2,000 characters or fewer.",
+  ].map((message) => ({
+    message,
+    userMessage:
+      "Some season details were not accepted. Review the form and status transition.",
+  })),
+];
 
-  if (code === "P0002") {
-    return "That season or active organisation is no longer available. Refresh and try again.";
-  }
+const seasonDeleteDomainErrors: readonly SafeDomainErrorRule[] = [
+  ...[
+    "Only a draft league season can be deleted.",
+    "A league season containing Competitions cannot be deleted.",
+    "A league season containing Concurrent Shooting setup cannot be deleted.",
+  ].map((message) => ({
+    code: ["22023", "23503"] as const,
+    message,
+    userMessage: message,
+  })),
+];
 
-  if (code === "23505") {
-    return "A season with this name already exists in this organisation.";
-  }
-
-  if (code === "22023" || code === "23514") {
-    return "Some season details were not accepted. Review the form and status transition.";
-  }
-
-  return fallback;
+function mutationErrorMessage(
+  error: { code?: string; message?: string },
+  fallback: string,
+  operation: string,
+  entityIds: { organisationId: number; leagueSeasonId?: number },
+) {
+  return resolveDatabaseError(error, {
+    operation,
+    entityIds,
+    authorizationMessage:
+      "Only this organisation’s active owner can manage seasons.",
+    missingMessage:
+      "That season or active organisation is no longer available. Refresh and try again.",
+    unexpectedMessage: fallback,
+    safeDomainErrors: seasonDomainErrors,
+  }).message;
 }
 
-function deleteSeasonErrorMessage(code: string | undefined) {
-  if (code === "42501") {
-    return "Only this organisation’s active owner can delete a Season.";
-  }
-
-  if (code === "P0002") {
-    return "That Season or active Organisation is no longer available. Refresh and try again.";
-  }
-
-  if (code === "22023" || code === "23503") {
-    return "Only an unused draft Season can be deleted.";
-  }
-
-  if (code === "PGRST202" || code === "42883") {
-    return "Season deletion is not available because the database upgrade has not been applied yet.";
-  }
-
-  return "The Season could not be deleted because of an unexpected database error. Try again later or contact support.";
+function deleteSeasonErrorMessage(
+  error: { code?: string; message?: string },
+  organisationId: number,
+  leagueSeasonId: number,
+) {
+  return resolveDatabaseError(error, {
+    operation: "season.delete",
+    entityIds: { organisationId, leagueSeasonId },
+    authorizationMessage:
+      "Only this organisation’s active owner can delete a Season.",
+    missingMessage:
+      "That Season or active Organisation is no longer available. Refresh and try again.",
+    unexpectedMessage:
+      "The Season could not be deleted. Please try again later or contact support.",
+    safeDomainErrors: seasonDeleteDomainErrors,
+  }).message;
 }
 
 function revalidateLeagueRoutes(result: LeagueSeasonRpcResult) {
@@ -277,8 +310,10 @@ export async function createLeagueSeason(
     return {
       status: "error",
       message: mutationErrorMessage(
-        error.code,
-        "The season could not be created. Check that the latest season SQL has been run, then try again.",
+        error,
+        "The season could not be created. Please try again.",
+        "season.create",
+        { organisationId },
       ),
       values,
     };
@@ -351,8 +386,10 @@ export async function updateLeagueSeason(
     return {
       status: "error",
       message: mutationErrorMessage(
-        error.code,
+        error,
         "The season could not be saved. Please try again.",
+        "season.update",
+        { organisationId, leagueSeasonId },
       ),
       values,
     };
@@ -406,7 +443,7 @@ export async function deleteLeagueSeason(
   if (error) {
     return {
       status: "error",
-      message: deleteSeasonErrorMessage(error.code),
+      message: deleteSeasonErrorMessage(error, organisationId, leagueSeasonId),
     };
   }
 

@@ -53,7 +53,8 @@ export default async function ClubTeamsPage({
         <Card className="border-danger/20 p-6 sm:p-8">
           <h2 className="font-semibold text-foreground">Club Teams could not be loaded</h2>
           <p className="mt-2 text-sm leading-6 text-muted-foreground">
-            Run the Club Teams database upgrade, then refresh this page.
+            This service is temporarily unavailable. Please try again later or
+            contact support.
           </p>
         </Card>
       )}

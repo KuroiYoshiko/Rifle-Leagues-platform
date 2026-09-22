@@ -10,6 +10,10 @@ import {
   normaliseOrganisationContactValues,
   validateOrganisationContact,
 } from "@/lib/organisation-contact";
+import {
+  resolveDatabaseError,
+  type SafeDomainErrorRule,
+} from "@/lib/server/database-errors";
 import { createClient } from "@/lib/supabase/server";
 
 type RegistrationField =
@@ -32,6 +36,21 @@ export type OrganisationRegistrationState = {
 };
 
 const routeSafeSlugPattern = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+const organisationRegistrationDomainErrors: readonly SafeDomainErrorRule[] = [
+  {
+    code: "23505",
+    message: /^(?:An organisation with this name appears to already be registered\.|duplicate key value violates unique constraint.+)$/,
+    userMessage:
+      "An organisation with this name appears to already be registered. Request management access instead, or check the name.",
+  },
+  {
+    code: ["22023", "23514"],
+    message: /^(?:One or more organisation details are invalid\.|The organisation name cannot produce a route-safe web address\.|Organisation name must contain between 2 and 160 characters\.)$/,
+    userMessage:
+      "Some organisation details were not accepted. Review the form and try again.",
+  },
+];
 
 function readRegistrationValues(formData: FormData): OrganisationRegistrationValues {
   const contactValues = normaliseOrganisationContactValues({
@@ -107,14 +126,16 @@ export async function registerOrganisation(
   if (error) {
     return {
       status: "error",
-      message:
-        error.code === "23505"
-          ? "An organisation with this name appears to already be registered. Request management access instead, or check the name."
-          : error.code === "42501"
-            ? "Your session could not be verified. Sign in again and retry."
-            : error.code === "22023" || error.code === "23514"
-              ? "Some organisation details were not accepted. Review the form and try again."
-              : "The organisation could not be registered. Check that the latest organisation registration SQL has been run, then try again.",
+      message: resolveDatabaseError(error, {
+        operation: "organisation.register",
+        authorizationMessage:
+          "Your session could not be verified. Sign in again and retry.",
+        missingMessage:
+          "The organisation registration target is no longer available. Refresh and try again.",
+        unexpectedMessage:
+          "The organisation could not be registered. Please try again.",
+        safeDomainErrors: organisationRegistrationDomainErrors,
+      }).message,
       values,
     };
   }

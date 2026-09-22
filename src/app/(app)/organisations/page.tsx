@@ -211,8 +211,8 @@ async function PublicResultsDirectory({
               Public Results discovery unavailable
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              Check that the latest public Results SQL has been run in Supabase,
-              then refresh this page.
+              This service is temporarily unavailable. Please try again later or
+              contact support.
             </p>
           </div>
         </Card>
@@ -483,9 +483,8 @@ export default async function OrganisationsPage({
               Organisation discovery unavailable
             </h2>
             <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              The organisation directory could not be loaded. Check that the
-              supplied public Results SQL has been run in Supabase, then refresh
-              this page.
+              This service is temporarily unavailable. Please try again later or
+              contact support.
             </p>
           </div>
         </Card>

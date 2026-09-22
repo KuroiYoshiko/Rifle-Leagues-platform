@@ -46,8 +46,8 @@ export default async function ProfilePage() {
             <div>
               <h2 className="font-semibold text-foreground">Profile unavailable</h2>
               <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                We could not load your profile. If profiles were just added to this
-                project, run the supplied database SQL and then refresh this page.
+                This service is temporarily unavailable. Please try again later or
+                contact support.
               </p>
             </div>
           </div>
