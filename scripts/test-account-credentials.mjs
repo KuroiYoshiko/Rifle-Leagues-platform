@@ -8,6 +8,7 @@ import { loadModule } from "./helpers/aggregate-ui-path.mjs";
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const validation = await loadModule("src/lib/auth-validation.ts");
 const siteUrl = await loadModule("src/lib/server/site-url.ts", { "server-only": {} });
+const recovery = await loadModule("src/lib/auth-recovery.ts");
 
 async function actionsFor({
   user = { id: "user-1", email: "old@example.org" },
@@ -210,6 +211,7 @@ test("Profile reads the current address from Auth rather than a stale token clai
 
 test("email-change confirmation returns to Profile after successful verification", async () => {
   const route = await loadModule("src/app/auth/confirm/route.ts", {
+    "@/lib/auth-recovery": recovery,
     "next/server": { NextResponse: { redirect: (url, status) => ({
       url: String(url), status, headers: new Headers(),
     }) } },

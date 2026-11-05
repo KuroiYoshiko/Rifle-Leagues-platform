@@ -8,6 +8,7 @@ import { loadModule } from "./helpers/aggregate-ui-path.mjs";
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const siteUrl = await loadModule("src/lib/server/site-url.ts", { "server-only": {} });
 const validation = await loadModule("src/lib/auth-validation.ts");
+const recovery = await loadModule("src/lib/auth-recovery.ts");
 
 function form(values) { const data = new FormData(); for (const [key, value] of Object.entries(values)) data.set(key, value); return data; }
 
@@ -58,8 +59,9 @@ test("reset validates mismatch before Auth and signs out after successful update
     "next/cache": { revalidatePath: () => {} },
     "next/navigation": { redirect: (path) => { throw new Error(`REDIRECT:${path}`); } },
     "@/lib/auth-validation": validation,
+    "@/lib/auth-recovery": recovery,
     "@/lib/supabase/server": { createClient: async () => ({ auth: {
-      getClaims: async () => ({ data: { claims: { session_id: "session-1" } }, error: null }),
+      getClaims: async () => ({ data: { claims: { session_id: "session-1", amr: [{ method: "recovery" }] } }, error: null }),
       updateUser: async (args) => { calls.push(["update", args]); return { error: null }; },
       signOut: async (args) => { calls.push(["signout", args]); return { error: null }; },
     } }) },
@@ -75,11 +77,17 @@ test("reset rejects a missing recovery marker", async () => {
   const actions = await loadModule("src/app/(auth)/reset-password/actions.ts", {
     "next/headers": { cookies: async () => ({ get: () => undefined }) },
     "next/cache": {}, "next/navigation": {}, "@/lib/auth-validation": validation,
-    "@/lib/supabase/server": { createClient: async () => ({ auth: { getClaims: async () => ({ data: { claims: { session_id: "session-1" } }, error: null }) } }) },
+    "@/lib/auth-recovery": recovery,
+    "@/lib/supabase/server": { createClient: async () => ({ auth: { getClaims: async () => ({ data: { claims: { session_id: "session-1", amr: [{ method: "recovery" }] } }, error: null }) } }) },
   });
   const result = await actions.resetPassword({}, form({ password: "NewPassword9", confirmPassword: "NewPassword9" }));
   assert.match(result.message, /invalid or has expired/);
   assert.doesNotMatch(JSON.stringify(result), /NewPassword9/);
+});
+
+test("an ordinary signed-in session cannot use the recovery form", () => {
+  assert.equal(recovery.isRecoverySession({ amr: [{ method: "password" }] }), false);
+  assert.equal(recovery.isRecoverySession({ amr: [{ method: "recovery" }] }), true);
 });
 
 test("Login and Profile guards share verified claims, with Profile retaining access on user lookup failure", async () => {
@@ -123,9 +131,10 @@ test("recovery callback accepts a verified link and rejects an expired one", asy
   for (const [verificationError, destination] of [[null, "/reset-password"], [{ code: "otp_expired" }, "/reset-password?error=invalid"]]) {
     const route = await loadModule("src/app/auth/confirm/route.ts", {
       "next/server": { NextResponse: { redirect: makeResponse } },
+      "@/lib/auth-recovery": recovery,
       "@/lib/supabase/server": { createClient: async () => ({ auth: {
         verifyOtp: async () => ({ error: verificationError }),
-        getClaims: async () => ({ data: { claims: { session_id: "session-1" } }, error: null }),
+        getClaims: async () => ({ data: { claims: { session_id: "session-1", amr: [{ method: "recovery" }] } }, error: null }),
       } }) },
     });
     const url = new URL("https://rifle.example.org/auth/confirm?token_hash=secret&type=recovery&next=reset-password");

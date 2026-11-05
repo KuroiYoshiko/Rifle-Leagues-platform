@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { validatePassword } from "@/lib/auth-validation";
+import { isRecoverySession } from "@/lib/auth-recovery";
 import { createClient } from "@/lib/supabase/server";
 
 export type ResetPasswordState = {
@@ -28,7 +29,7 @@ export async function resetPassword(
     const supabase = await createClient();
     const { data, error: sessionError } = await supabase.auth.getClaims();
     const sessionId = data?.claims?.session_id;
-    if (sessionError || !sessionId || cookieStore.get("rifle-recovery-session")?.value !== sessionId) {
+    if (sessionError || !sessionId || !isRecoverySession(data?.claims) || cookieStore.get("rifle-recovery-session")?.value !== sessionId) {
       return { status: "error", message: "This password reset link is invalid or has expired. Request a new password reset." };
     }
     const { error } = await supabase.auth.updateUser({ password });

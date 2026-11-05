@@ -1,5 +1,6 @@
 import type { EmailOtpType } from "@supabase/supabase-js";
 import { NextResponse, type NextRequest } from "next/server";
+import { isRecoverySession } from "@/lib/auth-recovery";
 import { createClient } from "@/lib/supabase/server";
 
 function noStoreRedirect(url: URL) {
@@ -48,7 +49,9 @@ export async function GET(request: NextRequest) {
 async function recoveryRedirect(request: NextRequest, supabase: Awaited<ReturnType<typeof createClient>>) {
   const { data, error } = await supabase.auth.getClaims();
   const sessionId = data?.claims?.session_id;
-  if (error || !sessionId) return noStoreRedirect(new URL("/reset-password?error=invalid", request.url));
+  if (error || !sessionId || !isRecoverySession(data?.claims)) {
+    return noStoreRedirect(new URL("/reset-password?error=invalid", request.url));
+  }
   const response = noStoreRedirect(new URL("/reset-password", request.url));
   response.cookies.set("rifle-recovery-session", sessionId, {
     httpOnly: true,

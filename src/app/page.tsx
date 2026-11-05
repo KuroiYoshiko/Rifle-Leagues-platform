@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { DashboardLink } from "@/components/dashboard-link";
 import { createClient } from "@/lib/supabase/server";
 
 const features = [
@@ -53,9 +54,9 @@ export default async function Home() {
           </div>
           {isAuthenticated ? (
             <div className="flex items-center gap-2 sm:gap-3">
-              <Link href="/dashboard" className="rounded-full border border-white/20 bg-white/[.07] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/14 sm:px-5">
+              <DashboardLink prefetch className="inline-flex min-h-11 min-w-28 items-center justify-center rounded-full border border-white/20 bg-white/[.07] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-white/14 sm:px-5">
                 Dashboard
-              </Link>
+              </DashboardLink>
               <form action="/auth/signout" method="post">
                 <button type="submit" className="px-2 py-2.5 text-sm font-medium text-white/70 transition hover:text-white sm:px-3">
                   Logout
@@ -185,7 +186,7 @@ export default async function Home() {
             <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-strong">Ready for the season</p>
             <h2 className="mt-3 text-3xl font-semibold tracking-[-0.04em]">See the league from a better angle.</h2>
           </div>
-          <Link href="/dashboard" className="inline-flex min-h-12 items-center justify-center rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep">Open RifleLeagues <span className="ml-3" aria-hidden="true">→</span></Link>
+          <DashboardLink prefetch={isAuthenticated} className="inline-flex min-h-12 min-w-52 items-center justify-center rounded-full bg-primary px-6 text-sm font-semibold text-primary-foreground transition hover:bg-brand-deep">Open RifleLeagues <span className="ml-3" aria-hidden="true">→</span></DashboardLink>
         </div>
       </section>
 
