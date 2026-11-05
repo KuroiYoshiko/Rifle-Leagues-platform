@@ -2,6 +2,7 @@
 
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { validatePassword } from "@/lib/auth-validation";
 import { DATABASE_SERVICE_UNAVAILABLE_MESSAGE } from "@/lib/server/database-errors";
 import { getRegistrationConfirmationUrl } from "@/lib/server/site-url";
 import {
@@ -26,18 +27,6 @@ export type RegisterState = {
 };
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
-function validatePassword(password: string) {
-  if (password.length < 8) {
-    return "Use at least 8 characters.";
-  }
-
-  if (!/[a-z]/.test(password) || !/[A-Z]/.test(password) || !/\d/.test(password)) {
-    return "Include an uppercase letter, a lowercase letter, and a number.";
-  }
-
-  return undefined;
-}
 
 async function getConfirmationUrl() {
   const requestHeaders = await headers();

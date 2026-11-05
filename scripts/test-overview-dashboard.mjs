@@ -355,7 +355,7 @@ test("Overview composes existing isolated read models and removes profile/accoun
   assert.doesNotMatch(page, /user_organisations|shooting_score_values|competition_score_usages/);
   assert.doesNotMatch(`${page}\n${overview}`, /Profile and settings|Open profile|Complete profile|Account created/);
   assert.doesNotMatch(clubs, /operationalSummaries|LeaveClubButton|background="navigation"/);
-  assert.match(shell, /label: "Settings", href: "\/dashboard#settings"/);
+  assert.doesNotMatch(shell, /label: "Settings", href: "\/dashboard#settings"/);
   assert.match(shell, /"\/dashboard": \{ eyebrow: "Personal dashboard", title: "Overview" \}/);
   assert.match(overview, /md:grid-cols-2/);
   assert.match(overview, /xl:grid-cols-\[minmax\(0,1\.15fr\)_minmax\(20rem,\.85fr\)\]/);

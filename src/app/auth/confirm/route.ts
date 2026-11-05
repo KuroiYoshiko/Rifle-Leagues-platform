@@ -17,6 +17,9 @@ export async function GET(request: NextRequest) {
   const tokenHash = request.nextUrl.searchParams.get("token_hash");
   const type = request.nextUrl.searchParams.get("type") as EmailOtpType | null;
   const code = request.nextUrl.searchParams.get("code");
+  const nextPath = request.nextUrl.searchParams.get("next") === "profile" || type === "email_change"
+    ? "/profile"
+    : "/dashboard";
   const supabase = await createClient();
 
   if (tokenHash && type) {
@@ -26,13 +29,13 @@ export async function GET(request: NextRequest) {
     });
 
     if (!error) {
-      return noStoreRedirect(new URL("/dashboard", request.url));
+      return noStoreRedirect(new URL(nextPath, request.url));
     }
   } else if (code) {
     const { error } = await supabase.auth.exchangeCodeForSession(code);
 
     if (!error) {
-      return noStoreRedirect(new URL("/dashboard", request.url));
+      return noStoreRedirect(new URL(nextPath, request.url));
     }
   }
 

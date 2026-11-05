@@ -65,10 +65,8 @@ function TextField({
 
 export function ProfileForm({
   initialValues,
-  email,
 }: {
   initialValues: ProfileFormValues;
-  email: string;
 }) {
   const initialState: ProfileFormState = { values: initialValues };
   const [state, formAction, pending] = useActionState(
@@ -220,29 +218,6 @@ export function ProfileForm({
               type="tel"
             />
           </div>
-        </section>
-
-        <section aria-labelledby="account-information-heading">
-          <div className="border-b border-border pb-4">
-            <h2
-              id="account-information-heading"
-              className="text-lg font-semibold tracking-[-0.025em] text-foreground"
-            >
-              Account information
-            </h2>
-            <p className="mt-1 text-sm leading-6 text-muted-foreground">
-              Your email address is managed by your RifleLeagues account.
-            </p>
-          </div>
-          <div className="mt-5 rounded-xl bg-surface-muted px-4 py-3.5">
-            <span className="block text-xs font-medium text-muted-foreground">Email address</span>
-            <span className="mt-1 block break-all text-sm font-semibold text-foreground">
-              {email}
-            </span>
-          </div>
-          <p className="mt-3 text-xs leading-5 text-muted-foreground">
-            Email and password changes are not available in this version.
-          </p>
         </section>
       </fieldset>
 

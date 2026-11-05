@@ -42,10 +42,6 @@ const shootingNavigationItems: NavigationItem[] = [
   },
 ];
 
-const utilityNavigationItems: NavigationItem[] = [
-  { label: "Settings", href: "/dashboard#settings", mark: "S" },
-];
-
 const pageDetails: Record<string, { eyebrow: string; title: string }> = {
   "/dashboard": { eyebrow: "Personal dashboard", title: "Overview" },
   "/profile": { eyebrow: "Account", title: "Your profile" },
@@ -429,14 +425,6 @@ function Navigation({
         emptyBrowseLabel="Find a club"
         onNavigate={onNavigate}
       />
-
-      <div className="mt-7">
-        <NavigationLinks
-          items={utilityNavigationItems}
-          pathname={pathname}
-          onNavigate={onNavigate}
-        />
-      </div>
     </nav>
   );
 }

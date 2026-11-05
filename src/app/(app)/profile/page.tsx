@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Card } from "@/components/ui";
 import { profileToFormValues, type Profile } from "@/lib/profiles";
 import { createClient } from "@/lib/supabase/server";
+import { AccountSecurity } from "./account-security";
 import { ProfileForm } from "./profile-form";
 
 export const metadata: Metadata = {
@@ -14,20 +15,18 @@ const profileColumns =
 
 export default async function ProfilePage() {
   const supabase = await createClient();
-  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
-  const claims = claimsData?.claims;
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  const user = userData.user;
 
-  if (claimsError || !claims?.sub) {
+  if (userError || !user) {
     redirect("/login");
   }
 
   const { data, error } = await supabase
     .from("profiles")
     .select(profileColumns)
-    .eq("id", claims.sub)
+    .eq("id", user.id)
     .maybeSingle();
-
-  const email = typeof claims.email === "string" ? claims.email : "";
 
   if (error || !data) {
     return (
@@ -72,10 +71,8 @@ export default async function ProfilePage() {
       </div>
 
       <Card className="p-5 sm:p-7 lg:p-9">
-        <ProfileForm
-          initialValues={profileToFormValues(profile)}
-          email={email}
-        />
+        <ProfileForm initialValues={profileToFormValues(profile)} />
+        <AccountSecurity email={user.email ?? ""} />
       </Card>
     </div>
   );
