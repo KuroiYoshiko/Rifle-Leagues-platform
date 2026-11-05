@@ -8,12 +8,13 @@ const initialState: LoginState = {};
 const inputClassName =
   "mt-2 min-h-12 w-full rounded-xl border border-border bg-background px-4 text-sm text-foreground outline-none transition placeholder:text-muted-foreground/65 focus:border-brand focus:bg-surface focus:ring-4 focus:ring-brand/10 disabled:cursor-not-allowed disabled:opacity-65";
 
-export function LoginForm({ initialError }: { initialError?: string }) {
+export function LoginForm({ initialError, initialNotice }: { initialError?: string; initialNotice?: string }) {
   const [state, formAction, pending] = useActionState(login, initialState);
   const message = state.message ?? initialError;
 
   return (
     <form action={formAction} className="space-y-5" noValidate>
+      {initialNotice ? <p role="status" className="rounded-xl border border-success/20 bg-success-subtle px-4 py-3 text-sm text-success">{initialNotice}</p> : null}
       {message ? (
         <div
           role="alert"
@@ -66,6 +67,10 @@ export function LoginForm({ initialError }: { initialError?: string }) {
             {state.fieldErrors.password}
           </p>
         ) : null}
+      </div>
+
+      <div className="text-right text-sm">
+        <Link href="/forgot-password" className="font-semibold text-brand-strong hover:text-brand-deep">Forgot password?</Link>
       </div>
 
       <button
