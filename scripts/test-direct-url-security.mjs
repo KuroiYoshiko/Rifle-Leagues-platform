@@ -21,10 +21,8 @@ test("unauthenticated private app routes redirect to login", async () => {
     },
     "@/components/app-shell": { AppShell: passthrough },
     "@/components/public-results-shell": { PublicResultsShell: passthrough },
-    "@/lib/supabase/server": {
-      createClient: async () => ({
-        auth: { getClaims: async () => ({ data: null, error: { code: "no_session" } }) },
-      }),
+    "@/lib/server/verified-request-auth": {
+      getVerifiedRequestAuth: async () => ({ supabase: null, claims: null, error: { code: "no_session" } }),
     },
   });
 

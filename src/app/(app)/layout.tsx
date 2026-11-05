@@ -6,7 +6,7 @@ import { PublicResultsShell } from "@/components/public-results-shell";
 import type { SidebarClub } from "@/lib/clubs";
 import type { SidebarOrganisation } from "@/lib/organisations";
 import type { Profile } from "@/lib/profiles";
-import { createClient } from "@/lib/supabase/server";
+import { getNavigationProfile, getVerifiedRequestAuth } from "@/lib/server/verified-request-auth";
 
 function metadataValue(metadata: unknown, key: string) {
   if (!metadata || typeof metadata !== "object") return undefined;
@@ -19,9 +19,7 @@ export default async function ApplicationLayout({
 }: {
   children: ReactNode;
 }) {
-  const supabase = await createClient();
-  const { data, error } = await supabase.auth.getClaims();
-  const claims = data?.claims;
+  const { supabase, claims, error } = await getVerifiedRequestAuth();
 
   if (error || !claims?.sub) {
     const requestHeaders = await headers();
@@ -37,11 +35,7 @@ export default async function ApplicationLayout({
     clubMembershipsResult,
   ] =
     await Promise.all([
-      supabase
-        .from("profiles")
-        .select("first_name, last_name")
-        .eq("id", claims.sub)
-        .maybeSingle(),
+      getNavigationProfile(),
       supabase.rpc("get_my_organisations"),
       supabase
         .from("club_memberships")

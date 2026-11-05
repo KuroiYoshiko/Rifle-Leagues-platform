@@ -11,7 +11,7 @@ export const metadata: Metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string }>;
+  searchParams: Promise<{ error?: string; message?: string }>;
 }) {
   const supabase = await createClient();
   const { data } = await supabase.auth.getClaims();
@@ -20,7 +20,7 @@ export default async function LoginPage({
     redirect("/dashboard");
   }
 
-  const { error } = await searchParams;
+  const { error, message } = await searchParams;
   const initialError =
     error === "confirmation"
       ? "We could not confirm that email link. It may have expired or already been used."
@@ -32,7 +32,11 @@ export default async function LoginPage({
       title="Sign in"
       description="Use your email and password to continue to your dashboard."
     >
-      <LoginForm initialError={initialError} />
+      <LoginForm initialError={initialError} initialNotice={message === "password-changed"
+        ? "Your password has been changed. Please sign in again."
+        : message === "password-reset"
+          ? "Your password has been reset. Please sign in with your new password."
+          : undefined} />
     </AuthShell>
   );
 }

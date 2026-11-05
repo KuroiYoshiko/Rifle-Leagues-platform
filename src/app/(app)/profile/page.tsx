@@ -15,17 +15,19 @@ const profileColumns =
 
 export default async function ProfilePage() {
   const supabase = await createClient();
-  const { data: userData, error: userError } = await supabase.auth.getUser();
-  const user = userData.user;
+  const { data: claimsData, error: claimsError } = await supabase.auth.getClaims();
+  const claims = claimsData?.claims;
+  if (claimsError || !claims?.sub) redirect("/login");
 
-  if (userError || !user) {
-    redirect("/login");
-  }
+  const { data: userData, error: userError } = await supabase.auth.getUser();
+  const email = !userError && userData.user?.id === claims.sub
+    ? userData.user.email ?? ""
+    : typeof claims.email === "string" ? claims.email : "";
 
   const { data, error } = await supabase
     .from("profiles")
     .select(profileColumns)
-    .eq("id", user.id)
+    .eq("id", claims.sub)
     .maybeSingle();
 
   if (error || !data) {
@@ -72,7 +74,7 @@ export default async function ProfilePage() {
 
       <Card className="p-5 sm:p-7 lg:p-9">
         <ProfileForm initialValues={profileToFormValues(profile)} />
-        <AccountSecurity email={user.email ?? ""} />
+        <AccountSecurity email={email} />
       </Card>
     </div>
   );

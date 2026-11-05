@@ -16,7 +16,7 @@ import {
   getMyShooterAnalytics,
   parseShooterAnalyticsFilters,
 } from "@/lib/shooter-analytics";
-import { createClient } from "@/lib/supabase/server";
+import { getNavigationProfile, getVerifiedRequestAuth } from "@/lib/server/verified-request-auth";
 
 export const metadata: Metadata = {
   title: "Overview",
@@ -35,10 +35,7 @@ function hasClub(
 }
 
 export default async function DashboardPage() {
-  const supabase = await createClient();
-  const { data: claimsData, error: claimsError } =
-    await supabase.auth.getClaims();
-  const claims = claimsData?.claims;
+  const { supabase, claims, error: claimsError } = await getVerifiedRequestAuth();
 
   if (claimsError || !claims?.sub) redirect("/login");
 
@@ -50,11 +47,7 @@ export default async function DashboardPage() {
     analyticsResult,
     managementResult,
   ] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("first_name")
-      .eq("id", claims.sub)
-      .maybeSingle(),
+    getNavigationProfile(),
     supabase
       .from("club_memberships")
       .select(`

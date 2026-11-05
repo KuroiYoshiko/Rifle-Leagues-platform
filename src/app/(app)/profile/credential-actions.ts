@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
 import { validatePassword } from "@/lib/auth-validation";
 import { getRegistrationConfirmationUrl } from "@/lib/server/site-url";
 import { createClient } from "@/lib/supabase/server";
@@ -151,8 +152,11 @@ export async function changePassword(
     }
     if (error) return passwordError(error);
 
-    return { status: "success", message: "Your password has changed." };
+    // Local sign-out clears the SSR cookie session before best-effort revocation.
+    await supabase.auth.signOut({ scope: "local" });
   } catch {
     return { status: "error", message: "We could not change your password. Please try again." };
   }
+  revalidatePath("/", "layout");
+  redirect("/login?message=password-changed");
 }

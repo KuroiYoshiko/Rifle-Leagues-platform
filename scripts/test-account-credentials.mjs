@@ -8,6 +8,7 @@ import { loadModule } from "./helpers/aggregate-ui-path.mjs";
 const read = (path) => readFile(new URL(`../${path}`, import.meta.url), "utf8");
 const validation = await loadModule("src/lib/auth-validation.ts");
 const siteUrl = await loadModule("src/lib/server/site-url.ts", { "server-only": {} });
+const recovery = await loadModule("src/lib/auth-recovery.ts");
 
 async function actionsFor({
   user = { id: "user-1", email: "old@example.org" },
@@ -27,10 +28,12 @@ async function actionsFor({
         calls.push({ method: "reauthenticate" });
         return sendResult;
       },
+      signOut: async (...args) => { calls.push({ method: "signOut", args }); return { error: null }; },
     },
   };
   const actions = await loadModule("src/app/(app)/profile/credential-actions.ts", {
     "next/cache": { revalidatePath: (path) => calls.push({ method: "revalidatePath", path }) },
+    "next/navigation": { redirect: (path) => { throw new Error(`REDIRECT:${path}`); } },
     "next/headers": { headers: async () => new Headers({ origin: "https://rifle.example.org" }) },
     "@/lib/auth-validation": validation,
     "@/lib/server/site-url": siteUrl,
@@ -115,10 +118,9 @@ test("password form validates mismatch and project password rules before Auth re
 
 test("password change sends current_password and clears all secret values from returned state", async () => {
   const { actions, calls } = await actionsFor({ updateResult: { data: { user: {} }, error: null } });
-  const result = await actions.changePassword({}, passwordForm());
-  assert.equal(result.status, "success");
+  await assert.rejects(actions.changePassword({}, passwordForm()), /REDIRECT:\/login\?message=password-changed/);
   assert.deepEqual(calls[0], { method: "updateUser", args: [{ password: "NewPassword9", current_password: "OldPassword9" }] });
-  assert.doesNotMatch(JSON.stringify(result), /OldPassword9|NewPassword9/);
+  assert.deepEqual(calls[1], { method: "signOut", args: [{ scope: "local" }] });
 });
 
 test("secure password change requests a code and passes the nonce back to Auth", async () => {
@@ -184,8 +186,8 @@ test("Profile renders authenticated current email and both credential forms", as
   assert.doesNotMatch(html, /Email and password changes are not available in this version/);
 
   const pageSource = await read("src/app/(app)/profile/page.tsx");
-  assert.match(pageSource, /supabase\.auth\.getUser\(\)/);
-  assert.match(pageSource, /<AccountSecurity email=\{user\.email \?\? ""\}/);
+  assert.match(pageSource, /supabase\.auth\.getClaims\(\)/);
+  assert.match(pageSource, /<AccountSecurity email=\{email\}/);
 });
 
 test("Profile reads the current address from Auth rather than a stale token claim", async () => {
@@ -194,7 +196,10 @@ test("Profile reads the current address from Auth rather than a stale token clai
     "@/components/ui": { Card: ({ children }) => createElement("div", null, children) },
     "@/lib/profiles": { profileToFormValues: () => ({ first_name: "Jo", last_name: "Doe" }) },
     "@/lib/supabase/server": { createClient: async () => ({
-      auth: { getUser: async () => ({ data: { user: { id: "user-1", email: "confirmed@example.org" } }, error: null }) },
+      auth: {
+        getClaims: async () => ({ data: { claims: { sub: "user-1", email: "stale@example.org" } }, error: null }),
+        getUser: async () => ({ data: { user: { id: "user-1", email: "confirmed@example.org" } }, error: null }),
+      },
       from: () => ({ select: () => ({ eq: () => ({ maybeSingle: async () => ({ data: { id: "user-1" }, error: null }) }) }) }),
     }) },
     "./profile-form": { ProfileForm: () => createElement("div", null, "Personal form") },
@@ -206,6 +211,7 @@ test("Profile reads the current address from Auth rather than a stale token clai
 
 test("email-change confirmation returns to Profile after successful verification", async () => {
   const route = await loadModule("src/app/auth/confirm/route.ts", {
+    "@/lib/auth-recovery": recovery,
     "next/server": { NextResponse: { redirect: (url, status) => ({
       url: String(url), status, headers: new Headers(),
     }) } },
